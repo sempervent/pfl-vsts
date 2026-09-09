@@ -8,9 +8,10 @@ Authoritative session memory for PFL Generative Instruments / Drone Organism.
 
 ## Last known-good commit
 
- — Phrase DNA integration  
+`5419d83` — Phrase DNA integration  
 Phase 2: `aea6cdd` / tag `drone-organism-phase2-composer` / branch `phase2-composer-baseline`  
-Audio engine: tag `drone-organism-audio-v0.1`
+Audio engine: tag `drone-organism-audio-v0.1`  
+Tag: `drone-organism-phase3-phrase-dna`
 
 ## Build command
 
