@@ -1,10 +1,37 @@
 # PFL Generative Instruments
 
-Family of generative audio plugins for experimental, dirty, evolving drone music.
+A family of deterministic, generative, playable audio and MIDI plugins for experimental music, live performance, controlled unpredictability, transformation, memory, and interaction.
 
-## Current focus
+This repository (`sempervent/pfl-vsts`) is meant to complement the PFL hardware rig—not clone pedals or ship a grab-bag of conventional commercial plugins.
 
-**PFL Drone Organism 0.1** — self-composing AU/VST3 instrument with live performance controls (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE). No MIDI required for autonomous play; MIDI-ready for future controller mapping.
+## Philosophy
+
+Software here should do what computers do especially well: seeded composition, musical memory, evolving structure, stateful processing, and simple performance gestures a single human can steer—while staying reproducible and numerically safe.
+
+Shared ideas across the suite include deterministic seeds, versioned algorithms, isolated randomness, and performance controls such as FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE.
+
+## Current Plugin
+
+### PFL Drone Organism
+
+Self-composing AU/VST3 dirty-drone instrument (no MIDI required to play). Host-synced generative composition with Phrase DNA / musical memory, continuous macros (SEED, DENSITY, MUTATION, DRIFT, DIRT, SPACE, OUTPUT), and live performance commands (FREEZE, MUTATE, COLLAPSE, RESEED, SILENCE).
+
+**Status:** Implemented reference plugin — functionally complete software milestone. Creative-director listening validation and physical controller/studio integration remain separate follow-ups (see `PROJECT_STATE.md`).
+
+## Roadmap
+
+Development order (planned unless the creative director changes priority):
+
+1. **PFL Drone Organism** — Implemented. Composition + synthesis + performance control.
+2. **PFL Broken Conductor** — Next software target. Generative MIDI composer that reuses the musical brain to drive other instruments.
+3. **PFL Ruin Engine** — Generative transformation of incoming audio; effects as arrangement events.
+4. **PFL Memory Eater** — Generative capture / microloop memory (remember, mutate, forget, resurface).
+5. **PFL Pulse Colony** — Evolving rhythmic slicer / gate / panner organisms (not static presets).
+6. **PFL Signal Parasite** — Later: audio-reactive generative collaborator (deterministic analysis, not ML-by-default).
+
+## Shared Architecture
+
+Composition (`src/generative/`), performance commands (`src/performance/`), and DSP (`src/dsp/`) are already shared building blocks for Drone Organism. Later plugins should reuse and carefully generalize these systems when a second real use case appears—not via premature framework extraction. Future domains (analysis, captured-audio memory, additional plugin folders) are architectural direction only until implementation tasks begin.
 
 ## Requirements
 
@@ -41,9 +68,9 @@ With `PFL_COPY_PLUGIN_AFTER_BUILD=ON` (default), plugins also install to:
 ~/Library/Audio/Plug-Ins/VST3/PFL Drone Organism.vst3
 ```
 
-## Status
+## Project State
 
-See `PROJECT_STATE.md` for the authoritative session state.
+See `PROJECT_STATE.md` for the authoritative session state (versions, known defects, renders, next tasks). Agent working agreements live in `AGENTS.md`.
 
 ## License
 
