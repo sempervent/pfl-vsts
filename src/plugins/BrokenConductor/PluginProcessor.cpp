@@ -4,6 +4,10 @@
 //==============================================================================
 BrokenConductorProcessor::BrokenConductorProcessor()
     : AudioProcessor (BusesProperties()
+                          // Ableton Live 11 rejects MIDI-out VST3s without a valid audio input bus
+                          // (Log: "plugin has an effect category, but no valid audio input bus").
+                          // Input is host-required shell only — ignored; output stays silent.
+                          .withInput ("Input", juce::AudioChannelSet::stereo(), true)
                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts_ (*this, nullptr, "PARAMS", createParameterLayout())
 {
@@ -61,13 +65,17 @@ void BrokenConductorProcessor::releaseResources()
 
 bool BrokenConductorProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
-    // Silent instrument shell: stereo (or mono) main output, no audio inputs.
-    if (layouts.getMainInputChannelSet() != juce::AudioChannelSet::disabled())
+    // Ableton requires a valid audio input bus for this MIDI-out VST3; accept mono/stereo
+    // main in+out with matching channel counts. Input audio is ignored.
+    const auto in = layouts.getMainInputChannelSet();
+    const auto out = layouts.getMainOutputChannelSet();
+
+    if (in != juce::AudioChannelSet::mono() && in != juce::AudioChannelSet::stereo())
+        return false;
+    if (out != juce::AudioChannelSet::mono() && out != juce::AudioChannelSet::stereo())
         return false;
 
-    const auto out = layouts.getMainOutputChannelSet();
-    return out == juce::AudioChannelSet::mono()
-        || out == juce::AudioChannelSet::stereo();
+    return in.size() == out.size();
 }
 
 void BrokenConductorProcessor::resetOfflineTimeline() noexcept

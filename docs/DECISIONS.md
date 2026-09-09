@@ -139,3 +139,34 @@ Stage 1 VST3 (`IS_MIDI_EFFECT` / `Fx` / zero audio buses) compiled and passed un
 
 Broken Conductor appears in Live as an Instrument with silent audio and MIDI out. Creative director must confirm load + MIDI routing + audible target instrument.
 
+---
+
+## 2026-09-09 — Broken Conductor Stage 1C Ableton audio input bus
+
+### Context
+
+Stage 1B Instrument shell still failed Ableton instantiate with “could not be opened,” alone on a MIDI track.
+
+### Evidence (Live 11.3.43 `Log.txt`)
+
+```text
+VST3: plugin processor successfully loaded: PFL Broken Conductor
+error: Vst3: plugin has an effect category, but no valid audio input bus
+error: VST3: No valid input bus could be found
+error: VST3: Failed: PFL Broken Conductor
+```
+
+Identity collision with Drone Organism ruled out (unique `PLUGIN_CODE` / CIDs / bundle IDs). Architecture, dylibs, quarantine ruled out.
+
+### Decisions
+
+1. **One targeted fix:** declare stereo **audio input** + stereo output; `isBusesLayoutSupported` accepts matching mono/stereo in+out.
+2. Input audio is **ignored**; output remains silent; **ConductorEngine unchanged**.
+3. Do not cycle VST3 categories further without new log evidence.
+4. Add `docs/PLUGIN_IDENTITIES.md` + `plugin_identity_tests` (unique codes + BC must keep `.withInput`).
+5. Host milestone incomplete until Live opens the device and MIDI routing is confirmed.
+
+### Consequences
+
+Ableton’s MIDI-out VST3 path requires a valid audio input bus even when scanned as `instr`. Silent-out-only instruments that also produce MIDI fail Live bus setup.
+

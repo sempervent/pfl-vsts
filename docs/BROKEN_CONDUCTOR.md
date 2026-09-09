@@ -13,7 +13,8 @@ It is a **MIDI generator / musical source**, not an audio effect and not a proce
 | Stage | Status |
 |-------|--------|
 | **1** | Engine + deterministic MIDI tests (`broken-conductor-stage1`) |
-| **1B** | Ableton Live host acceptance (Instrument shell + silent stereo + MIDI out) |
+| **1B** | Instrument shell + silent stereo out (`broken-conductor-stage1b-ableton`) — still failed Live load |
+| **1C** | Forensic host fix: stereo **in+out** for Ableton MIDI-out VST3 (in progress / awaiting Live) |
 | **2+** | Not started |
 
 ## Architecture
@@ -23,7 +24,7 @@ Host tempo / transport / PPQ
         → ConductorEngine (unchanged Stage 1 musical brain)
         → MidiTraceEvent
         → juce::MidiBuffer (MIDI out)
-        → silent stereo audio bus (host shell only)
+        → stereo audio in (ignored) + silent stereo out (Ableton shell)
 ```
 
 ```text
@@ -33,7 +34,7 @@ src/plugins/BrokenConductor/       # Host wrapper / buses / category
 
 Drone Organism still uses `Composer` v3. Broken Conductor does not call `Composer`.
 
-## Host plug-in configuration (Stage 1B)
+## Host plug-in configuration (Stage 1C)
 
 | Flag | Value | Rationale |
 |------|-------|-----------|
@@ -44,12 +45,28 @@ Drone Organism still uses `Composer` v3. Broken Conductor does not call `Compose
 | `VST3_CATEGORIES` | `Instrument Synth` | Live Instrument browser |
 | `AU_MAIN_TYPE` | `kAudioUnitType_MusicDevice` | AU instrument (`aumu`) |
 | `FORMATS` | `AU VST3` | Standalone omitted (does not prove DAW routing) |
-| Audio buses | Stereo **output**, no inputs | Cleared to silence every block |
-| Audio synthesis | **None** | Silent outs only |
+| Audio buses | Stereo **input** (ignored) + stereo **output** (silent) | Live requires valid audio **input** for this MIDI-out VST3 |
+| Audio synthesis | **None** | Clear buffer every block |
 
-### Why Stage 1 MIDI-effect failed in Ableton
+### Why Stage 1 / 1B failed in Ableton
 
-Stage 1 built a pure MIDI-effect VST3 (`IS_MIDI_EFFECT`, `Fx`, **zero audio buses**). Ableton Live 11 does not reliably instantiate that configuration. Placing Broken Conductor **after** Drone Organism also puts it in the **audio-effect** portion of the track (wrong domain). Both contribute; empty-bus `Fx` explains **“This VST3 plug-in could not be opened.”**
+| Stage | Host shell | Live result |
+|-------|------------|-------------|
+| **1** | MIDI effect / `Fx` / **zero** audio buses | Could not open |
+| **1B** | Instrument / Synth / stereo **out only** | Processor loaded, then rejected |
+
+Stage 1B Ableton `Log.txt` (exact):
+
+```text
+VST3: plugin processor successfully loaded: PFL Broken Conductor ...
+error: Vst3: plugin has an effect category, but no valid audio input bus
+error: VST3: No valid input bus could be found
+error: VST3: Failed: PFL Broken Conductor
+```
+
+So the orange UI message was **not** a factory/CID failure — Live loaded the processor, then refused bus negotiation. Stage 1C adds a stereo input bus (ignored musically).
+
+Placing BC **after** Drone Organism remains wrong (audio-effect domain); use two-track **MIDI From**.
 
 ## Ableton Live 11 topology (correct)
 
@@ -142,7 +159,6 @@ Unit tests alone do **not** claim Ableton acceptance.
 - Stage 1 musical scope (single voice, no performance layer)
 - Host acceptance depends on Live rescan + correct two-track routing
 - AU MusicDevice may not expose MIDI-out routing as well as VST3 in Live — prefer VST3 for MIDI generation
-- No `pluginval` / `vst3validator` installed in the build environment yet
 
 ## Future stages
 

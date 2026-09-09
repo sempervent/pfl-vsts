@@ -42,7 +42,7 @@ ConductorEngine (algorithm v1 — Foundation MIDI voice)
         ↓
 MidiTraceEvent → MidiNoteTracker → juce::MidiBuffer
         ↓
-Silent stereo audio bus (Ableton Instrument shell; no synthesis)
+Stereo audio in (ignored) + silent stereo out (Ableton MIDI-out VST3 shell; no synthesis)
 ```
 
 Stage 1B host flags: `IS_SYNTH`, not `IS_MIDI_EFFECT`; VST3 `Instrument|Synth`.  

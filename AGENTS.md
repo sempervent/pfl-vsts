@@ -177,6 +177,14 @@ Default build copies plugins to:
 
 After meaningful audio/control changes: **rebuild and reinstall** before claiming the DAW has the new binary. Prefer VST3 in Ableton (adhoc AU often fails `auval`).
 
+A plugin milestone is **not host-complete** until these are distinguished and recorded:
+
+```text
+build → artifact validation → scanner acceptance → host instantiation → functional routing
+```
+
+Scanner listing ≠ openable device. See Broken Conductor Stage 1B→1C (`docs/BROKEN_CONDUCTOR.md`, Ableton log: missing audio input bus).
+
 ## Hard constraints (current + suite-wide)
 
 - Deterministic given seed + params + host timeline + performance command history + versions.
