@@ -4,11 +4,16 @@
 
 #include "dsp/DCBlocker.h"
 #include "dsp/SafetyLimiter.h"
+#include "dsp/Voice.h"
+
+#include <array>
 
 //==============================================================================
 class DroneOrganismProcessor final : public juce::AudioProcessor
 {
 public:
+    static constexpr int kNumVoices = 4;
+
     DroneOrganismProcessor();
     ~DroneOrganismProcessor() override;
 
@@ -38,20 +43,28 @@ public:
 
     juce::AudioProcessorValueTreeState& getAPVTS() noexcept { return apvts_; }
 
+    /** Offline / test render helper — advances the same DSP path as the plugin. */
+    void renderOffline (juce::AudioBuffer<float>& buffer);
+
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
+    void updateVoicesFromParams() noexcept;
 
     juce::AudioProcessorValueTreeState apvts_;
 
-    // Phase 0 proof-of-life oscillator (replaced by voice engine in Phase 1)
     double sampleRate_ = 44100.0;
-    double phase_ = 0.0;
-    double phaseDelta_ = 0.0;
+    std::array<pfl::dsp::Voice, kNumVoices> voices_;
+
+    // D minor pentatonic chord-ish stack (MIDI): D2, A2, F3, C4
+    static constexpr std::array<float, kNumVoices> kBaseNotes { 38.0f, 45.0f, 53.0f, 60.0f };
+    static constexpr std::array<float, kNumVoices> kVoiceDriftOffsets { -4.0f, 2.5f, -1.5f, 3.0f };
 
     pfl::dsp::DCBlocker dcLeft_;
     pfl::dsp::DCBlocker dcRight_;
     pfl::dsp::SafetyLimiter limiterLeft_;
     pfl::dsp::SafetyLimiter limiterRight_;
+
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> outputSmooth_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DroneOrganismProcessor)
 };

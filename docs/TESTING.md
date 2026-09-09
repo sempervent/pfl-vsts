@@ -6,13 +6,15 @@
 ./scripts/configure.sh
 ./scripts/build.sh
 ./scripts/test.sh
+./scripts/render.sh 4 renders/phase1-drone.wav
 ```
 
 ## Current automated tests
 
-| Test        | Covers                                      |
-|-------------|---------------------------------------------|
-| `dsp_smoke` | DC blocker settles; limiter bounds + NaN    |
+| Test / tool            | Covers                                      |
+|------------------------|---------------------------------------------|
+| `dsp_smoke`            | DC blocker settles; limiter bounds + NaN    |
+| `pfl_offline_render`   | Voice stack produces finite non-silent WAV  |
 
 ## Required suite (charter) — status
 

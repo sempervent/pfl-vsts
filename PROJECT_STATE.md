@@ -4,26 +4,27 @@ Authoritative session memory for PFL Generative Instruments / Drone Organism.
 
 ## Current development phase
 
-**Phase 0 complete** → beginning **Phase 1 — Sound**
+**Phase 1 — Sound** (drone voices implemented; awaiting Ableton audition)
 
 ## Current working features
 
-- JUCE 8.0.15 + CMake/Ninja reproducible build
-- AU / VST3 / Standalone targets
-- APVTS parameters: seed, density, drift, dirt, space, mutation, output
-- Output safety: DC blocker + safety limiter
-- Quiet 110 Hz proof tone × Output (Phase 0 audio path)
+- JUCE 8.0.15 + CMake/Ninja reproducible build (AU / VST3 / Standalone)
+- 4 dual-oscillator drone voices (saw/triangle blend), long A/R envelopes
+- Per-voice filter + light saturation
+- DRIFT wired (cents-scale smoothed instability)
+- DENSITY gates active voice count (1–4) in Phase 1
+- DIRT partially shapes filter/sat (pre–Phase 3 dirt engine)
+- OUTPUT smoothed → DC blocker → safety limiter
+- Offline render: `./scripts/render.sh`
 - `dsp_smoke` tests green
-- Standalone binary launches
-- Plugins copied to `~/Library/Audio/Plug-Ins/...`
 
 ## Current musical behavior
 
-Constant quiet A2 proof tone. Not yet a drone instrument.
+Manual held D-minor-pentatonic stack (MIDI 38/45/53/60). No generative composition yet. Continuous drone with slow drift; density changes population.
 
 ## Last known good Git commit
 
-*(updated after Phase 0 commit in this session)*
+`101e5eb` — Phase 0 shell (update after Phase 1 commit)
 
 ## Build command
 
@@ -36,6 +37,7 @@ Constant quiet A2 proof tone. Not yet a drone instrument.
 
 ```bash
 ./scripts/test.sh
+./scripts/render.sh 4 renders/phase1-drone.wav
 ```
 
 ## Plugin artifact paths
@@ -50,16 +52,20 @@ build/src/plugins/DroneOrganism/DroneOrganism_artefacts/Release/Standalone/PFL D
 
 ## Current known problems
 
-- `auval -v aumu Dro1 PflG` fails: component not found (no Apple Developer codesign identity; adhoc only). Ableton load not yet verified in-session.
-- Host load ≠ validated — treat as separate milestones.
+- `auval` cannot find adhoc-signed AU (no Apple Developer identity). Prefer VST3 in Ableton if AU does not appear.
+- Ableton load/audio not verified in-session.
+- Oscillators are naive (not band-limited); fine for dark drones for now.
+- Calling `updateVoicesFromParams()` every audio block is heavier than ideal (OK for 4 voices; refine later).
 
 ## Unresolved aesthetic questions
 
-None yet.
+- Is the static 4-note stack too consonant / chorale-like for the intended dirt?
+- Preferred default DRIFT amount for “subtle analog” vs obvious instability?
+- Should Phase 1 default density leave one voice always dark/low?
 
 ## Approved musical decisions
 
-None yet.
+None yet (no creative director audition recorded).
 
 ## Rejected musical ideas
 
@@ -67,4 +73,5 @@ None yet.
 
 ## Next highest-value task
 
-Phase 1: 3–4 voice dual-oscillator drone with envelopes, filter, light sat, DRIFT, OUTPUT; remove proof tone.
+1. You audition Standalone / Ableton VST3 + `renders/phase1-drone.wav`
+2. Then Phase 2: deterministic composer + host transport (keep DSP, add MusicalEvent path)

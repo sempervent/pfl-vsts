@@ -6,11 +6,13 @@ Public surface (deliberately small):
 |------------|----------|--------------|---------|--------------|
 | `seed`     | Seed     | 0…999999     | 1001    | Phase 2      |
 | `density`  | Density  | 0…1          | 0.45    | Phase 2      |
-| `drift`    | Drift    | 0…1          | 0.25    | Phase 1      |
-| `dirt`     | Dirt     | 0…1          | 0.35    | Phase 3      |
+| `drift`    | Drift    | 0…1          | 0.25    | Phase 1 (wired) |
+| `dirt`     | Dirt     | 0…1          | 0.35    | Phase 1 partial / Phase 3 full |
 | `space`    | Space    | 0…1          | 0.40    | Phase 3      |
 | `mutation` | Mutation | 0…1          | 0.30    | Phase 2      |
-| `output`   | Output   | 0…1 (skewed) | 0.70    | Phase 0      |
+| `output`   | Output   | 0…1 (skewed) | 0.70    | Phase 0/1 (wired) |
+
+Phase 1 also uses **density** to gate how many of 4 voices are held (1–4).
 
 ## Meanings
 

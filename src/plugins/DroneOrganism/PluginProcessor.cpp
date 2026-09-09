@@ -1,14 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-#include <cmath>
-
-namespace
-{
-constexpr float kProofToneHz = 110.0f;   // A2
-constexpr float kProofToneAmp = 0.05f;   // quiet, unmistakably present
-}
-
 //==============================================================================
 DroneOrganismProcessor::DroneOrganismProcessor()
     : AudioProcessor (BusesProperties()
@@ -29,7 +21,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout DroneOrganismProcessor::crea
         juce::NormalisableRange<float> { 0.0f, 1.0f, 0.001f, 0.5f },
         0.7f));
 
-    // Placeholders for 0.1 public surface — wired in later phases
     params.push_back (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { "seed", 1 },
         "Seed",
@@ -39,7 +30,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout DroneOrganismProcessor::crea
         juce::ParameterID { "density", 1 },
         "Density",
         juce::NormalisableRange<float> { 0.0f, 1.0f, 0.001f },
-        0.45f));
+        0.55f));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "drift", 1 },
@@ -77,7 +68,7 @@ const juce::String DroneOrganismProcessor::getName() const
 bool DroneOrganismProcessor::acceptsMidi() const { return true; }
 bool DroneOrganismProcessor::producesMidi() const { return false; }
 bool DroneOrganismProcessor::isMidiEffect() const { return false; }
-double DroneOrganismProcessor::getTailLengthSeconds() const { return 0.0; }
+double DroneOrganismProcessor::getTailLengthSeconds() const { return 6.0; }
 
 int DroneOrganismProcessor::getNumPrograms() { return 1; }
 int DroneOrganismProcessor::getCurrentProgram() { return 0; }
@@ -89,13 +80,19 @@ void DroneOrganismProcessor::changeProgramName (int, const juce::String&) {}
 void DroneOrganismProcessor::prepareToPlay (double sampleRate, int /*samplesPerBlock*/)
 {
     sampleRate_ = sampleRate;
-    phase_ = 0.0;
-    phaseDelta_ = juce::MathConstants<double>::twoPi * static_cast<double> (kProofToneHz) / sampleRate_;
+
+    for (auto& v : voices_)
+        v.prepare (sampleRate);
 
     dcLeft_.prepare (sampleRate);
     dcRight_.prepare (sampleRate);
     limiterLeft_.prepare (sampleRate);
     limiterRight_.prepare (sampleRate);
+
+    outputSmooth_.reset (sampleRate, 0.05);
+    outputSmooth_.setCurrentAndTargetValue (apvts_.getRawParameterValue ("output")->load());
+
+    updateVoicesFromParams();
 }
 
 void DroneOrganismProcessor::releaseResources() {}
@@ -109,33 +106,59 @@ bool DroneOrganismProcessor::isBusesLayoutSupported (const BusesLayout& layouts)
     return true;
 }
 
+void DroneOrganismProcessor::updateVoicesFromParams() noexcept
+{
+    const float density = apvts_.getRawParameterValue ("density")->load();
+    const float drift = apvts_.getRawParameterValue ("drift")->load();
+    const float dirt = apvts_.getRawParameterValue ("dirt")->load();
+
+    // Phase 1: density gates how many of the 4 voices are held open
+    const int activeCount = 1 + static_cast<int> (std::round (density * static_cast<float> (kNumVoices - 1)));
+
+    for (int i = 0; i < kNumVoices; ++i)
+    {
+        pfl::dsp::VoiceParams p;
+        p.baseMidiNote = kBaseNotes[static_cast<size_t> (i)];
+        p.level = 0.22f;
+        p.attackSec = 2.0f + 0.4f * static_cast<float> (i);
+        p.releaseSec = 3.5f + 0.5f * static_cast<float> (i);
+        p.osc2DetuneCents = 5.0f + 3.0f * static_cast<float> (i);
+        p.oscBlend = 0.25f + 0.12f * static_cast<float> (i);
+        p.filterCutoffHz = 700.0f + 350.0f * static_cast<float> (i) - dirt * 280.0f;
+        p.filterRes = 0.08f + dirt * 0.25f;
+        p.satDrive = 0.1f + dirt * 0.55f;
+        p.driftAmount = drift;
+        p.driftVoiceOffsetCents = kVoiceDriftOffsets[static_cast<size_t> (i)] * (0.3f + drift);
+        p.gate = i < activeCount;
+        voices_[static_cast<size_t> (i)].setParams (p);
+    }
+}
+
 void DroneOrganismProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ignoreUnused (midi);
     juce::ScopedNoDenormals noDenormals;
 
-    const auto totalNumInputChannels = getTotalNumInputChannels();
-    const auto totalNumOutputChannels = getTotalNumOutputChannels();
-
-    for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
+    for (auto i = getTotalNumInputChannels(); i < getTotalNumOutputChannels(); ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
-    const float outputGain = apvts_.getRawParameterValue ("output")->load();
+    updateVoicesFromParams();
+    outputSmooth_.setTargetValue (apvts_.getRawParameterValue ("output")->load());
+
     const int numSamples = buffer.getNumSamples();
     const int numChannels = buffer.getNumChannels();
-
     auto* left = buffer.getWritePointer (0);
     float* right = numChannels > 1 ? buffer.getWritePointer (1) : nullptr;
 
     for (int i = 0; i < numSamples; ++i)
     {
-        const float sample = static_cast<float> (std::sin (phase_)) * kProofToneAmp * outputGain;
-        phase_ += phaseDelta_;
-        if (phase_ >= juce::MathConstants<double>::twoPi)
-            phase_ -= juce::MathConstants<double>::twoPi;
+        float mix = 0.0f;
+        for (auto& v : voices_)
+            mix += v.processSample();
 
-        float L = sample;
-        float R = sample;
+        const float g = outputSmooth_.getNextValue();
+        float L = mix * g;
+        float R = mix * g;
 
         L = dcLeft_.processSample (L);
         R = dcRight_.processSample (R);
@@ -146,6 +169,12 @@ void DroneOrganismProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         if (right != nullptr)
             right[i] = R;
     }
+}
+
+void DroneOrganismProcessor::renderOffline (juce::AudioBuffer<float>& buffer)
+{
+    juce::MidiBuffer empty;
+    processBlock (buffer, empty);
 }
 
 //==============================================================================
