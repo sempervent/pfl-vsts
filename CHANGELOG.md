@@ -2,17 +2,16 @@
 
 ## Unreleased
 
-### Phase 1
+### Audio engine v0.1
 
-- Four dual-oscillator drone voices with long envelopes, filter, light saturation
-- DRIFT and DENSITY (voice gating) wired; DIRT pre-shapes filter/sat
-- Offline WAV render script (`scripts/render.sh`)
+- 3-voice D2/A2/D3 dual-oscillator stereo drone
+- Deterministic DRIFT with seeded RNG streams
+- DIRT macro bus (sat + noise + filter aggression)
+- SPACE stereo feedback delay with protected feedback
+- Transport Option B gating (Standalone always-on)
+- Safety path unchanged in authority: DIRT/SPACE cannot bypass
+- `audio_engine_smoke` + 90s reference renders
 
-### Phase 0
+### Phase 0–1 history
 
-- JUCE 8.0.15 + CMake/Ninja project scaffold
-- Drone Organism AU / VST3 / Standalone shell
-- Public parameter stubs (seed, density, drift, dirt, space, mutation, output)
-- DC blocker + safety limiter on output path
-- Quiet proof tone (replaced in Phase 1)
-- DSP smoke tests
+- JUCE 8.0.15 scaffold, proof tone, then first multi-voice path

@@ -1,56 +1,33 @@
 # Architecture
 
-## Scope
-
-PFL Generative Instruments is a family of plugins sharing one compositional core. Immediate target: **PFL Drone Organism**.
-
-## High-level signal / control flow (target)
+## Audio engine v0.1 signal flow
 
 ```text
-Host Transport
-     ↓
-Composer  (deterministic, seed + musical time)
-     ↓
-MusicalEvent
-   ↙       ↘
-Synth      MIDI out   (Broken Conductor later)
-Engine
-     ↓
-Dirt / Space chain
-     ↓
-DCBlocker → SafetyLimiter → Output
+Host transport (Option B gate)
+        ↓
+3 Voices (dual osc + drift + env + pan)
+        ↓
+DirtBus (pre-gain, sat, noise, resonant LP)
+        ↓
+FeedbackDelay (stereo, crossfeed, tanh feedback)
+        ↓
+Transport fade
+        ↓
+DCBlocker → SafetyLimiter → OUTPUT → hard ceiling
+        ↓
+Stereo out
 ```
 
-Constraints:
+Pitch values are assigned in the processor (fixed D2/A2/D3). Oscillators do not own compositional pitch logic.
 
-- Composer must not depend on oscillator/DSP implementation.
-- All randomness derives from a master SEED via independent streams.
-- Musical events are scheduled from the audio timeline, not GUI timers.
-- Output safety is never bypassable by musical parameters.
-
-## Repository layout
+## Future (Phase 2+)
 
 ```text
-src/
-  generative/   # Composer, RNG, scale, walks, events (Phase 2+)
-  dsp/          # Voices, FX, safety
-  plugins/
-    DroneOrganism/
-tests/
-scripts/
-docs/
+Host Transport → Composer → MusicalEvent → Voices / MIDI
 ```
 
-## Plugin formats
+Composer must not depend on oscillator implementation.
 
-Built with JUCE CMake:
+## Formats
 
-- AU
-- VST3
-- Standalone (dev/test)
-
-## Phase notes
-
-- **Phase 0:** plugin shell + safety path + quiet proof tone
-- **Phase 1:** manual drone voices (no generative composer yet)
-- **Phase 2+:** deterministic composition engine
+JUCE 8.0.15 — AU / VST3 / Standalone via CMake + Ninja.

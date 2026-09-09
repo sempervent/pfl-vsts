@@ -6,41 +6,41 @@
 ./scripts/configure.sh
 ./scripts/build.sh
 ./scripts/test.sh
-./scripts/render.sh 4 renders/phase1-drone.wav
+./scripts/render.sh 90 renders
 ```
 
-## Current automated tests
+## Automated
 
-| Test / tool            | Covers                                      |
-|------------------------|---------------------------------------------|
-| `dsp_smoke`            | DC blocker settles; limiter bounds + NaN    |
-| `pfl_offline_render`   | Voice stack produces finite non-silent WAV  |
+| Test                   | Covers |
+|------------------------|--------|
+| `dsp_smoke`            | DC blocker; limiter NaN/bounds |
+| `audio_engine_smoke`   | RNG streams; osc pitch sanity; drift bounds; hostile finite across 44.1/48k and buffers 64–1024; delay feedback bound |
 
-## Required suite (charter) — status
+## Renders (manual audition)
 
-| Requirement                 | Status        |
-|-----------------------------|---------------|
-| Determinism (seed/events)   | Phase 2       |
-| RNG stream independence     | Phase 2       |
-| Scale integrity             | Phase 2       |
-| Buffer-size independence    | Phase 2       |
-| Numeric safety              | Partial (0)   |
-| Feedback safety             | Phase 3       |
-| State restoration           | Manual / later automated |
-| Transport start/stop        | Phase 2       |
-| Offline WAV renders         | Phase 4       |
+| File | Settings |
+|------|----------|
+| `renders/drone-organism-audio-engine-v0.1.wav` | 90s, drift 0.35, dirt 0.45, space 0.55, output 0.65 |
+| `renders/clean.wav` | low macros |
+| `renders/nominal.wav` | same as reference |
+| `renders/hostile.wav` | all macros 100% |
 
-## Plugin validation
+## Ableton Live 11 — shortest validation
 
-When AU/VST3 artifacts exist:
+1. `./scripts/build.sh` (copies to `~/Library/Audio/Plug-Ins/...`)
+2. Live → Preferences → Plug-Ins → Rescan (prefer **VST3** if AU missing)
+3. MIDI track → add **PFL Drone Organism** (no MIDI clips required)
+4. Press Play — drone should fade in (D2/A2/D3)
+5. Move DRIFT / DIRT / SPACE / OUTPUT / DENSITY — each should change the sound
+6. Press Stop — texture should release/fade, not click off
+7. Save set → reopen → confirm parameter values restore
 
-```bash
-# AU (if available on system)
-auval -v aumu Dro1 PflG
+## Validation status
 
-# Report paths
-ls ~/Library/Audio/Plug-Ins/Components/
-ls ~/Library/Audio/Plug-Ins/VST3/
-```
-
-Distinguish milestones: compiled ≠ validated ≠ loaded in Ableton ≠ produces musical audio.
+| Milestone | Status |
+|-----------|--------|
+| Build succeeded | Yes |
+| Plugin validation (`auval`) | No (adhoc unsigned) |
+| Host load (Ableton) | Manual — not agent-verified |
+| Audio output (offline render) | Yes |
+| Musical approval | Pending |

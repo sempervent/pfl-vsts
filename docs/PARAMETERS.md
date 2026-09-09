@@ -1,27 +1,27 @@
-# Parameters — Drone Organism 0.1
+# Parameters — Drone Organism (audio engine v0.1)
 
-Public surface (deliberately small):
+Public surface:
 
-| ID         | Name     | Range        | Default | Phase wiring |
-|------------|----------|--------------|---------|--------------|
-| `seed`     | Seed     | 0…999999     | 1001    | Phase 2      |
-| `density`  | Density  | 0…1          | 0.45    | Phase 2      |
-| `drift`    | Drift    | 0…1          | 0.25    | Phase 1 (wired) |
-| `dirt`     | Dirt     | 0…1          | 0.35    | Phase 1 partial / Phase 3 full |
-| `space`    | Space    | 0…1          | 0.40    | Phase 3      |
-| `mutation` | Mutation | 0…1          | 0.30    | Phase 2      |
-| `output`   | Output   | 0…1 (skewed) | 0.70    | Phase 0/1 (wired) |
+| ID         | Name     | Range        | Default | Behavior |
+|------------|----------|--------------|---------|----------|
+| `drift`    | Drift    | 0…1          | 0.35    | Pitch instability (deterministic) |
+| `dirt`     | Dirt     | 0…1          | 0.45    | Macro: pre-gain + sat + noise + filter |
+| `space`    | Space    | 0…1          | 0.55    | Stereo feedback delay depth |
+| `output`   | Output   | 0…1 (skewed) | 0.65    | Post-safety gain |
+| `density`  | Density  | 0…1          | 0.70    | Active voice count 1–3 |
+| `seed`     | Seed     | 0…999999     | 1001    | Drift/noise RNG universe |
 
-Phase 1 also uses **density** to gate how many of 4 voices are held (1–4).
+All are in APVTS → automate + restore via `getStateInformation` / `setStateInformation`.
 
-## Meanings
+DIRT and SPACE never bypass the safety stage.
 
-- **SEED** — deterministic universe
-- **DENSITY** — voice population / event activity
-- **DRIFT** — tuning instability (cents-scale)
-- **DIRT** — saturation + noise + filter aggression macro
-- **SPACE** — delay / depth
-- **MUTATION** — compositional change rate
-- **OUTPUT** — gain before protected output stage
+## Macro intent
 
-Future performance controls (not in 0.1 UI): FREEZE, MUTATE, COLLAPSE, RESEED, SILENCE.
+### DRIFT
+0% stable → 25% alive → 50% analog-ish → 75% seasick → 100% unstable but recognizable
+
+### DIRT
+0% clean → mid-range clearly dirty (shaped curve) → 100% extreme but bounded
+
+### SPACE
+0% dry → 50% atmospheric → 100% deep controlled smear

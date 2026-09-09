@@ -1,47 +1,37 @@
 # Musical Model — Drone Organism 0.1
 
-Status: **planned** (implementation begins Phase 2). Phase 0–1 establish sound only.
+## Transport behavior (audio engine v0.1)
+
+**Option B — transport-gated drone**
+
+- In a DAW host: voices gate open and a transport fade rises only while the host playhead reports playing. On Stop, gates release (~2.5s fade) and the texture decays predictably.
+- Standalone build: always treated as playing (no musical transport), so the instrument is immediately audible for audition.
+- Offline renders force transport playing.
+
+MIDI notes are not required. MIDI input is accepted for host compatibility but ignored musically in this version.
+
+## Current fixed voicing (pre-Composer)
+
+Root = D. Voices:
+
+```text
+Voice 1: D2  (MIDI 38)  pan slightly L
+Voice 2: A2  (MIDI 45)  near center (unstable fifth)
+Voice 3: D3  (MIDI 50)  pan slightly R
+```
+
+Pitch assignment is outside the oscillator class so Composer can replace it later.
 
 ## Aesthetic target
 
-Strange, dirty, atmospheric, rhythmically aware, slowly evolving drones. Continuity over constant novelty.
+Strange, dirty, atmospheric, slowly evolving drones. Continuity over constant novelty.
 
-## Tonal system (0.1)
+## Planned tonal system (Phase 2 Composer)
 
-D minor pentatonic, semitone offsets from D:
+D minor pentatonic offsets: `0, 3, 5, 7, 10`
 
-```text
-0, 3, 5, 7, 10
-```
-
-## Pitch motion
-
-Weighted random walk (tunable):
-
-| Move        | Weight |
-|-------------|--------|
-| stay        | 20%    |
-| −1 degree   | 25%    |
-| +1 degree   | 25%    |
-| −2 degree   | 10%    |
-| +2 degree   | 10%    |
-| octave      | 5%     |
-| mutation    | 5%     |
-
-Prefer local motion. Rare mutation may leave the scale temporarily.
-
-## Memory
-
-Keep ~8–16 recent events. Discourage immediate trivial repetition without forbidding motifs.
-
-## Timescales (host musical time)
-
-- sub-beat: drift / noise / micro-mod
-- beat: articulation
-- bar: minor compositional moves
-- 4 bars: pitch/voice mutation
-- 16+ bars: structural decisions
+Weighted random walk and musical memory — not active in audio engine v0.1.
 
 ## Approved / rejected
 
-Recorded here and in `PROJECT_STATE.md` once Phase 4 audition begins. No aesthetic approvals yet.
+None yet — awaiting creative director audition of audio engine v0.1 renders.

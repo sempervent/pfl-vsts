@@ -1,12 +1,16 @@
-# Phase 0: sanity tests for safety DSP (header-only units).
-# Phase 1: offline voice-stack render to WAV.
-
 add_executable(pfl_dsp_smoke
     dsp_smoke.cpp
 )
 target_include_directories(pfl_dsp_smoke PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_compile_features(pfl_dsp_smoke PRIVATE cxx_std_20)
 add_test(NAME dsp_smoke COMMAND pfl_dsp_smoke)
+
+add_executable(pfl_audio_engine_smoke
+    audio_engine_smoke.cpp
+)
+target_include_directories(pfl_audio_engine_smoke PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_features(pfl_audio_engine_smoke PRIVATE cxx_std_20)
+add_test(NAME audio_engine_smoke COMMAND pfl_audio_engine_smoke)
 
 add_executable(pfl_offline_render
     offline_render.cpp
@@ -21,4 +25,3 @@ target_link_libraries(pfl_offline_render
         juce::juce_core
         juce::juce_events
 )
-# Not registered as a CTest by default (writes WAV); run via scripts/render.sh

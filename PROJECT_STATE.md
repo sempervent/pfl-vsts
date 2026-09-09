@@ -2,29 +2,13 @@
 
 Authoritative session memory for PFL Generative Instruments / Drone Organism.
 
-## Current development phase
+## Current milestone
 
-**Phase 1 — Sound** (drone voices implemented; awaiting Ableton audition)
+Drone Organism **audio engine v0.1** — playable dirty stereo drone (no generative composer yet)
 
-## Current working features
+## Last known-good commit
 
-- JUCE 8.0.15 + CMake/Ninja reproducible build (AU / VST3 / Standalone)
-- 4 dual-oscillator drone voices (saw/triangle blend), long A/R envelopes
-- Per-voice filter + light saturation
-- DRIFT wired (cents-scale smoothed instability)
-- DENSITY gates active voice count (1–4) in Phase 1
-- DIRT partially shapes filter/sat (pre–Phase 3 dirt engine)
-- OUTPUT smoothed → DC blocker → safety limiter
-- Offline render: `./scripts/render.sh`
-- `dsp_smoke` tests green
-
-## Current musical behavior
-
-Manual held D-minor-pentatonic stack (MIDI 38/45/53/60). No generative composition yet. Continuous drone with slow drift; density changes population.
-
-## Last known good Git commit
-
-`0f1e639` — Phase 1 multi-voice drone with drift and safe output
+*(updated on commit in this session)*
 
 ## Build command
 
@@ -37,10 +21,10 @@ Manual held D-minor-pentatonic stack (MIDI 38/45/53/60). No generative compositi
 
 ```bash
 ./scripts/test.sh
-./scripts/render.sh 4 renders/phase1-drone.wav
+./scripts/render.sh 90 renders
 ```
 
-## Plugin artifact paths
+## Artifact paths
 
 ```text
 build/src/plugins/DroneOrganism/DroneOrganism_artefacts/Release/AU/PFL Drone Organism.component
@@ -50,28 +34,41 @@ build/src/plugins/DroneOrganism/DroneOrganism_artefacts/Release/Standalone/PFL D
 ~/Library/Audio/Plug-Ins/VST3/PFL Drone Organism.vst3
 ```
 
-## Current known problems
+## Render paths
 
-- `auval` cannot find adhoc-signed AU (no Apple Developer identity). Prefer VST3 in Ableton if AU does not appear.
-- Ableton load/audio not verified in-session.
-- Oscillators are naive (not band-limited); fine for dark drones for now.
-- Calling `updateVoicesFromParams()` every audio block is heavier than ideal (OK for 4 voices; refine later).
+```text
+renders/drone-organism-audio-engine-v0.1.wav   # 90s nominal DRIFT35/DIRT45/SPACE55
+renders/clean.wav
+renders/nominal.wav
+renders/hostile.wav
+```
 
-## Unresolved aesthetic questions
+## Working features
 
-- Is the static 4-note stack too consonant / chorale-like for the intended dirt?
-- Preferred default DRIFT amount for “subtle analog” vs obvious instability?
-- Should Phase 1 default density leave one voice always dark/low?
+- 3 dual-oscillator voices: D2 / A2 / D3, long A/R, stereo pans
+- Deterministic DRIFT (seeded RNG streams + smoothed walk + slow LFO)
+- DIRT macro bus: pre-gain, tanh sat, noise, resonant LP aggression
+- SPACE: stereo feedback delay with crossfeed + saturating feedback
+- Transport Option B: drone fades in while host playing; Standalone always on
+- Safety: DC → limiter → OUTPUT → hard ceiling (DIRT/SPACE cannot bypass)
+- Params: DRIFT, DIRT, SPACE, OUTPUT, DENSITY, SEED (APVTS save/restore)
+- Offline renders + `audio_engine_smoke` (finite/hostile/buffer/SR)
 
-## Approved musical decisions
+## Known issues
 
-None yet (no creative director audition recorded).
+- `auval` fails on adhoc AU (no Apple Developer ID). Prefer **VST3** in Ableton.
+- Ableton interactive load not verified in-agent session.
+- Oscillators still naive (not band-limited).
+- `updateVoicesFromParams` runs every audio block (acceptable at 3 voices).
 
-## Rejected musical ideas
+## Musical questions
 
-None yet.
+1. Clean source too bright / dull / about right?
+2. DRIFT organic enough, or need more instability?
+3. DIRT: too polite / appropriately damaged / too harsh?
+4. SPACE: more delay / diffusion / cavern / unstable tape?
+5. Fixed D/A/D voicing a useful foundation?
 
-## Next highest-value task
+## Next engineering step
 
-1. You audition Standalone / Ableton VST3 + `renders/phase1-drone.wav`
-2. Then Phase 2: deterministic composer + host transport (keep DSP, add MusicalEvent path)
+After creative audition of renders/plugins: Phase 2 deterministic Composer on host transport (replace fixed pitches with MusicalEvents). Do not add generative features until this audio engine is musically approved or directed.
