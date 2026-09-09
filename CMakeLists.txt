@@ -33,6 +33,7 @@ FetchContent_MakeAvailable(juce)
 enable_testing()
 
 add_subdirectory(src/plugins/DroneOrganism)
+add_subdirectory(src/plugins/BrokenConductor)
 
 if(PFL_BUILD_TESTS)
     add_subdirectory(tests)
