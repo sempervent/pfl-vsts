@@ -186,9 +186,43 @@ public:
         lastProcessedPpq_ = targetPpq;
     }
 
-    bool needsHostRetrigger() const noexcept { return voices_[0].sounding; }
+    bool needsHostRetrigger() const noexcept
+    {
+        for (const auto& v : voices_)
+            if (v.sounding)
+                return true;
+        return false;
+    }
+
     int soundingMidiNote() const noexcept { return voices_[0].soundingNote; }
     int lastVelocity() const noexcept { return voices_[0].lastVelocity; }
+
+    /** Fill up to kNumVoices active notes for host seek re-articulation (no heap). */
+    struct HostSoundingNote
+    {
+        int note = 0;
+        int velocity = 80;
+        int voice = 0;
+    };
+
+    int copySoundingNotes (HostSoundingNote* out, int maxOut) const noexcept
+    {
+        if (out == nullptr || maxOut <= 0)
+            return 0;
+        int n = 0;
+        for (const auto& v : voices_)
+        {
+            if (! v.sounding)
+                continue;
+            if (n >= maxOut)
+                break;
+            out[n].note = v.soundingNote;
+            out[n].velocity = v.lastVelocity;
+            out[n].voice = static_cast<int> (v.role);
+            ++n;
+        }
+        return n;
+    }
 
     void panic (double ppq) noexcept
     {
@@ -476,11 +510,15 @@ private:
             && (lastSlotIndex_ - pulseGestureEndSlot_) <= 8;
 
         int recent = 0;
-        int since = kGapWindowSlots;
         for (int i = 0; i < kCongestionWindowSlots; ++i)
-            recent += recentOnsets_[static_cast<size_t> (i)];
+        {
+            const int idx = (recentOnsetCursor_ - 1 - i + static_cast<int> (recentOnsets_.size()))
+                            % static_cast<int> (recentOnsets_.size());
+            recent += recentOnsets_[static_cast<size_t> (idx)];
+        }
         s.recentOnsetCount = recent;
 
+        int since = kGapWindowSlots;
         for (int i = 0; i < kGapWindowSlots; ++i)
         {
             const int idx = (recentOnsetCursor_ - 1 - i + static_cast<int> (recentOnsets_.size()))

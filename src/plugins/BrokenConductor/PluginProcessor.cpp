@@ -253,11 +253,16 @@ void BrokenConductorProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             engine_.handleSeek (ppqStart);
             if (engine_.needsHostRetrigger())
             {
-                midi.addEvent (juce::MidiMessage::noteOn (
-                                   pfl::generative::ConductorEngine::kMidiChannel,
-                                   engine_.soundingMidiNote(),
-                                   (juce::uint8) std::clamp (engine_.lastVelocity(), 1, 127)),
-                               0);
+                pfl::generative::ConductorEngine::HostSoundingNote notes[pfl::generative::ConductorEngine::kNumVoices];
+                const int n = engine_.copySoundingNotes (notes, pfl::generative::ConductorEngine::kNumVoices);
+                for (int i = 0; i < n; ++i)
+                {
+                    midi.addEvent (juce::MidiMessage::noteOn (
+                                       pfl::generative::ConductorEngine::kMidiChannel,
+                                       notes[i].note,
+                                       (juce::uint8) std::clamp (notes[i].velocity, 1, 127)),
+                                   0);
+                }
             }
         }
     }
