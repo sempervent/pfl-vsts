@@ -1,0 +1,4 @@
+BEFORE snapshot (pre-hunger Stage 4 metrics):
+stage4-ensemble noteOns=86 / 128 bars
+stage4-foundation=38 pulse=24 wanderer=23 accent=1
+Accent ≈ 0–1 event per 64–96+ bars — too sparse for jam/song use.

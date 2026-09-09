@@ -19,8 +19,8 @@ It is a **MIDI generator / musical source**, not an audio effect and not a proce
 | **2B** | Control response — algorithm **v3**; creative-director Ableton **PASS** |
 | **2 complete** | Tag `broken-conductor-stage2-complete` |
 | **3** | Four-voice ensemble — algorithm **v4**; Ableton **PASS**; tag `broken-conductor-stage3-complete` |
-| **4** | Deterministic role projection — OUTPUT ROLE (DRAFT) |
-| **5+** | Performance layer — not started |
+| **4** | Deterministic role projection + hunger — algorithm **v5**; Ableton **PASS**; tag `broken-conductor-stage4-complete` |
+| **5+** | Performance intervention — waits for PR #7 merge |
 
 ## Architecture
 
@@ -199,5 +199,7 @@ compile
 
 ## Future stages
 
-**Stage 3 (proposed):** Foundation + Pulse + Wanderer + Accent on one MIDI channel, listening to each other — **not** per-channel routing yet.  
+**Stage 4:** Deterministic role projection via OUTPUT ROLE (ENSEMBLE / FOUNDATION / PULSE / WANDERER / ACCENT). Every instance still computes the full ensemble; filter is post-arbitration. Role hunger (v5) keeps Accent/Wanderer on beat timescales. See `docs/ABLETON_ROLE_PROJECTION.md`. Ableton **PASS**. Per-role MIDI channels remain rejected for Live 11.
+
+**Stage 5 (next):** FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE — only after Stage 4 PR #7 merges to `main`.
 Do not start without an explicit task.

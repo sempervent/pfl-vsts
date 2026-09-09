@@ -1,0 +1,37 @@
+Broken Conductor Stage 4 role projection (72 BPM, algorithm v5)
+
+stage4-ensemble events=241 noteOns=121 ensembleEvents=241
+stage4-foundation events=76 noteOns=38 ensembleEvents=241
+stage4-pulse events=47 noteOns=24 ensembleEvents=241
+stage4-wanderer events=102 noteOns=51 ensembleEvents=241
+stage4-accent events=16 noteOns=8 ensembleEvents=241
+automation-ensemble events=100
+cpu_ms_one_ensemble_256bars=0.612125 cpu_ms_four_projections_256bars=2.5245 ratio=4.12416
+
+gap-d0.2-64bars dens=0.2 beats=256
+  FOUNDATION events=12 per64beats=3 per256beats=12 gap_mean=15.2727 median=8 p95=32 max=32.25
+  PULSE events=1 per64beats=0.25 per256beats=1
+  WANDERER events=12 per64beats=3 per256beats=12 gap_mean=19.7045 median=18 p95=30.25 max=34.25
+  ACCENT events=4 per64beats=1 per256beats=4 gap_mean=72.0833 median=72.25 p95=72.25 max=136
+  collisions attempted=0 shifted=0 suppressed=0
+
+gap-d0.5-64bars dens=0.5 beats=256
+  FOUNDATION events=17 per64beats=4.25 per256beats=17 gap_mean=13.5 median=8 p95=24 max=40
+  PULSE events=8 per64beats=2 per256beats=8 gap_mean=35.8214 median=24 p95=34.5 max=96.25
+  WANDERER events=22 per64beats=5.5 per256beats=22 gap_mean=11.4405 median=11.5 p95=18.5 max=19.25
+  ACCENT events=5 per64beats=1.25 per256beats=5 gap_mean=59.375 median=62.75 p95=62.75 max=81.5
+  collisions attempted=0 shifted=0 suppressed=0
+
+gap-d1.0-64bars dens=1 beats=256
+  FOUNDATION events=128 per64beats=32 per256beats=128 gap_mean=2 median=2.5 p95=3.25 max=3.25
+  PULSE events=114 per64beats=28.5 per256beats=114 gap_mean=2.21239 median=1 p95=6.5 max=7.5
+  WANDERER events=33 per64beats=8.25 per256beats=33 gap_mean=7.36719 median=8 p95=8.5 max=11
+  ACCENT events=7 per64beats=1.75 per256beats=7 gap_mean=39.4583 median=39.25 p95=45.25 max=46.25
+  collisions attempted=0 shifted=0 suppressed=0
+
+gap-d0.5-1024beats dens=0.5 beats=1024
+  FOUNDATION events=177 per64beats=11.0625 per256beats=44.25 gap_mean=5.72727 median=3.75 p95=16 max=40
+  PULSE events=82 per64beats=5.125 per256beats=20.5 gap_mean=12.5401 median=8 p95=32.25 max=96.25
+  WANDERER events=97 per64beats=6.0625 per256beats=24.25 gap_mean=10.5547 median=10.5 p95=17.25 max=19.25
+  ACCENT events=16 per64beats=1 per256beats=4 gap_mean=64.7833 median=62.75 p95=84.75 max=86
+  collisions attempted=1 shifted=1 suppressed=0

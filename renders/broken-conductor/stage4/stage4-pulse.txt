@@ -1,0 +1,51 @@
+# Broken Conductor Stage 3 ensemble trace
+# algorithm=5 seed=2002 density=0.5 mutation=0.35
+# foundationRhythmDNA gen=8 bars=2 DNA:X__.............................
+# format: bar.beat.slot ROLE EVENT ... [REASON]
+1.1.1 PULSE note 50 vel 78 NORMAL
+1.2.1 PULSE off  50 dur 1
+25.1.2 PULSE note 57 vel 88 NORMAL
+25.2.2 PULSE off  57 dur 1
+31.1.2 PULSE note 57 vel 90 NORMAL
+31.2.2 PULSE off  57 dur 1
+35.4.0 PULSE note 57 vel 94 NORMAL
+35.4.1 PULSE off  57 dur 0.25
+41.4.0 PULSE note 53 vel 93 NORMAL
+41.4.1 PULSE off  53 dur 0.25
+47.1.2 PULSE note 53 vel 86 NORMAL
+47.2.2 PULSE off  53 dur 1
+55.4.0 PULSE note 55 vel 92 NORMAL
+55.4.1 PULSE off  55 dur 0.25
+63.4.0 PULSE note 55 vel 96 NORMAL
+63.4.1 PULSE off  55 dur 0.25
+67.1.2 PULSE note 55 vel 89 NORMAL
+67.2.1 PULSE off  55 dur 0.75
+69.4.0 PULSE note 55 vel 95 NORMAL
+69.4.1 PULSE off  55 dur 0.25
+73.3.3 PULSE note 55 vel 78 NORMAL
+73.4.0 PULSE off  55 dur 0.25
+79.3.3 PULSE note 55 vel 80 NORMAL
+79.4.0 PULSE off  55 dur 0.25
+89.3.3 PULSE note 55 vel 79 NORMAL
+89.4.0 PULSE off  55 dur 0.25
+91.3.3 PULSE note 55 vel 80 NORMAL
+91.4.0 PULSE off  55 dur 0.25
+95.1.1 PULSE note 55 vel 80 NORMAL
+95.2.0 PULSE off  55 dur 0.75
+99.1.0 PULSE note 55 vel 96 NORMAL
+99.1.1 PULSE off  55 dur 0.25
+101.1.0 PULSE note 55 vel 96 NORMAL
+101.1.1 PULSE off  55 dur 0.25
+105.1.0 PULSE note 55 vel 96 NORMAL
+105.1.1 PULSE off  55 dur 0.25
+111.3.3 PULSE note 50 vel 82 NORMAL
+111.4.0 PULSE off  50 dur 0.25
+115.1.0 PULSE note 50 vel 96 NORMAL
+115.1.1 PULSE off  50 dur 0.25
+115.3.3 PULSE note 50 vel 80 NORMAL
+115.4.0 PULSE off  50 dur 0.25
+119.1.0 PULSE note 50 vel 96 NORMAL
+119.1.1 PULSE off  50 dur 0.25
+123.3.3 PULSE note 50 vel 81 NORMAL
+123.4.0 PULSE off  50 dur 0.25
+129.1.0 PULSE note 50 vel 96 NORMAL

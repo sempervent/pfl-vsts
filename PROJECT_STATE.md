@@ -4,20 +4,15 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**Broken Conductor Stage 4 — IN DEVELOPMENT** (deterministic role projection).  
-Stage 3 Ableton acceptance: **PASS** (creative director). Tag: `broken-conductor-stage3-complete`.
+**Broken Conductor Stage 4 — COMPLETE** (Ableton-accepted).  
+Awaiting PR #7 merge before Stage 5 (performance intervention).
 
 ## Branch / tags
 
-- Stage 4 working: `pr/broken-conductor-stage4-role-projection`
-- Stage 3 complete: `broken-conductor-stage3-complete` @ `08df096` (main after PR #5 merge)
+- Stage 4 complete: `broken-conductor-stage4-complete` (this tip)
+- Stage 4 PR: #7 `pr/broken-conductor-stage4-role-projection` (ready for review; not merged by agent)
+- Stage 3 complete: `broken-conductor-stage3-complete` @ `dc68bb7`
 - Stage 2 complete: `broken-conductor-stage2-complete` @ `0f42d56`
-- Stage 2B branch tip: `pr/broken-conductor-stage2b`
-- Stage 2 rhythm: `broken-conductor-stage2-rhythm` @ `5d33a32`
-- Stage 1C: `broken-conductor-stage1c-ableton-verified` @ `c9bacb2`
-- Stage 1B: `broken-conductor-stage1b-ableton` @ `6e43fb6`
-- Stage 1: `broken-conductor-stage1` @ `72d742e`
-- Pre-BC: `drone-organism-pre-broken-conductor` @ `fdbf97f`
 
 ## Build / test
 
@@ -40,8 +35,8 @@ Stage 3 Ableton acceptance: **PASS** (creative director). Tag: `broken-conductor
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 4 DRAFT** (role projection; Ableton pending) |
-| Engine | algorithm **v4** (full ensemble always) |
+| Status | **Stage 4 COMPLETE** (Ableton PASS) |
+| Engine | algorithm **v5** (ensemble + role hunger + OUTPUT ROLE projection) |
 | Host shell | Stage 1C stereo in (ignored) + silent stereo out |
 | Voices | Four roles; OUTPUT ROLE projects subset after arbitration |
 | Params | SEED, DENSITY, MUTATION, OUTPUT ROLE (config) |
@@ -54,8 +49,8 @@ Stage 3 Ableton acceptance: **PASS** (creative director). Tag: `broken-conductor
 | End-to-end MIDI routing + audible target | **VERIFIED** |
 | Stage 2B live DENSITY / MUTATION | **PASS** |
 | Stage 3 ensemble + DENSITY/MUTATION | **PASS** |
-| Stage 4 role projection | **WAITING** |
+| Stage 4 role projection + hunger | **PASS** |
 
 ### Next software task
 
-Stage 4 deterministic role projection (draft PR); Stage 5 not started.
+**Stage 5 performance intervention** only after PR #7 is merged to `main`. Do not stack Stage 5 on an unmerged draft.
