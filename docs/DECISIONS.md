@@ -339,3 +339,67 @@ Small ensemble texture: Foundation spine, Pulse groove, Wanderer questions in ga
 
 PRs #1–#3 were **already MERGED** into `main` when Stage 3 began. Draft PR #4 bases on `pr/broken-conductor-stage2b` so the review diff stays Stage-3-only versus the accepted Stage 2 tip (content also on `main` via merges). Tag `broken-conductor-stage2-complete` remains the Ableton-accepted milestone (parallel history SHA vs merge tip).
 
+---
+
+## 2026-09-09 — Broken Conductor Stage 3 complete (Ableton acceptance)
+
+### Context
+
+Creative director accepted Stage 3 in Ableton: Foundation / Pulse / Wanderer / Accent ensemble works; DENSITY and MUTATION behave as expected; MIDI routes correctly. PR #5 merged to `main`.
+
+### Decisions
+
+1. Tag `broken-conductor-stage3-complete` at the accepted `main` tip after PR #5 merge.
+2. Stage 3 closed. Stage 4 = deterministic role projection (not per-role MIDI channels).
+
+---
+
+## 2026-09-09 — Broken Conductor Stage 4 deterministic role projection
+
+### Problem
+
+Ableton Live 11 exposes Broken Conductor as an internal MIDI source but cannot usefully split generated MIDI channels into independent Live destinations. Per-role channels inside one instance are therefore unsuitable.
+
+### Rejected
+
+- Foundation→ch1 … Accent→ch4 with Live internal split
+- IAC / virtual MIDI / IPC / shared memory / background helpers
+- Computing only the selected role per instance (four musical universes)
+
+### Chosen
+
+**Deterministic role projection:** every instance always runs the full Stage 3 ensemble (propose → arbitrate → commit). After accepted events exist, an **OUTPUT ROLE** filter selects which role-tagged events become MIDI.
+
+```text
+Host timeline → full ConductorEngine → arbitration → Accepted events
+  → OutputRoleProjection → emitted MIDI
+```
+
+### Core invariant
+
+Filtering must not affect composition, RNG consumption, congestion, gap fill, call/response, budget, or same-pitch arbitration. Absent MIDI for another role does **not** mean that role was absent from the ensemble.
+
+### Projection point
+
+After arbitration/commit, before host-facing `pending_` / emitted-note tracking. Internal `MidiNoteTracker` always tracks the full ensemble; a separate **emitted** set tracks what the host actually received.
+
+### Performance controls
+
+DENSITY + MUTATION remain the only continuous musical controls. SEED remains the existing deterministic state parameter (already exposed).
+
+### Configuration
+
+OUTPUT ROLE ∈ { ENSEMBLE, FOUNDATION, PULSE, WANDERER, ACCENT }. Default ENSEMBLE. Persist with plug-in state. Treated as routing/config — not a performance macro. Live switching is safety-only (NoteOff emitted notes, then switch).
+
+### Multi-instance sync
+
+No cross-instance communication. Identical SEED / DENSITY / MUTATION / timeline ⇒ same universe. Mismatched controls ⇒ expected divergence. Ableton may fan macros externally.
+
+### Algorithm version
+
+Composition remains algorithm **v4**. Stage 4 is an emission/routing layer.
+
+### Expected consequence
+
+Four Live instances can project four musicians from one deterministic composition onto four instruments without those musicians stopping hearing one another.
+

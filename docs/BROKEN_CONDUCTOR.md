@@ -18,8 +18,9 @@ It is a **MIDI generator / musical source**, not an audio effect and not a proce
 | **2** | Rhythmic Language — algorithm v2 @ `5d33a32` |
 | **2B** | Control response — algorithm **v3**; creative-director Ableton **PASS** |
 | **2 complete** | Tag `broken-conductor-stage2-complete` |
-| **3** | Four-voice ensemble — algorithm **v4** (DRAFT; Ableton acceptance pending) |
-| **4+** | Per-role channels / routing — not started |
+| **3** | Four-voice ensemble — algorithm **v4**; Ableton **PASS**; tag `broken-conductor-stage3-complete` |
+| **4** | Deterministic role projection — OUTPUT ROLE (DRAFT) |
+| **5+** | Performance layer — not started |
 
 ## Architecture
 
