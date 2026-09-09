@@ -26,6 +26,13 @@ target_include_directories(pfl_phrase_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_compile_features(pfl_phrase_tests PRIVATE cxx_std_20)
 add_test(NAME phrase_tests COMMAND pfl_phrase_tests)
 
+add_executable(pfl_performance_tests
+    performance_tests.cpp
+)
+target_include_directories(pfl_performance_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_features(pfl_performance_tests PRIVATE cxx_std_20)
+add_test(NAME performance_tests COMMAND pfl_performance_tests)
+
 add_executable(pfl_offline_render
     offline_render.cpp
 )
@@ -33,6 +40,20 @@ target_include_directories(pfl_offline_render PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_compile_features(pfl_offline_render PRIVATE cxx_std_20)
 target_compile_definitions(pfl_offline_render PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
 target_link_libraries(pfl_offline_render
+    PRIVATE
+        juce::juce_audio_formats
+        juce::juce_audio_basics
+        juce::juce_core
+        juce::juce_events
+)
+
+add_executable(pfl_performance_render
+    performance_render.cpp
+)
+target_include_directories(pfl_performance_render PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_features(pfl_performance_render PRIVATE cxx_std_20)
+target_compile_definitions(pfl_performance_render PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+target_link_libraries(pfl_performance_render
     PRIVATE
         juce::juce_audio_formats
         juce::juce_audio_basics
