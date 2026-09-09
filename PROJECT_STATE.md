@@ -9,7 +9,7 @@ Stage 3 multi-voice **NOT STARTED**.
 
 ## Branch / tags
 
-- Stage 2 complete: `broken-conductor-stage2-complete` (final accepted Stage 2B tip)
+- Stage 2 complete: `broken-conductor-stage2-complete` @ `879c038`
 - Stage 2B branch: `broken-conductor-stage2b-control-response`
 - Stage 2 rhythm: `broken-conductor-stage2-rhythm` @ `5d33a32`
 - Stage 1C: `broken-conductor-stage1c-ableton-verified` @ `c9bacb2`
