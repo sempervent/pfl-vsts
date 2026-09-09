@@ -38,7 +38,7 @@ Composer algorithm version: **3**. Performance-engine version: **1**.
 ```text
 Host tempo / transport / PPQ
         ↓
-ConductorEngine (algorithm v2 — Foundation + RhythmDNA)
+ConductorEngine (algorithm v3 — Foundation + RhythmDNA + live DENSITY/MUTATION)
         ↓
 MidiTraceEvent → MidiNoteTracker → juce::MidiBuffer
         ↓

@@ -32,7 +32,7 @@ Aesthetic judgments belong to the human creative director. Agents execute engine
 ```text
 PFL Drone Organism          ← implemented (reference)
         ↓
-PFL Broken Conductor        ← next software target (planned)
+PFL Broken Conductor        ← Stage 2 complete; Stage 3 not started
         ↓
 PFL Ruin Engine             ← planned
         ↓
@@ -58,7 +58,7 @@ Why this order compounds shared architecture:
 
 1. **PFL Drone Organism** — Implemented AU/VST3 drone instrument. Deterministic self-composition, Phrase DNA / memory, host-synced evolution, macros (SEED / DENSITY / MUTATION / DRIFT / DIRT / SPACE / OUTPUT), and performance commands (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE). Functionally complete software milestone; awaiting creative-director listening validation and separate physical controller/studio integration. Do not claim full musical approval or hardware validation unless `PROJECT_STATE.md` / `docs/APPROVED_PATCHES.md` say so.
 
-2. **PFL Broken Conductor** — In progress (Stage 2 Rhythmic Language, algorithm v2). Generative MIDI composer: RhythmDNA + Phrase DNA; Ableton Instrument shell with stereo in/out. Stage 3 multi-voice not started.
+2. **PFL Broken Conductor** — Stage 2 complete (algorithm v3). Generative MIDI composer with RhythmDNA; Ableton Instrument shell with stereo in/out. Stage 3 multi-voice not started.
 
 3. **PFL Ruin Engine** — Planned generative audio transformation. Incoming audio as material; effects become arrangement events (clean → unstable → narrow → distort → smear → feedback → recover/decay). May reuse dirt/drift/filter/feedback/safety DSP concepts without being “Drone Organism FX without oscillators.” Possible signature: **AGE / DECAY**.
 
@@ -156,7 +156,7 @@ Today only `generative/`, `performance/`, `dsp/`, and `plugins/DroneOrganism/` e
 10. Real-time audio safety is mandatory (DC / numeric / feedback / limiter; no audio-callback filesystem I/O).
 11. Build, test, and render before claiming technical or musical success.
 12. Follow this roadmap unless the creative director explicitly changes priority.
-13. **Broken Conductor is the next software target** after Drone Organism.
+13. **Broken Conductor Stage 2 is complete**; Stage 3 multi-voice only when explicitly requested.
 14. Controller integration ≠ software roadmap blocker.
 15. **Do not start implementing roadmap plugins without an explicit task.**
 

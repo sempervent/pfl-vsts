@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <string>
@@ -83,6 +84,21 @@ public:
         mutation_ = std::clamp (mutation01, 0.0f, 1.0f);
     }
 
+    /**
+     * Live MUTATION response: shorten remaining Phrase DNA lifespan
+     * (max ~1–4 bars remaining when mutation rises sharply).
+     */
+    void respondToLiveParams (int currentBar, float previousMutation) noexcept
+    {
+        if (! (mutation_ > previousMutation + 0.08f))
+            return;
+        const int mutCap = std::max (1, static_cast<int> (std::lround (1.0 + 3.0 * (1.0 - static_cast<double> (mutation_)))));
+        const int expireAt = dna_.birthBar + dna_.lifespanBars;
+        const int cappedExpire = currentBar + mutCap;
+        if (cappedExpire < expireAt)
+            dna_.lifespanBars = std::max (1, cappedExpire - dna_.birthBar);
+    }
+
     const PhraseDNA& dna() const noexcept { return dna_; }
 
     const std::vector<PhraseTrace>& traces() const noexcept { return traces_; }
@@ -92,8 +108,8 @@ public:
     /** Probability of following phrase vs free walk when a pitch change occurs. */
     float followBias() const noexcept
     {
-        // High mutation → slightly more free walk; low mutation → cling to DNA
-        return std::clamp (0.82f - 0.35f * mutation_, 0.45f, 0.88f);
+        // Stage 2B: mut=1 allows more free walk (was floor 0.45)
+        return std::clamp (0.82f - 0.55f * mutation_, 0.25f, 0.88f);
     }
 
     int consumePhraseStep() noexcept
@@ -168,10 +184,10 @@ private:
 
     int lifespanForMutation() noexcept
     {
-        // 8–32 bars; higher mutation → shorter ancestry
+        // Align with RhythmDNA Stage 2B: mut=1 → 2–6 bars
         const float t = 1.0f - mutation_;
-        const int lo = 8 + static_cast<int> (8.0f * t);
-        const int hi = 16 + static_cast<int> (16.0f * t);
+        const int lo = 2 + static_cast<int> (10.0f * t);
+        const int hi = 6 + static_cast<int> (18.0f * t);
         const int span = std::max (1, hi - lo + 1);
         return lo + static_cast<int> (rng_.nextFloat() * static_cast<float> (span));
     }

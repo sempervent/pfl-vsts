@@ -249,7 +249,6 @@ int main (int argc, char** argv)
     fs::create_directories (outDir);
 
     std::ofstream metrics (outDir / "stage2-metrics.txt");
-    metrics << "Broken Conductor Stage 2 objective metrics (72 BPM, 64 bars)\n\n";
 
     struct Case
     {
@@ -269,9 +268,17 @@ int main (int argc, char** argv)
         { "seed-2002-m10", 2002, 0.45f, 0.10f },
         { "seed-2002-m40", 2002, 0.45f, 0.40f },
         { "seed-2002-m80", 2002, 0.45f, 0.80f },
+        // Stage 2B extremes
+        { "2b-A-d0-m0", 2002, 0.0f, 0.0f },
+        { "2b-B-d1-m0", 2002, 1.0f, 0.0f },
+        { "2b-C-d05-m1", 2002, 0.5f, 1.0f },
+        { "2b-D-d1-m1", 2002, 1.0f, 1.0f },
     };
 
     constexpr int kBars = 64;
+    metrics << "Broken Conductor Stage 2B metrics (72 BPM, 64 bars, algorithm v"
+            << ConductorEngine::kAlgorithmVersion << ")\n\n";
+
     for (const auto& c : cases)
     {
         auto result = runFull (c.seed, c.density, c.mutation, kBars);
@@ -296,6 +303,48 @@ int main (int argc, char** argv)
                 << "\n";
 
         std::cout << "Wrote " << base << " (" << result.events.size() << " events)\n";
+    }
+
+    // Dynamic automation artifact
+    {
+        ConductorEngine eng;
+        eng.setCapture (true);
+        eng.setParams ({ 0.10f, 0.10f });
+        eng.reseed (2002);
+        eng.rhythm().setTraceEnabled (true);
+        double ppq = 0.0;
+        const double end = 128.0; // 32 bars
+        while (ppq < end)
+        {
+            const int bar = static_cast<int> (std::floor (ppq / 4.0));
+            if (bar == 8)
+                eng.setParams ({ 1.00f, 0.10f });
+            if (bar == 16)
+                eng.setParams ({ 1.00f, 1.00f });
+            if (bar == 24)
+                eng.setParams ({ 0.25f, 0.80f });
+            const double next = std::min (end, ppq + 1.0);
+            eng.clock().advance ({ true, ppq, 72.0, 4, 4 });
+            eng.processTimeRange (ppq, next, true);
+            eng.drainPending();
+            ppq = next;
+        }
+        writeTrace (outDir / "stage2b-automation.txt", eng.captured(), eng);
+        writeSmf (outDir / "stage2b-automation.mid", eng.captured(), 72.0);
+
+        auto sectionOns = [&] (double a, double b) {
+            int n = 0;
+            for (const auto& e : eng.captured())
+                if (e.kind == MidiMsgKind::NoteOn && e.ppq >= a && e.ppq < b)
+                    ++n;
+            return n;
+        };
+        metrics << "\nautomation sections (8 bars each):\n"
+                << "  bars1-8  d.10/m.10 ons=" << sectionOns (0, 32) << "\n"
+                << "  bars9-16 d1.0/m.10 ons=" << sectionOns (32, 64) << "\n"
+                << "  bars17-24 d1/m1 ons=" << sectionOns (64, 96) << "\n"
+                << "  bars25-32 d.25/m.80 ons=" << sectionOns (96, 128) << "\n";
+        std::cout << "Wrote stage2b-automation\n";
     }
 
     std::cout << "Metrics: " << (outDir / "stage2-metrics.txt") << "\n";

@@ -22,11 +22,10 @@
 
 ### Host acceptance (not covered by unit tests)
 
-Ableton Live 11.3.43 **Stage 1C host instantiation** is verified.  
-Stage 2 changes MIDI scheduling — requires a fresh Live gate (`WAITING FOR USER STAGE 2 HOST ACCEPTANCE`).  
-End-to-end MIDI From → stock instrument remains a separate manual check. See `docs/BROKEN_CONDUCTOR.md`.
+Ableton Live 11.3.43 Broken Conductor Stage 2 acceptance is **PASS** (instantiation, MIDI From routing, audible target, live DENSITY/MUTATION).  
+Build/scanner ≠ instantiate ≠ routing ≠ control response — all distinguished. See `docs/BROKEN_CONDUCTOR.md`.
 
-Broken Conductor algorithm **v2** tests cover sixteenth grid, odd buffer sizes, awkward tempos (93/137), rhythm RNG isolation, and occupancy caps.
+Broken Conductor algorithm **v3** tests cover sixteenth grid, odd buffers, awkward tempos, density/mutation endpoints, and live automation determinism.
 
 ```text
 compile ≠ artifact ≠ scanner ≠ Live instantiates ≠ MIDI routable ≠ target sounds
