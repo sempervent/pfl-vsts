@@ -15,8 +15,9 @@ It is a **MIDI generator / musical source**, not an audio effect and not a proce
 | **1** | Engine + deterministic MIDI tests (`broken-conductor-stage1`) |
 | **1B** | Instrument shell + silent stereo out (`broken-conductor-stage1b-ableton`) — still failed Live load |
 | **1C** | Ableton host instantiation verified (`broken-conductor-stage1c-ableton-verified`) |
-| **2** | Rhythmic Language — algorithm **v2** (awaiting Stage 2 Live acceptance) |
-| **3+** | Not started (multi-voice deferred) |
+| **2** | Rhythmic Language — algorithm v2 @ `5d33a32` (controls failed live) |
+| **2B** | Control response — algorithm **v3** (awaiting Ableton endpoint test) |
+| **3+** | Not started |
 
 ## Architecture
 
@@ -105,21 +106,32 @@ Occupancy hard cap: **≤ 0.58** (never continuous sixteenths at density 100%).
 
 Velocity from rhythmic structure (downbeat / quarter / 8th / odd-16th) + small `velocity` stream jitter; clamp **[64, 96]**.
 
-### DENSITY
+### DENSITY (Stage 2B)
 
-| Band | dens | Max occupancy | Character |
-|------|------|---------------|-----------|
-| sparse | 0–0.25 | ≤0.20 | long notes, stillness |
-| open | 0.25–0.45 | ≤0.32 | Foundation default lean |
-| balanced | 0.45–0.65 | ≤0.42 | 8th syncopation common |
-| busy | 0.65–0.85 | ≤0.52 | more activity, still rests |
-| dense | 0.85–1.00 | ≤0.58 | busier + rarer 16ths, capped |
+| dens | Expression of DNA onsets | Max occupancy | Live response |
+|------|--------------------------|---------------|---------------|
+| 0.0 | ~12% | 0.10 | very sparse |
+| 0.5 | ~58% | 0.36 | normal |
+| 1.0 | 100% | 0.58 | busiest Foundation |
 
-Also biases duration weights and syncopation allowance. **Not** “more notes only.”
+Live: expression updates immediately; \|Δdensity\|≥0.25 rebuilds RhythmDNA at next boundary.
 
-### MUTATION
+### MUTATION (Stage 2B)
 
-Controls RhythmDNA (+ pitch Phrase DNA) **lifespan** and mutation rate. On expiry: **one** bounded op (duration nudge, rest↔onset, ±1 sixteenth phase shift, copy neighbor). Ancestry remains recognizable (`A → A'`).
+| mut | DNA lifespan | Pitch eval | Live response |
+|-----|--------------|------------|---------------|
+| 0.0 | 12–24 bars | rare / cling | stable |
+| 1.0 | 2–6 bars | frequent / freer walk | evolve within ≤4 bars |
+
+Live: rising mutation shortens remaining lifespan (≤1–4 bars). No transport restart required.
+
+### Scheduling guarantees
+
+- Decisions at absolute sixteenth PPQ slots with Stage 1 half-open `(from, to]` semantics
+- Buffer-size independent at the PPQ event level
+- Tempo-independent PPQ traces
+- Seek = reseed + silent fast-forward through the same slot iterator
+- Parameter automation is part of the deterministic timeline
 
 ### RNG streams
 
@@ -129,14 +141,6 @@ Controls RhythmDNA (+ pitch Phrase DNA) **lifespan** and mutation rate. On expir
 | `phrase` | Pitch Phrase DNA |
 | `pitch` | Walk / follow / pitch-eval period |
 | `velocity` | Accent jitter |
-
-### Scheduling guarantees
-
-- Decisions at absolute sixteenth PPQ slots with Stage 1 half-open `(from, to]` semantics
-- Buffer-size independent at the PPQ event level
-- Tempo-independent PPQ traces
-- Seek = reseed + silent fast-forward through the same slot iterator
-
 ## Current musical behavior
 
 - **One voice:** Foundation only
@@ -160,7 +164,7 @@ Controls RhythmDNA (+ pitch Phrase DNA) **lifespan** and mutation rate. On expir
 
 ## Determinism / tests
 
-`broken_conductor_tests` (algorithm v2): determinism, seeds, buffers including odd sizes, tempos including 93/137, sixteenth grid, syncopation, rests/holds, rhythm mutation, RNG isolation, density activity, stop/seek/long-run/pairing.
+`broken_conductor_tests` (algorithm **v3**): determinism, seeds, buffers including odd sizes, tempos including 93/137, sixteenth grid, syncopation, rests/holds, rhythm mutation, RNG isolation, density/mutation endpoints, live automation, stop/seek/long-run/pairing.
 
 Comparison artifacts: `renders/broken-conductor/stage2-*.{txt,mid}`, `stage2-metrics.txt`.
 

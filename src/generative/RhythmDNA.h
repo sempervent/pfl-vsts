@@ -137,6 +137,68 @@ public:
         density_ = std::clamp (density01, 0.0f, 1.0f);
     }
 
+    /**
+     * Live control response: shorten remaining DNA lifespan so a meaningful
+     * DENSITY/MUTATION increase can adapt structure by the next bar (density)
+     * or within ~1–4 bars (mutation), without full state wipe.
+     * Large density jumps (≥0.25) rebuild DNA immediately — occupancy is
+     * birth-baked, so a single-cell mutate cannot open the control range.
+     */
+    void respondToLiveParams (int currentBar, float previousDensity, float previousMutation) noexcept
+    {
+        const float d = density_;
+        const float m = mutation_;
+
+        if (std::abs (d - previousDensity) >= 0.25f)
+        {
+            dna_ = generateNew (currentBar);
+            record (currentBar, "reborn-density", dna_.describe());
+            return;
+        }
+
+        int maxRemain = 8;
+        if (d > previousDensity + 0.08f)
+            maxRemain = std::min (maxRemain, 1);
+        if (m > previousMutation + 0.08f)
+        {
+            const int mutCap = std::max (1, static_cast<int> (std::lround (1.0 + 3.0 * (1.0 - static_cast<double> (m)))));
+            maxRemain = std::min (maxRemain, mutCap);
+        }
+        if (d < previousDensity - 0.08f)
+            maxRemain = std::min (maxRemain, 2);
+
+        const int expireAt = dna_.birthBar + dna_.lifespanBars;
+        const int cappedExpire = currentBar + std::max (1, maxRemain);
+        if (cappedExpire < expireAt)
+            dna_.lifespanBars = std::max (1, cappedExpire - dna_.birthBar);
+    }
+
+    /**
+     * Fraction of DNA onsets to express during playback (Stage 2B).
+     * dens=0 → very sparse; dens=1 → express all DNA onsets.
+     * Pure function of density — no RNG stream advance.
+     */
+    static float expressionRate (float density01) noexcept
+    {
+        const float d = std::clamp (density01, 0.0f, 1.0f);
+        // 0.0→0.12, 0.25→0.32, 0.5→0.58, 0.75→0.82, 1.0→1.0
+        return std::clamp (0.12f + 0.88f * d, 0.12f, 1.0f);
+    }
+
+    /** Deterministic onset gate for live density without consuming rhythm RNG. */
+    static bool shouldExpressOnset (uint64_t masterSeed, std::int64_t absoluteSlot, float density01) noexcept
+    {
+        const float rate = expressionRate (density01);
+        if (rate >= 0.999f)
+            return true;
+        uint64_t z = masterSeed ^ (static_cast<uint64_t> (absoluteSlot) * 0x9E3779B97F4A7C15ull);
+        z ^= 0xD6E8FEB86659FD93ull; // "express" mix
+        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
+        z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
+        const float u = static_cast<float> ((z >> 40) * (1.0 / (1ull << 24)));
+        return u < rate;
+    }
+
     const RhythmDNA& dna() const noexcept { return dna_; }
     const std::vector<RhythmTrace>& traces() const noexcept { return traces_; }
     void clearTraces() noexcept { traces_.clear(); }
@@ -192,16 +254,17 @@ public:
 private:
     float maxOccupancyForDensity() const noexcept
     {
+        // Stage 2B: wider audible span (was 0.20…0.58 with compressed top end)
         const float d = density_;
-        if (d < 0.25f)
-            return 0.20f;
-        if (d < 0.45f)
-            return 0.32f;
-        if (d < 0.65f)
-            return 0.42f;
-        if (d < 0.85f)
-            return 0.52f;
-        return kMaxOccupancy;
+        if (d < 0.20f)
+            return 0.10f;
+        if (d < 0.40f)
+            return 0.22f;
+        if (d < 0.60f)
+            return 0.36f;
+        if (d < 0.80f)
+            return 0.48f;
+        return kMaxOccupancy; // 0.58
     }
 
     int chooseLengthBars() noexcept
@@ -249,8 +312,7 @@ private:
 
     bool allowOddSixteenth() const noexcept
     {
-        // Rarer; density/mutation open the door slightly
-        return density_ >= 0.55f || mutation_ >= 0.55f;
+        return density_ >= 0.40f || mutation_ >= 0.45f;
     }
 
     int chooseOnsetSlot (int phraseSlots, int preferStart) noexcept
@@ -340,14 +402,7 @@ private:
 
         const int n = p.lengthCells();
         const float maxOcc = maxOccupancyForDensity();
-        const int targetFilled = std::max (1, static_cast<int> (std::floor (maxOcc * static_cast<float> (n) * 0.85f)));
-
-        // Low density: force a contiguous rest run (stillness)
-        if (density_ < 0.35f && n >= 8)
-        {
-            const int restRun = 4 + static_cast<int> (rng_.nextFloat() * 8.0f); // 4..11 sixteenths
-            (void) restRun; // entire phrase starts empty; sparse placement below
-        }
+        const int targetFilled = std::max (1, static_cast<int> (std::floor (maxOcc * static_cast<float> (n) * 0.90f)));
 
         int attempts = 0;
         int cursorHint = 0;
@@ -362,7 +417,6 @@ private:
                 cursorHint = (start + durSlots) % n;
             else
             {
-                // Try packing a shorter note
                 for (int d = durSlots - 1; d >= 1; --d)
                 {
                     if (placeNote (p, start, d, maxOcc))
@@ -372,6 +426,15 @@ private:
                     }
                 }
             }
+        }
+
+        // Stillness: carve a contiguous rest island at low density
+        if (density_ < 0.40f && n >= 8)
+        {
+            const int restRun = std::clamp (4 + static_cast<int> ((0.40f - density_) * 20.0f), 4, n / 2);
+            const int start = static_cast<int> (rng_.nextFloat() * static_cast<float> (std::max (1, n - restRun)));
+            for (int i = 0; i < restRun && start + i < n; ++i)
+                p.cells[static_cast<size_t> (start + i)] = RhythmCell::Rest;
         }
 
         // Guarantee at least one onset and one rest (stillness)
@@ -429,9 +492,10 @@ private:
 
     int lifespanForMutation() noexcept
     {
+        // Stage 2B: mut=0 → 12–24; mut=1 → 2–6 (was 8–16 at mut=1)
         const float t = 1.0f - mutation_;
-        const int lo = 8 + static_cast<int> (8.0f * t);
-        const int hi = 16 + static_cast<int> (16.0f * t);
+        const int lo = 2 + static_cast<int> (10.0f * t);
+        const int hi = 6 + static_cast<int> (18.0f * t);
         const int span = std::max (1, hi - lo + 1);
         return lo + static_cast<int> (rng_.nextFloat() * static_cast<float> (span));
     }

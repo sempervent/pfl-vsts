@@ -25,14 +25,13 @@ struct ConductorParams
 };
 
 /**
- * Broken Conductor Stage 2 — one Foundation MIDI voice with RhythmDNA.
- * Sixteenth-grid scheduling; pitch Phrase DNA unchanged in role.
+ * Broken Conductor Stage 2B — Foundation + RhythmDNA with live DENSITY/MUTATION response.
  * Does not alter Drone Organism Composer behavior.
  */
 class ConductorEngine
 {
 public:
-    static constexpr int kAlgorithmVersion = 2; // Stage 2 rhythmic language
+    static constexpr int kAlgorithmVersion = 3; // Stage 2B control response
     static constexpr int kMidiChannel = 1;
     static constexpr int kVoice = 0;
     static constexpr int kMinMidi = 26; // D1
@@ -68,6 +67,9 @@ public:
         nextPitchEvalBar_ = 4;
         lastSlotWasRest_ = true;
         lastRhythmBar_ = -1;
+        paramsDirty_ = false;
+        pendingPrevDensity_ = params_.density;
+        pendingPrevMutation_ = params_.mutation;
         pending_.clear();
         schedulePitchEval (0);
     }
@@ -76,11 +78,25 @@ public:
 
     void setParams (const ConductorParams& p) noexcept
     {
+        if (std::abs (p.density - params_.density) > 1.0e-6f
+            || std::abs (p.mutation - params_.mutation) > 1.0e-6f)
+        {
+            if (! paramsDirty_)
+            {
+                pendingPrevDensity_ = params_.density;
+                pendingPrevMutation_ = params_.mutation;
+            }
+            paramsDirty_ = true;
+        }
         params_ = p;
         phrases_.setMutation (p.mutation);
         rhythm_.setMutation (p.mutation);
         rhythm_.setDensity (p.density);
     }
+
+    /** Last density/mutation observed by the engine (for diagnostics / tests). */
+    float diagnosticDensity() const noexcept { return params_.density; }
+    float diagnosticMutation() const noexcept { return params_.mutation; }
 
     ConductorParams params() const noexcept { return params_; }
 
@@ -178,10 +194,10 @@ private:
     {
         const float d = std::clamp (params_.density, 0.0f, 1.0f);
         const float m = std::clamp (params_.mutation, 0.0f, 1.0f);
-        // Pitch-eval period uses pitchRng — must not consume rhythm stream
-        int period = 4 + static_cast<int> (pitchRng_.nextFloat() * 5.0f); // 4..8
+        // Stage 2B: mut=1 → periods ~1–3 bars (was ~3–5)
+        int period = 1 + static_cast<int> (pitchRng_.nextFloat() * (4.0f - 2.5f * m)); // 1..4 → 1..2 at high m
         period = std::max (1, static_cast<int> (std::round (static_cast<float> (period)
-                                                            * (1.0f - 0.35f * d) * (1.0f - 0.25f * m))));
+                                                            * (1.0f - 0.25f * d) * (1.0f - 0.35f * m))));
         nextPitchEvalBar_ = currentBar + period;
     }
 
@@ -189,8 +205,9 @@ private:
     {
         const float m = std::clamp (params_.mutation, 0.0f, 1.0f);
         const float d = std::clamp (params_.density, 0.0f, 1.0f);
-        float chance = 0.28f * (0.45f + 0.9f * m) * (0.75f + 0.4f * d);
-        chance = std::clamp (chance, 0.05f, 0.92f);
+        // Stage 2B: mut=1 → chance ~0.55–0.75 (was ~0.35)
+        float chance = 0.22f * (0.55f + 1.35f * m) * (0.80f + 0.35f * d);
+        chance = std::clamp (chance, 0.08f, 0.92f);
         if (pitchRng_.nextFloat() > chance)
             return;
 
@@ -213,8 +230,10 @@ private:
             }
             next.octave = std::clamp (next.octave, 1, 3);
             next.midiNote = Scale::toMidi (next.degree, next.octave);
+            // Soft memory reject weaker at high mutation
             const float pen = memory_.penaltyMultiplier (next.midiNote);
-            if (pen < 0.25f && pitchRng_.nextFloat() > pen)
+            const float rejectGate = 0.25f * (1.0f - 0.7f * m);
+            if (pen < rejectGate && pitchRng_.nextFloat() > pen)
             {
                 next.degree = 0;
                 next.octave = std::clamp (pitch_.octave, 1, 3);
@@ -223,7 +242,9 @@ private:
         }
         else
         {
-            next = walk_.step (pitch_, pitchRng_, memory_, m, 0.35f);
+            // Higher chromaticBoost at high mutation (was fixed 0.35)
+            const float chromaBoost = 0.35f + 1.1f * m;
+            next = walk_.step (pitch_, pitchRng_, memory_, m, chromaBoost);
             next.octave = std::clamp (next.octave, 1, 3);
             if (! next.chromatic)
                 next.midiNote = Scale::toMidi (next.degree, next.octave);
@@ -234,6 +255,22 @@ private:
             return;
         pitch_ = next;
         memory_.push (pitch_.midiNote);
+    }
+
+    void applyLiveParamResponse (int bar) noexcept
+    {
+        if (! paramsDirty_)
+            return;
+        const float prevD = pendingPrevDensity_;
+        const float prevM = pendingPrevMutation_;
+        rhythm_.respondToLiveParams (bar, prevD, prevM);
+        phrases_.respondToLiveParams (bar, prevM);
+        const float m = params_.mutation;
+        const int maxDelay = std::max (1, static_cast<int> (std::lround (1.0 + 3.0 * (1.0 - static_cast<double> (m)))));
+        nextPitchEvalBar_ = std::min (nextPitchEvalBar_, bar + maxDelay);
+        paramsDirty_ = false;
+        pendingPrevDensity_ = params_.density;
+        pendingPrevMutation_ = params_.mutation;
     }
 
     int chooseVelocity (std::int64_t absoluteSlot, bool afterRest) noexcept
@@ -249,7 +286,6 @@ private:
         const double beatsPerBar = std::max (1.0e-9, clock_.beatsPerBar());
         const int bar = static_cast<int> (std::floor (slotPpq / beatsPerBar));
 
-        // Release due notes at this slot
         if (sounding_ && slotPpq + 1.0e-9 >= noteOffPpq_)
         {
             emitOff (slotPpq, soundingNote_);
@@ -258,12 +294,17 @@ private:
 
         if (bar != lastRhythmBar_)
         {
+            applyLiveParamResponse (bar);
             phrases_.onBar (bar);
             rhythm_.onBar (bar);
             lastRhythmBar_ = bar;
         }
+        else if (paramsDirty_)
+        {
+            // Apply as soon as we know the bar (same bar mid-slot) — still ≤ next bar
+            applyLiveParamResponse (bar);
+        }
 
-        // Pitch eval on bar downbeats (slot 0 of bar)
         const double barStart = static_cast<double> (bar) * beatsPerBar;
         const bool atBarStart = std::abs (slotPpq - barStart) < 1.0e-9;
         if (atBarStart && bar >= nextPitchEvalBar_)
@@ -277,7 +318,18 @@ private:
 
         if (cell == RhythmCell::Onset)
         {
-            // Duration from DNA hold run at local index
+            // Stage 2B: density gates DNA onset expression immediately
+            if (! RhythmEngine::shouldExpressOnset (masterSeed_, absoluteSlot, params_.density))
+            {
+                if (sounding_)
+                {
+                    emitOff (slotPpq, soundingNote_);
+                    sounding_ = false;
+                }
+                lastSlotWasRest_ = true;
+                return;
+            }
+
             const int n = rhythm_.dna().lengthCells();
             const int local = n > 0 ? static_cast<int> (((absoluteSlot % n) + n) % n) : 0;
             double dur = rhythm_.durationBeatsAt (local);
@@ -307,7 +359,6 @@ private:
             return;
         }
 
-        // Hold: continue sustain; do nothing if already sounding as planned
         lastSlotWasRest_ = false;
     }
 
@@ -382,6 +433,9 @@ private:
     int nextPitchEvalBar_ = 4;
     int lastRhythmBar_ = -1;
     bool lastSlotWasRest_ = true;
+    bool paramsDirty_ = false;
+    float pendingPrevDensity_ = 0.45f;
+    float pendingPrevMutation_ = 0.35f;
     double lastProcessedPpq_ = 0.0;
     bool capture_ = false;
     bool emitOutput_ = true;

@@ -221,11 +221,26 @@ Rejected for v2: triplets, pattern banks, Euclidean, multi-voice, per-block Bern
 6. Host bus shell unchanged (Stage 1C). Stage 2 requires fresh Live acceptance for MIDI timing.
 7. Stage 3 not started.
 
-### Musical hypotheses
+## 2026-09-09 — Broken Conductor Stage 2B control response
 
-- H1: 2-bar DNA + holds/rests yields recognizable Foundation groove.
-- H2: Eighth offbeats create identity without arpeggiator chatter.
-- H3: Bounded mutation yields `A → A'` kinship across 8–32 bar lifespans.
-- H4: Density 80% still contains rests (occupancy ≤ 0.58).
+### Context
 
+Creative director: Live opens and routes MIDI, but DENSITY/MUTATION at 1.0 did not audibly change a repetitive low-pitch passage.
+
+### Root cause (confirmed by wiring audit)
+
+Host values **did** reach `ConductorEngine` every `processBlock`. Failure was generative:
+
+1. RhythmDNA occupancy/cells baked at birth; live density only updated floats.
+2. Lifespan (8–32 bars) not shortened when MUTATION rose — up to 32-bar dead zone.
+3. Occupancy band too narrow (0.20–0.58); pitch eval too rare (~3–5 bars × ~35% at mut=1).
+
+### Decisions
+
+1. **Expression gate:** density scales which DNA onsets fire (immediate, deterministic hash).
+2. **Large density jump (|Δ|≥0.25):** rebuild RhythmDNA at next musical boundary (`reborn-density`).
+3. **MUTATION up:** shorten remaining rhythm/phrase lifespan (≤1–4 bars).
+4. Widen occupancy (0.10–0.58); mut=1 DNA lifespan 2–6; stronger pitch chance/period; lower followBias floor (0.25).
+5. Algorithm version **3**. Stage 3 multi-voice not started.
+6. Do not tag Stage 2 complete until Ableton endpoint/automation acceptance.
 

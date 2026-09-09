@@ -121,7 +121,7 @@ static void assertPaired (const std::vector<MidiTraceEvent>& ev, bool requireClo
 
 static void testAlgorithmVersion()
 {
-    EXPECT (ConductorEngine::kAlgorithmVersion == 2);
+    EXPECT (ConductorEngine::kAlgorithmVersion == 3);
 }
 
 static void testDeterminism()
@@ -396,18 +396,186 @@ static void testRhythmRngIsolation()
     EXPECT (a.dna().describe() != c.dna().describe());
 }
 
+static int countNoteOns (const std::vector<MidiTraceEvent>& ev)
+{
+    int n = 0;
+    for (const auto& e : ev)
+        if (e.kind == MidiMsgKind::NoteOn)
+            ++n;
+    return n;
+}
+
+static int countUniquePitches (const std::vector<MidiTraceEvent>& ev)
+{
+    std::set<int> pitches;
+    for (const auto& e : ev)
+        if (e.kind == MidiMsgKind::NoteOn)
+            pitches.insert (e.note);
+    return static_cast<int> (pitches.size());
+}
+
+static void testDensityEndpoints()
+{
+    // Same seed: density 0 vs 1 must differ by ≥2× onset activity over 64 bars
+    auto sparse = runMidi (2002, 0.0f, 0.0f, 72.0, 64, 256, 48000.0);
+    auto busy = runMidi (2002, 1.0f, 0.0f, 72.0, 64, 256, 48000.0);
+    const int sparseOns = countNoteOns (sparse);
+    const int busyOns = countNoteOns (busy);
+    EXPECT (sparseOns > 0);
+    EXPECT (busyOns >= sparseOns * 2);
+    EXPECT (RhythmEngine::expressionRate (0.0f) < 0.20f);
+    EXPECT (RhythmEngine::expressionRate (1.0f) >= 0.99f);
+}
+
+static void testMutationEndpoints()
+{
+    auto stable = runMidi (2002, 0.5f, 0.0f, 72.0, 64, 256, 48000.0);
+    auto wild = runMidi (2002, 0.5f, 1.0f, 72.0, 64, 256, 48000.0);
+
+    ConductorEngine engLo, engHi;
+    engLo.setParams ({ 0.5f, 0.0f });
+    engLo.reseed (2002);
+    engLo.rhythm().setTraceEnabled (true);
+    engHi.setParams ({ 0.5f, 1.0f });
+    engHi.reseed (2002);
+    engHi.rhythm().setTraceEnabled (true);
+    engHi.phrases(); // silence unused
+
+    // Force many bars through engines with traces
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        ConductorEngine& eng = (pass == 0) ? engLo : engHi;
+        eng.clearCaptured();
+        eng.setCapture (true);
+        double ppq = 0.0;
+        const double end = 256.0; // 64 bars
+        while (ppq < end)
+        {
+            const double next = std::min (end, ppq + 4.0);
+            eng.clock().advance ({ true, ppq, 72.0, 4, 4 });
+            eng.processTimeRange (ppq, next, true);
+            eng.drainPending();
+            ppq = next;
+        }
+    }
+
+    EXPECT (engHi.rhythm().dna().generation > engLo.rhythm().dna().generation
+            || countUniquePitches (wild) > countUniquePitches (stable));
+    EXPECT (countUniquePitches (wild) >= 3);
+}
+
+static void testLiveDensityResponse()
+{
+    ConductorEngine eng;
+    eng.setParams ({ 0.15f, 0.10f });
+    eng.reseed (2002);
+    eng.setCapture (true);
+
+    // Bars 0–15 at low density
+    double ppq = 0.0;
+    while (ppq < 64.0)
+    {
+        eng.clock().advance ({ true, ppq, 72.0, 4, 4 });
+        eng.processTimeRange (ppq, ppq + 4.0, true);
+        eng.drainPending();
+        ppq += 4.0;
+    }
+    const int before = countNoteOns (eng.captured());
+    eng.clearCaptured();
+
+    // Live density → 1.0 without reseed
+    eng.setParams ({ 1.0f, 0.10f });
+    EXPECT (eng.diagnosticDensity() == 1.0f);
+
+    while (ppq < 128.0)
+    {
+        eng.clock().advance ({ true, ppq, 72.0, 4, 4 });
+        eng.processTimeRange (ppq, ppq + 4.0, true);
+        eng.drainPending();
+        ppq += 4.0;
+    }
+    const int after = countNoteOns (eng.captured());
+    // After density jump, next 16 bars should be busier than prior 16
+    EXPECT (after > before);
+}
+
+static void testLiveMutationResponse()
+{
+    ConductorEngine eng;
+    eng.setParams ({ 0.5f, 0.10f });
+    eng.reseed (2002);
+    eng.rhythm().setTraceEnabled (true);
+
+    double ppq = 0.0;
+    while (ppq < 64.0)
+    {
+        eng.clock().advance ({ true, ppq, 72.0, 4, 4 });
+        eng.processTimeRange (ppq, ppq + 4.0, true);
+        eng.drainPending();
+        ppq += 4.0;
+    }
+    const int genBefore = eng.rhythm().dna().generation;
+
+    eng.setParams ({ 0.5f, 1.0f });
+    EXPECT (eng.diagnosticMutation() == 1.0f);
+
+    // Within ≤4 bars, lifespan should allow mutation (respondToLiveParams)
+    while (ppq < 96.0)
+    {
+        eng.clock().advance ({ true, ppq, 72.0, 4, 4 });
+        eng.processTimeRange (ppq, ppq + 4.0, true);
+        eng.drainPending();
+        ppq += 4.0;
+    }
+    EXPECT (eng.rhythm().dna().generation > genBefore);
+}
+
+static void testAutomationDeterminism()
+{
+    auto runAuto = [] (int bufferSamples) {
+        ConductorEngine eng;
+        eng.setParams ({ 0.20f, 0.10f });
+        eng.reseed (2002);
+        eng.setCapture (true);
+        const double bpm = 72.0;
+        const double sr = 48000.0;
+        const double beatsPerSec = bpm / 60.0;
+        double ppq = 0.0;
+        const double end = 128.0; // 32 bars
+        while (ppq < end - 1.0e-12)
+        {
+            const int bar = static_cast<int> (std::floor (ppq / 4.0));
+            if (bar == 8)
+                eng.setParams ({ 0.80f, 0.10f });
+            if (bar == 16)
+                eng.setParams ({ 0.80f, 1.00f });
+            if (bar == 24)
+                eng.setParams ({ 0.30f, 0.80f });
+
+            const double blockBeats = (static_cast<double> (bufferSamples) / sr) * beatsPerSec;
+            const double next = std::min (end, ppq + blockBeats);
+            eng.clock().advance ({ true, ppq, bpm, 4, 4 });
+            eng.processTimeRange (ppq, next, true);
+            eng.drainPending();
+            ppq = next;
+        }
+        return eng.captured();
+    };
+
+    auto a = runAuto (256);
+    auto b = runAuto (256);
+    EXPECT (midiEqual (a, b));
+    auto c = runAuto (127);
+    EXPECT (midiEqual (a, c));
+    auto d = runAuto (512);
+    EXPECT (midiEqual (a, d));
+}
+
 static void testDensityAffectsActivity()
 {
-    auto low = runMidi (2002, 0.15f, 0.35f, 72.0, 64, 256, 48000.0);
-    auto high = runMidi (2002, 0.85f, 0.35f, 72.0, 64, 256, 48000.0);
-    int lowOns = 0, highOns = 0;
-    for (const auto& e : low)
-        if (e.kind == MidiMsgKind::NoteOn)
-            ++lowOns;
-    for (const auto& e : high)
-        if (e.kind == MidiMsgKind::NoteOn)
-            ++highOns;
-    EXPECT (highOns > lowOns);
+    auto low = runMidi (2002, 0.0f, 0.35f, 72.0, 64, 256, 48000.0);
+    auto high = runMidi (2002, 1.0f, 0.35f, 72.0, 64, 256, 48000.0);
+    EXPECT (countNoteOns (high) >= countNoteOns (low) * 2);
 }
 
 static void testAwkwardCrossProduct()
@@ -439,6 +607,11 @@ int main()
     testRhythmMutationBounded();
     testRhythmRngIsolation();
     testDensityAffectsActivity();
+    testDensityEndpoints();
+    testMutationEndpoints();
+    testLiveDensityResponse();
+    testLiveMutationResponse();
+    testAutomationDeterminism();
     testAwkwardCrossProduct();
 
     if (gFails == 0)
