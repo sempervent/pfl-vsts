@@ -18,16 +18,16 @@ Self-composing AU/VST3 dirty-drone instrument (no MIDI required to play). Host-s
 
 **Status:** Implemented reference plugin — functionally complete software milestone. Creative-director listening validation and physical controller/studio integration remain separate follow-ups (see `PROJECT_STATE.md`).
 
-### PFL Broken Conductor (Stage 1C host + Stage 2 rhythm)
+### PFL Broken Conductor (Stage 2 complete)
 
-Deterministic generative MIDI **Instrument** (AU/VST3) for Ableton: stereo in (ignored) + silent stereo out + MIDI out. One Foundation voice. Host instantiation verified in Live 11.3.43. Params: SEED, DENSITY, MUTATION. Load on its own MIDI track; route **MIDI From** to a second track with a stock instrument — **not** after Drone Organism. See `docs/BROKEN_CONDUCTOR.md`.
+Deterministic generative MIDI **Instrument** (AU/VST3) for Ableton: stereo in (ignored) + silent stereo out + MIDI out. One Foundation voice with RhythmDNA (algorithm v3). Live DENSITY/MUTATION accepted in Ableton. Load on its own MIDI track; route **MIDI From** to a second track with a stock instrument — **not** after Drone Organism. See `docs/BROKEN_CONDUCTOR.md`.
 
 ## Roadmap
 
 Development order (planned unless the creative director changes priority):
 
 1. **PFL Drone Organism** — Implemented. Composition + synthesis + performance control.
-2. **PFL Broken Conductor** — Next software target. Generative MIDI composer that reuses the musical brain to drive other instruments.
+2. **PFL Broken Conductor** — Stage 2 complete (RhythmDNA + live DENSITY/MUTATION). Stage 3 multi-voice not started.
 3. **PFL Ruin Engine** — Generative transformation of incoming audio; effects as arrangement events.
 4. **PFL Memory Eater** — Generative capture / microloop memory (remember, mutate, forget, resurface).
 5. **PFL Pulse Colony** — Evolving rhythmic slicer / gate / panner organisms (not static presets).

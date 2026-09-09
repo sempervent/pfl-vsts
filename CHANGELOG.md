@@ -2,13 +2,18 @@
 
 ## Unreleased
 
+### Broken Conductor — Stage 2 COMPLETE
+
+- Creative-director Ableton acceptance **PASS** (Stage 2B controls + routing + audible MIDI)
+- Tag: `broken-conductor-stage2-complete`
+- Stage 3 not started
+
 ### Broken Conductor — Stage 2B (control response)
 
 - Root cause: host params reached engine, but RhythmDNA occupancy baked at birth; mutation lifespan not shortened live; pitch eval too weak at mut=1
 - Fix: density expression gate + rebuild on large Δdensity; lifespan shorten on mutation; wider occupancy; stronger pitch evolution
 - Algorithm **v3**; endpoint + live automation tests; metrics in `analysis/stage2b-metrics.txt`
-- pluginval passes; **WAITING FOR USER STAGE 2B ACCEPTANCE**
-- Stage 2 not tagged; Stage 3 not started
+- pluginval passes; creative-director Ableton acceptance **PASS**
 
 ### Broken Conductor — Stage 2 (Rhythmic Language)
 
@@ -18,8 +23,7 @@
 - MUTATION → RhythmDNA lifespan + single-op mutate
 - Tests: odd buffers, awkward tempos, syncopation, RNG isolation, rests/holds
 - Artifacts: `renders/broken-conductor/stage2-*.{txt,mid}`, metrics
-- pluginval passes; **WAITING FOR USER STAGE 2 HOST ACCEPTANCE**
-- Stage 3 not started
+- pluginval passes; superseded by Stage 2B for control acceptance
 
 ### Broken Conductor — Stage 1C (Ableton host forensics)
 
@@ -28,7 +32,7 @@
 - `docs/PLUGIN_IDENTITIES.md` + `plugin_identity_tests` (unique codes + `.withInput` regression)
 - pluginval 1.0.4 passes; identity/arch/dylib/quarantine ruled out
 - **HOST INSTANTIATION** verified in Ableton Live 11.3.43 (creative director)
-- **END-TO-END LIVE MIDI ROUTING** not yet recorded
+- **END-TO-END LIVE MIDI ROUTING** verified with Stage 2 Ableton acceptance
 - Tag: `broken-conductor-stage1c-ableton-verified`
 
 ### Broken Conductor — Stage 1B (Ableton host shell)
