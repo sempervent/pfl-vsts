@@ -12,6 +12,7 @@
 
 - OUTPUT ROLE: ENSEMBLE / FOUNDATION / PULSE / WANDERER / ACCENT
 - Full ensemble always computed; filter after arbitration
+- Role **hunger/pressure** (algorithm **v5**): Accent/Wanderer beat-timescale activity without forced schedules
 - Rejected Live MIDI-channel split; no IPC
 
 ### Broken Conductor — Stage 2 COMPLETE

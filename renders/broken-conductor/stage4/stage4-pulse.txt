@@ -1,5 +1,5 @@
 # Broken Conductor Stage 3 ensemble trace
-# algorithm=4 seed=2002 density=0.5 mutation=0.35
+# algorithm=5 seed=2002 density=0.5 mutation=0.35
 # foundationRhythmDNA gen=8 bars=2 DNA:X__.............................
 # format: bar.beat.slot ROLE EVENT ... [REASON]
 1.1.1 PULSE note 50 vel 78 NORMAL

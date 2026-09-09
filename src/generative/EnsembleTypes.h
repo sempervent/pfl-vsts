@@ -102,26 +102,66 @@ inline float rolePresence (VoiceRole r, float density01) noexcept
         case VoiceRole::Pulse:
             return 0.15f + 0.85f * d;
         case VoiceRole::Wanderer:
-            return d < 0.08f ? 0.0f : (0.0f + 0.90f * ((d - 0.08f) / 0.92f));
+            return d < 0.05f ? 0.0f : (0.20f + 0.80f * ((d - 0.05f) / 0.95f));
         case VoiceRole::Accent:
-            // Presence opens windows; fire rate stays tiny.
-            return d < 0.12f ? 0.0f : (0.05f + 0.35f * ((d - 0.12f) / 0.88f));
+            // Presence opens windows; hunger drives actual punctuation rate.
+            return d < 0.08f ? 0.0f : (0.12f + 0.55f * ((d - 0.08f) / 0.92f));
         default:
             return 0.0f;
     }
 }
 
-/** Multiplier on expression gate (before congestion/gap). Accent kept very low. */
+/** Multiplier on expression gate (before congestion/gap/hunger). */
 inline float roleExpressionMult (VoiceRole r) noexcept
 {
     switch (r)
     {
         case VoiceRole::Foundation: return 1.00f;
         case VoiceRole::Pulse: return 0.85f;
-        case VoiceRole::Wanderer: return 0.50f;
-        case VoiceRole::Accent: return 0.08f;
+        case VoiceRole::Wanderer: return 0.62f;
+        case VoiceRole::Accent: return 0.22f;
         default: return 0.0f;
     }
+}
+
+/**
+ * Role pressure / hunger from beats since last accepted contribution.
+ * Accent & Wanderer only — Foundation/Pulse stay non-periodic (always ~1).
+ * Density stretches (low) or compresses (high) Accent's hunger timeline.
+ */
+inline float roleHungerMult (VoiceRole r, float beatsSinceContribution, float density01) noexcept
+{
+    const float d = density01 < 0.0f ? 0.0f : (density01 > 1.0f ? 1.0f : density01);
+    const float b = std::max (0.0f, beatsSinceContribution);
+
+    if (r == VoiceRole::Accent)
+    {
+        // dens→0: slower hunger (longer silence OK); dens→1: earlier punctuation
+        const float stretch = 1.65f - 0.95f * d; // ~1.65 at d0 … ~0.70 at d1
+        const float e = b / std::max (0.35f, stretch);
+        if (e < 16.0f)
+            return 0.18f;
+        if (e < 32.0f)
+            return 0.40f;
+        if (e < 48.0f)
+            return 0.85f;
+        if (e < 64.0f)
+            return 1.40f;
+        return 2.10f;
+    }
+
+    if (r == VoiceRole::Wanderer)
+    {
+        if (b < 4.0f)
+            return 0.55f;
+        if (b < 8.0f)
+            return 0.95f;
+        if (b < 16.0f)
+            return 1.45f;
+        return 1.90f;
+    }
+
+    return 1.0f;
 }
 
 inline float roleMutationGain (VoiceRole r) noexcept

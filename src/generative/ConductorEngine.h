@@ -33,7 +33,7 @@ struct ConductorParams
 class ConductorEngine
 {
 public:
-    static constexpr int kAlgorithmVersion = 4;
+    static constexpr int kAlgorithmVersion = 5;
     static constexpr int kMidiChannel = 1;
     static constexpr int kNumVoices = static_cast<int> (VoiceRole::Count);
     static constexpr int kVoice = 0; // Foundation (compat)
@@ -301,6 +301,7 @@ private:
         int nextPitchEvalBar = 4;
         bool lastSlotWasRest = true;
         int consecutiveOnsets = 0; // Wanderer run cap
+        float beatsSinceContribution = 0.0f;
         int lastRhythmBar = -1;
         uint64_t pitchDraws = 0;
         bool pitchChangedThisBar = false;
@@ -569,22 +570,24 @@ private:
         return s;
     }
 
-    float interactionGate (VoiceRole role, const EnsembleSnapshot& snap, InteractionReason& reasonOut) noexcept
+    float interactionGate (VoiceRole role, const EnsembleSnapshot& snap, float beatsSilent,
+                           InteractionReason& reasonOut) noexcept
     {
         reasonOut = InteractionReason::Normal;
         float g = rolePresence (role, snap.density) * roleExpressionMult (role);
+        g *= roleHungerMult (role, beatsSilent, snap.density);
 
-        // Congestion: suppress decorative voices
+        // Congestion: suppress decorative voices (hunger can still push through moderately)
         if (role == VoiceRole::Wanderer || role == VoiceRole::Accent)
         {
             if (snap.recentOnsetCount >= 3)
             {
-                g *= (role == VoiceRole::Accent ? 0.15f : 0.35f);
+                g *= (role == VoiceRole::Accent ? 0.22f : 0.40f);
                 reasonOut = InteractionReason::CongestionSuppress;
             }
             else if (snap.slotsSinceLastOnset >= 6)
             {
-                g *= (role == VoiceRole::Accent ? 1.8f : 1.45f);
+                g *= (role == VoiceRole::Accent ? 1.6f : 1.35f);
                 reasonOut = InteractionReason::GapFill;
             }
         }
@@ -592,23 +595,53 @@ private:
         // Call / response windows
         if (role == VoiceRole::Wanderer && snap.foundationPitchChangedRecently)
         {
-            g *= 1.55f;
+            g *= 1.45f;
             if (reasonOut == InteractionReason::Normal)
                 reasonOut = InteractionReason::CallResponse;
         }
         if (role == VoiceRole::Accent && snap.pulseGestureEndedRecently)
         {
-            g *= 2.2f;
+            g *= 1.9f;
             if (reasonOut == InteractionReason::Normal || reasonOut == InteractionReason::GapFill)
                 reasonOut = InteractionReason::CallResponse;
         }
 
-        // Accent hard rarity: never let gate get high
+        // Accent remains punctuation — soft cap (was 0.12; that erased hunger)
         if (role == VoiceRole::Accent)
-            g = std::min (g, 0.12f);
+            g = std::min (g, 0.55f);
 
-        // Wanderer rest floor / run cap handled in propose
-        return std::clamp (g, 0.0f, 1.2f);
+        return std::clamp (g, 0.0f, 1.35f);
+    }
+
+    /** Non-consuming hunger probe when DNA is silent but pressure is high. */
+    bool hungerAllowsProbe (VoiceRole role, std::int64_t absoluteSlot, float beatsSilent,
+                            float density) const noexcept
+    {
+        if (role != VoiceRole::Wanderer && role != VoiceRole::Accent)
+            return false;
+
+        const float need = (role == VoiceRole::Accent)
+                               ? (28.0f + 36.0f * (1.0f - density))  // ~28 at dens1 … ~64 at dens0
+                               : 10.0f;
+        if (beatsSilent < need)
+            return false;
+
+        // Probabilistic — not a forced schedule. Rate rises with excess silence.
+        const float excess = beatsSilent - need;
+        float rate = (role == VoiceRole::Accent)
+                         ? std::clamp (0.08f + 0.012f * excess, 0.08f, 0.35f)
+                         : std::clamp (0.12f + 0.03f * excess, 0.12f, 0.45f);
+        rate *= rolePresence (role, density);
+        if (rate <= 1.0e-6f)
+            return false;
+
+        uint64_t z = masterSeed_ ^ (static_cast<uint64_t> (absoluteSlot) * 0xC2B2AE3D27D4EB4Full);
+        z ^= static_cast<uint64_t> (role) * 0x9E3779B97F4A7C15ull;
+        z ^= 0xA5A5A5A5DEADBEEFull; // hunger probe mix
+        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
+        z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
+        const float u = static_cast<float> ((z >> 40) * (1.0 / (1ull << 24)));
+        return u < rate;
     }
 
     EventIntent propose (VoiceState& v, std::int64_t absoluteSlot, double slotPpq,
@@ -621,16 +654,25 @@ private:
         intent.reason = InteractionReason::RoleRest;
 
         InteractionReason ix = InteractionReason::Normal;
-        const float gate = interactionGate (v.role, snap, ix);
+        const float gate = interactionGate (v.role, snap, v.beatsSinceContribution, ix);
 
-        const RhythmCell cell = v.rhythm.dna().cellForAbsoluteSlot (absoluteSlot);
+        RhythmCell cell = v.rhythm.dna().cellForAbsoluteSlot (absoluteSlot);
+        bool hungerProbe = false;
         if (cell != RhythmCell::Onset)
         {
-            if (cell == RhythmCell::Rest)
-                v.lastSlotWasRest = true;
+            if (hungerAllowsProbe (v.role, absoluteSlot, v.beatsSinceContribution, snap.density))
+            {
+                hungerProbe = true;
+                cell = RhythmCell::Onset;
+            }
             else
-                v.lastSlotWasRest = false;
-            return intent;
+            {
+                if (cell == RhythmCell::Rest)
+                    v.lastSlotWasRest = true;
+                else
+                    v.lastSlotWasRest = false;
+                return intent;
+            }
         }
 
         // Wanderer consecutive onset cap
@@ -669,8 +711,10 @@ private:
 
         const int n = v.rhythm.dna().lengthCells();
         const int local = n > 0 ? static_cast<int> (((absoluteSlot % n) + n) % n) : 0;
-        double dur = v.rhythm.durationBeatsAt (local);
-        dur = std::max (kSlotBeats, dur);
+        double dur = hungerProbe ? ((v.role == VoiceRole::Accent) ? 0.25 : 0.5)
+                                 : v.rhythm.durationBeatsAt (local);
+        if (! hungerProbe)
+            dur = std::max (kSlotBeats, dur);
         if (v.role == VoiceRole::Accent)
             dur = std::min (dur, 0.5);
 
@@ -679,6 +723,8 @@ private:
         intent.velocity = chooseVelocity (v, absoluteSlot, v.lastSlotWasRest);
         intent.durationBeats = dur;
         intent.reason = (ix == InteractionReason::CongestionSuppress) ? InteractionReason::Normal : ix;
+        if (hungerProbe && intent.reason == InteractionReason::Normal)
+            intent.reason = InteractionReason::GapFill;
         return intent;
     }
 
@@ -791,6 +837,7 @@ private:
         v.soundingNote = pitch;
         v.noteOffPpq = slotPpq + intent.durationBeats;
         v.lastSlotWasRest = false;
+        v.beatsSinceContribution = 0.0f;
         if (v.role == VoiceRole::Wanderer)
             ++v.consecutiveOnsets;
         else
@@ -822,9 +869,10 @@ private:
             lastBudgetBar_ = bar;
         }
 
-        // Phase 0: expire notes
+        // Phase 0: expire notes + accumulate role silence (hunger)
         for (auto& v : voices_)
         {
+            v.beatsSinceContribution += static_cast<float> (kSlotBeats);
             if (v.sounding && slotPpq + 1.0e-9 >= v.noteOffPpq)
             {
                 emitOff (slotPpq, v.soundingNote, v.role, InteractionReason::Normal);

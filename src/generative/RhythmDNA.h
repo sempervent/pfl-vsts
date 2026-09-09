@@ -303,8 +303,8 @@ private:
         {
             case RhythmVoiceKind::Foundation: share = 0.72f; break;
             case RhythmVoiceKind::Pulse: share = 0.48f; break;
-            case RhythmVoiceKind::Wanderer: share = 0.32f; break;
-            case RhythmVoiceKind::Accent: share = 0.08f; break;
+            case RhythmVoiceKind::Wanderer: share = 0.40f; break;
+            case RhythmVoiceKind::Accent: share = 0.14f; break;
         }
         return std::max (0.04f, base * share);
     }

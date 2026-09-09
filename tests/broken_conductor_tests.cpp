@@ -125,7 +125,7 @@ static void assertPaired (const std::vector<MidiTraceEvent>& ev, bool requireClo
 
 static void testAlgorithmVersion()
 {
-    EXPECT (ConductorEngine::kAlgorithmVersion == 4);
+    EXPECT (ConductorEngine::kAlgorithmVersion == 5);
 }
 
 static void testDeterminism()
@@ -1034,6 +1034,93 @@ static void testStage4ProjectionBuffers()
         EXPECT (midiEqual (ref, runMidiRole (OutputRole::Pulse, 777, 0.50f, 0.35f, 93.0, 24, b, 48000.0)));
 }
 
+struct GapStats
+{
+    int events = 0;
+    double mean = 0, median = 0, p95 = 0, maxGap = 0;
+};
+
+static GapStats computeGaps (const std::vector<MidiTraceEvent>& ev, int voice, double totalBeats)
+{
+    std::vector<double> ons;
+    for (const auto& e : ev)
+        if (e.kind == MidiMsgKind::NoteOn && e.voice == voice)
+            ons.push_back (e.ppq);
+    GapStats s;
+    s.events = static_cast<int> (ons.size());
+    if (ons.empty())
+    {
+        s.mean = s.median = s.p95 = s.maxGap = totalBeats;
+        return s;
+    }
+    std::vector<double> gaps;
+    gaps.push_back (ons.front()); // from 0
+    for (size_t i = 1; i < ons.size(); ++i)
+        gaps.push_back (ons[i] - ons[i - 1]);
+    // trailing silence not counted as inter-event gap for mean of intervals between events
+    std::sort (gaps.begin(), gaps.end());
+    double sum = 0;
+    for (double g : gaps)
+        sum += g;
+    s.mean = sum / static_cast<double> (gaps.size());
+    s.median = gaps[gaps.size() / 2];
+    s.p95 = gaps[std::min (gaps.size() - 1, static_cast<size_t> (std::floor (0.95 * (gaps.size() - 1))))];
+    s.maxGap = gaps.back();
+    return s;
+}
+
+static void testRoleHungerTimescales()
+{
+    // 64 beats @ dens 0.5: Wanderer present; Accent often ≥1
+    auto shortRun = runMidiRole (OutputRole::Ensemble, 2002, 0.50f, 0.35f, 72.0, 16, 256, 48000.0);
+    int w64 = 0, a64 = 0;
+    for (const auto& e : shortRun)
+    {
+        if (e.kind != MidiMsgKind::NoteOn)
+            continue;
+        if (e.voice == 2)
+            ++w64;
+        if (e.voice == 3)
+            ++a64;
+    }
+    EXPECT (w64 >= 1);
+
+    auto d02 = runMidiRole (OutputRole::Ensemble, 2002, 0.20f, 0.35f, 72.0, 16, 256, 48000.0);
+    auto d10 = runMidiRole (OutputRole::Ensemble, 2002, 1.00f, 0.35f, 72.0, 16, 256, 48000.0);
+    int a02 = 0, a10 = 0, w10 = 0, p10 = 0;
+    for (const auto& e : d02)
+        if (e.kind == MidiMsgKind::NoteOn && e.voice == 3)
+            ++a02;
+    for (const auto& e : d10)
+    {
+        if (e.kind != MidiMsgKind::NoteOn)
+            continue;
+        if (e.voice == 1)
+            ++p10;
+        if (e.voice == 2)
+            ++w10;
+        if (e.voice == 3)
+            ++a10;
+    }
+    // dens 1: Accent more active than dens 0.2, still < Wanderer and Pulse
+    EXPECT (a10 >= a02);
+    EXPECT (a10 < w10 || a10 < p10);
+
+    // 1024 beats gap distributions (256 bars)
+    auto longRun = runMidiRole (OutputRole::Ensemble, 2002, 0.50f, 0.35f, 72.0, 256, 256, 48000.0);
+    const double totalBeats = 1024.0;
+    auto gw = computeGaps (longRun, 2, totalBeats);
+    auto ga = computeGaps (longRun, 3, totalBeats);
+    EXPECT (gw.events >= 8);
+    EXPECT (ga.events >= 4);
+    // Soft bands — hypotheses, not gaming
+    EXPECT (gw.median >= 2.0 && gw.median <= 20.0);
+    EXPECT (gw.p95 <= 48.0);
+    EXPECT (ga.median >= 16.0 && ga.median <= 96.0);
+    EXPECT (ga.p95 <= 160.0);
+    EXPECT (ga.median > gw.median); // Accent rarer than Wanderer
+}
+
 int main()
 {
     testAlgorithmVersion();
@@ -1071,6 +1158,7 @@ int main()
     testStage4AutomationUnion();
     testStage4RoleSwitchNoHang();
     testStage4ProjectionBuffers();
+    testRoleHungerTimescales();
 
     if (gFails == 0)
     {

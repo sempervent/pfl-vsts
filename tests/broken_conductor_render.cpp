@@ -464,6 +464,51 @@ int main (int argc, char** argv)
         std::cout << "CPU one=" << one << "ms four=" << four << "ms\n";
     }
 
+    // Role gap timescales (beats) — hunger acceptance evidence
+    {
+        auto gapReport = [&] (float dens, int bars, const char* label) {
+            auto result = runFull (2002, dens, 0.35f, bars, OutputRole::Ensemble);
+            const double totalBeats = static_cast<double> (bars) * 4.0;
+            metrics << "\n" << label << " dens=" << dens << " beats=" << totalBeats << "\n";
+            for (int role = 0; role < 4; ++role)
+            {
+                std::vector<double> ons;
+                for (const auto& e : result.events)
+                    if (e.kind == MidiMsgKind::NoteOn && e.voice == role)
+                        ons.push_back (e.ppq);
+                metrics << "  " << pfl::generative::voiceRoleName (static_cast<pfl::generative::VoiceRole> (role))
+                        << " events=" << ons.size()
+                        << " per64beats=" << (ons.size() * 64.0 / totalBeats)
+                        << " per256beats=" << (ons.size() * 256.0 / totalBeats);
+                if (ons.size() >= 2)
+                {
+                    std::vector<double> gaps;
+                    for (size_t i = 1; i < ons.size(); ++i)
+                        gaps.push_back (ons[i] - ons[i - 1]);
+                    std::sort (gaps.begin(), gaps.end());
+                    double sum = 0;
+                    for (double g : gaps)
+                        sum += g;
+                    const double mean = sum / static_cast<double> (gaps.size());
+                    const double med = gaps[gaps.size() / 2];
+                    const double p95 = gaps[std::min (gaps.size() - 1,
+                                                      static_cast<size_t> (std::floor (0.95 * (gaps.size() - 1))))];
+                    metrics << " gap_mean=" << mean << " median=" << med
+                            << " p95=" << p95 << " max=" << gaps.back();
+                }
+                metrics << "\n";
+            }
+            // polyphony sample: mean active count over slots is expensive; report collision stats
+            metrics << "  collisions attempted=" << result.engine.collisionStats().attemptedSamePitch
+                    << " shifted=" << result.engine.collisionStats().shifted
+                    << " suppressed=" << result.engine.collisionStats().suppressed << "\n";
+        };
+        gapReport (0.20f, 64, "gap-d0.2-64bars");
+        gapReport (0.50f, 64, "gap-d0.5-64bars");
+        gapReport (1.00f, 64, "gap-d1.0-64bars");
+        gapReport (0.50f, 256, "gap-d0.5-1024beats");
+    }
+
     std::cout << "Metrics: " << (outDir / "stage4-metrics.txt") << "\n";
     return 0;
 }
