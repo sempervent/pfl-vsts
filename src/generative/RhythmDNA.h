@@ -105,6 +105,15 @@ struct RhythmTrace
     std::string detail;
 };
 
+/** Stage 3 role bias for RhythmDNA birth (Foundation keeps Stage 2 defaults). */
+enum class RhythmVoiceKind : uint8_t
+{
+    Foundation = 0,
+    Pulse = 1,
+    Wanderer = 2,
+    Accent = 3
+};
+
 /**
  * Rhythm DNA manager — uses only the rhythm RNG stream.
  * Does not touch pitch Phrase DNA.
@@ -114,6 +123,9 @@ class RhythmEngine
 public:
     static constexpr double kSlotBeats = 0.25; // sixteenth
     static constexpr float kMaxOccupancy = 0.58f;
+
+    void setVoiceKind (RhythmVoiceKind kind) noexcept { voiceKind_ = kind; }
+    RhythmVoiceKind voiceKind() const noexcept { return voiceKind_; }
 
     void reset (DeterministicRNG rhythmRng, float mutation01, float density01, int currentBar = 0) noexcept
     {
@@ -188,11 +200,28 @@ public:
     /** Deterministic onset gate for live density without consuming rhythm RNG. */
     static bool shouldExpressOnset (uint64_t masterSeed, std::int64_t absoluteSlot, float density01) noexcept
     {
-        const float rate = expressionRate (density01);
+        return shouldExpressOnset (masterSeed, absoluteSlot, density01, 0, 1.0f);
+    }
+
+    /**
+     * Role-aware expression gate. `roleTag` isolates streams; `roleRate` scales
+     * the density expression curve (Accent ≪ Foundation). Does not advance RNG.
+     */
+    static bool shouldExpressOnset (uint64_t masterSeed,
+                                    std::int64_t absoluteSlot,
+                                    float density01,
+                                    uint64_t roleTag,
+                                    float roleRate) noexcept
+    {
+        const float rate = std::clamp (expressionRate (density01) * std::clamp (roleRate, 0.0f, 1.5f),
+                                       0.0f, 1.0f);
+        if (rate <= 1.0e-6f)
+            return false;
         if (rate >= 0.999f)
             return true;
         uint64_t z = masterSeed ^ (static_cast<uint64_t> (absoluteSlot) * 0x9E3779B97F4A7C15ull);
         z ^= 0xD6E8FEB86659FD93ull; // "express" mix
+        z ^= roleTag * 0xC2B2AE3D27D4EB4Full;
         z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
         z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
         const float u = static_cast<float> ((z >> 40) * (1.0 / (1ull << 24)));
@@ -256,15 +285,28 @@ private:
     {
         // Stage 2B: wider audible span (was 0.20…0.58 with compressed top end)
         const float d = density_;
+        float base = kMaxOccupancy;
         if (d < 0.20f)
-            return 0.10f;
-        if (d < 0.40f)
-            return 0.22f;
-        if (d < 0.60f)
-            return 0.36f;
-        if (d < 0.80f)
-            return 0.48f;
-        return kMaxOccupancy; // 0.58
+            base = 0.10f;
+        else if (d < 0.40f)
+            base = 0.22f;
+        else if (d < 0.60f)
+            base = 0.36f;
+        else if (d < 0.80f)
+            base = 0.48f;
+        else
+            base = kMaxOccupancy; // 0.58
+
+        // Stage 3: role DNA occupancy share of global wallet (sum ≪ Stage 2 solo at dens=1)
+        float share = 1.0f;
+        switch (voiceKind_)
+        {
+            case RhythmVoiceKind::Foundation: share = 0.72f; break;
+            case RhythmVoiceKind::Pulse: share = 0.48f; break;
+            case RhythmVoiceKind::Wanderer: share = 0.32f; break;
+            case RhythmVoiceKind::Accent: share = 0.08f; break;
+        }
+        return std::max (0.04f, base * share);
     }
 
     int chooseLengthBars() noexcept
@@ -281,7 +323,7 @@ private:
 
     double chooseDurationBeats() noexcept
     {
-        // Vocab: 4, 2, 1, 0.5, 0.25 — Foundation biased long
+        // Vocab: 4, 2, 1, 0.5, 0.25 — role-biased (Foundation long; Accent short)
         const float d = density_;
         const float m = mutation_;
         float w4 = 0.18f - 0.10f * (d - 0.45f) - 0.04f * (m - 0.35f);
@@ -289,19 +331,46 @@ private:
         float w1 = 0.32f + 0.02f * (d - 0.45f);
         float w05 = 0.15f + 0.08f * (d - 0.45f) + 0.04f * (m - 0.35f);
         float w025 = 0.07f + 0.06f * (d - 0.45f) + 0.03f * (m - 0.35f);
-        w4 = std::clamp (w4, 0.05f, 0.35f);
-        w2 = std::clamp (w2, 0.10f, 0.40f);
-        w1 = std::clamp (w1, 0.15f, 0.45f);
-        w05 = std::clamp (w05, 0.05f, 0.30f);
-        w025 = std::clamp (w025, 0.02f, 0.18f);
-        // Hard cap: short notes stay punctuation
-        if (d < 0.50f)
+
+        switch (voiceKind_)
+        {
+            case RhythmVoiceKind::Foundation:
+                break;
+            case RhythmVoiceKind::Pulse:
+                w4 = 0.02f;
+                w2 = 0.12f;
+                w1 = 0.38f;
+                w05 = 0.35f;
+                w025 = 0.13f;
+                break;
+            case RhythmVoiceKind::Wanderer:
+                w4 = 0.04f;
+                w2 = 0.22f;
+                w1 = 0.36f;
+                w05 = 0.28f;
+                w025 = 0.10f;
+                break;
+            case RhythmVoiceKind::Accent:
+                w4 = 0.0f;
+                w2 = 0.02f;
+                w1 = 0.08f;
+                w05 = 0.40f;
+                w025 = 0.50f;
+                break;
+        }
+
+        w4 = std::clamp (w4, 0.0f, 0.35f);
+        w2 = std::clamp (w2, 0.0f, 0.40f);
+        w1 = std::clamp (w1, 0.05f, 0.50f);
+        w05 = std::clamp (w05, 0.05f, 0.45f);
+        w025 = std::clamp (w025, 0.02f, 0.55f);
+        if (voiceKind_ == RhythmVoiceKind::Foundation && d < 0.50f)
             w025 = std::min (w025, 0.06f);
         const float sum = w4 + w2 + w1 + w05 + w025;
         float r = rng_.nextFloat() * sum;
-        if ((r -= w4) < 0.0f)
+        if (w4 > 0.0f && (r -= w4) < 0.0f)
             return 4.0;
-        if ((r -= w2) < 0.0f)
+        if (w2 > 0.0f && (r -= w2) < 0.0f)
             return 2.0;
         if ((r -= w1) < 0.0f)
             return 1.0;
@@ -317,10 +386,31 @@ private:
 
     int chooseOnsetSlot (int phraseSlots, int preferStart) noexcept
     {
-        // Prefer quarter and eighth phases; odd 16ths rare
+        // Prefer quarter and eighth phases; odd 16ths rare (Pulse favors offbeats)
         const float r = rng_.nextFloat();
         int phase = 0;
-        if (r < 0.45f)
+        if (voiceKind_ == RhythmVoiceKind::Pulse)
+        {
+            if (r < 0.18f)
+                phase = 0;
+            else if (r < 0.78f)
+                phase = 2; // eighth offbeat
+            else if (r < 0.92f || ! allowOddSixteenth())
+                phase = 2;
+            else
+                phase = (rng_.nextFloat() < 0.5f ? 1 : 3);
+        }
+        else if (voiceKind_ == RhythmVoiceKind::Accent)
+        {
+            // Prefer late in bar / after rests
+            if (r < 0.25f)
+                phase = 0;
+            else if (r < 0.70f)
+                phase = 2;
+            else
+                phase = (allowOddSixteenth() ? (rng_.nextFloat() < 0.5f ? 1 : 3) : 2);
+        }
+        else if (r < 0.45f)
             phase = 0; // downbeat of beat
         else if (r < 0.80f)
             phase = 2; // eighth offbeat
@@ -670,6 +760,7 @@ private:
     DeterministicRNG rng_;
     float mutation_ = 0.35f;
     float density_ = 0.45f;
+    RhythmVoiceKind voiceKind_ = RhythmVoiceKind::Foundation;
     RhythmDNA dna_{};
     std::vector<RhythmTrace> traces_;
     bool traceEnabled_ = false;

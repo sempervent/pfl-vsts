@@ -20,7 +20,8 @@ struct MidiTraceEvent
     int channel = 1; // MIDI channel 1..16
     int note = 0;
     int velocity = 0;
-    int voice = 0;
+    int voice = 0; // Stage 3: VoiceRole index
+    int reason = 0; // InteractionReason (diagnostic; 0 = NORMAL)
     MidiMsgKind kind = MidiMsgKind::NoteOn;
 };
 

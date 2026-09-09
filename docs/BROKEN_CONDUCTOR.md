@@ -18,24 +18,28 @@ It is a **MIDI generator / musical source**, not an audio effect and not a proce
 | **2** | Rhythmic Language — algorithm v2 @ `5d33a32` |
 | **2B** | Control response — algorithm **v3**; creative-director Ableton **PASS** |
 | **2 complete** | Tag `broken-conductor-stage2-complete` |
-| **3+** | Not started |
+| **3** | Four-voice ensemble — algorithm **v4** (DRAFT; Ableton acceptance pending) |
+| **4+** | Per-role channels / routing — not started |
 
 ## Architecture
 
 ```text
 Host tempo / transport / PPQ
-        → ConductorEngine (algorithm v2)
-              ├─ RhythmDNA (16th cells: X / _ / .)
-              ├─ PhraseDNA (pitch degree deltas)
-              └─ pitch walk / memory / gravity
+        → ConductorEngine (algorithm v4)
+              ├─ EnsembleState snapshot
+              ├─ VoiceState ×4 (Foundation / Pulse / Wanderer / Accent)
+              ├─ EventIntent propose → EnsembleArbiter
+              ├─ per-role RhythmDNA + PhraseDNA + RNG streams
+              └─ MidiNoteTracker (role-owned pitches, one MIDI channel)
         → MidiTraceEvent (sample-accurate via PPQ→offset)
         → juce::MidiBuffer
         → stereo audio in (ignored) + silent stereo out (Ableton shell)
 ```
 
 ```text
-src/generative/RhythmDNA.h         # Stage 2 rhythmic ancestry
-src/generative/ConductorEngine.h   # Foundation voice + scheduling
+src/generative/EnsembleTypes.h     # Stage 3 roles / intents / budgets
+src/generative/RhythmDNA.h         # Stage 2 rhythmic ancestry (+ role bias)
+src/generative/ConductorEngine.h   # Ensemble orchestrator
 src/plugins/BrokenConductor/       # Host wrapper / buses / category
 ```
 

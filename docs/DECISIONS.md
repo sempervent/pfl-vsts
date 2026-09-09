@@ -258,3 +258,84 @@ Creative director passed Stage 2B Ableton acceptance: open, MIDI route, audible 
 2. Stage 2 is closed; Stage 3 multi-voice remains not started.
 3. Publish as a stacked GitHub PR series (Stage 1 / Stage 2 rhythm / Stage 2B controls).
 
+---
+
+## 2026-09-09 — Broken Conductor Stage 3 multi-voice ensemble (design)
+
+### Problem
+
+Stage 2 ships one Foundation voice. Stage 3 must become a four-role generative ensemble on **one MIDI channel** that occupies different musical jobs, reacts to one another, leaves space, and forms a coherent composition — not four independent random generators.
+
+### Musical objective
+
+Listener can infer, without labels: something anchors, something pulses, something wanders, something occasionally interrupts. Accent should almost feel underused.
+
+### Chosen architecture
+
+```text
+Host timeline
+  → EnsembleState snapshot (shared, immutable for the slot)
+  → Role-specific EventIntent proposals (independent RNG streams)
+  → EnsembleArbiter (congestion / gap / call-response / collision / budget)
+  → MusicalEvents / MidiTraceEvent
+  → MidiNoteTracker (role-owned notes)
+```
+
+Algorithm version **4**. Two-phase propose → commit. No Stage 4 channel routing. No new public controls beyond SEED / DENSITY / MUTATION.
+
+### Voice-role definitions
+
+| Role | Register | Duration bias | Activity | Mutation sensitivity |
+|------|----------|---------------|----------|----------------------|
+| Foundation | 26–50 | 4 / 2 / 1 | Sparse long anchor | Low (0.25×) |
+| Pulse | 38–62 | 1 / 0.5 / 0.25 | Offbeat propulsion | Medium (0.7×) |
+| Wanderer | 50–74 | 1 / 0.5 / 2 | Gap-sensitive melody | High (1.35×) |
+| Accent | 62–86 | 0.25 / 0.5 | Rare punctuation | Timing high / pitch low |
+
+Directional listen only: Foundation → Pulse; Foundation (+ Pulse holes) → Wanderer; (F∧P∧W cues) → Accent. No full mesh.
+
+### Coordination model
+
+1. **Congestion avoidance** — high recent ensemble activity lowers Wanderer/Accent entry.
+2. **Gap filling** — sustained empty windows raise Wanderer/Accent eligibility.
+3. **Call/response** — Foundation pitch change may open a Wanderer answer window; Pulse gesture end may open an Accent punctuation window (probabilistic, not guaranteed).
+
+Global **activity budget** from DENSITY (internal; not a parameter). Yield order when oversubscribed: Accent → Wanderer → Pulse → Foundation. Foundation remains audible at dens=1. Aggregate occupancy ceiling ~0.50 (below Stage 2 solo max 0.58).
+
+### Collision policy
+
+One owner per `(channel, pitch)`. Same-pitch overlap between roles is forbidden.
+
+When a proposed pitch is already owned: try nearest free scale tone, then octave displacement within role range; else suppress the lower-priority new event. Priority for preserving sustained material: Foundation > Pulse > Wanderer > Accent. Higher-priority new claims may preempt lower-priority owners only after remap fails.
+
+**Explicit:** If Foundation and Pulse both attempt MIDI 50 overlapping on ch.1, only one owns 50 — typically Foundation keeps/claims it; Pulse remaps or is suppressed. Pulse must never NoteOff Foundation’s 50.
+
+### DENSITY semantics
+
+Controls global budget, role presence curves, expression rates, rest frequency — not “unlock four continuous streams.” dens→0 ≈ Foundation alone; dens→1 = full ensemble with space; Accent remains sparse.
+
+### MUTATION semantics
+
+Role-scaled DNA lifespan / pitch adventure. Role identity must survive mut=1. Accent fire-rate caps and Wanderer run/rest rules are hard under all macros.
+
+### RNG
+
+Independent streams `{role}/{purpose}` plus `ensemble/arbitrate`. Foundation may retain legacy Stage 2 tags (`pitch|rhythm|phrase|velocity`) as its streams. Adding Accent decisions must not rewrite Foundation’s autonomous intention sequence; arbitration may still change final MIDI by documented rules.
+
+### Rejected alternatives
+
+- Four independent arpeggiators / shared RNG in voice order
+- Per-role MIDI channels (Stage 4)
+- Per-role density/mute/level parameters
+- Chord progression / Roman-numeral / voice-leading engines
+- Full mutual-reaction mesh
+- Density = activate all four at 1.0 without budget
+
+### Expected musical result
+
+Small ensemble texture: Foundation spine, Pulse groove, Wanderer questions in gaps, rare upper Accent “what was that?” — coherent on one Ableton instrument.
+
+### GitHub note (actual state at Stage 3 start)
+
+PRs #1–#3 were **already MERGED** into `main` when Stage 3 began. Draft PR #4 bases on `pr/broken-conductor-stage2b` so the review diff stays Stage-3-only versus the accepted Stage 2 tip (content also on `main` via merges). Tag `broken-conductor-stage2-complete` remains the Ableton-accepted milestone (parallel history SHA vs merge tip).
+
