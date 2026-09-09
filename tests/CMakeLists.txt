@@ -12,6 +12,13 @@ target_include_directories(pfl_audio_engine_smoke PRIVATE ${CMAKE_SOURCE_DIR}/sr
 target_compile_features(pfl_audio_engine_smoke PRIVATE cxx_std_20)
 add_test(NAME audio_engine_smoke COMMAND pfl_audio_engine_smoke)
 
+add_executable(pfl_composer_tests
+    composer_tests.cpp
+)
+target_include_directories(pfl_composer_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_features(pfl_composer_tests PRIVATE cxx_std_20)
+add_test(NAME composer_tests COMMAND pfl_composer_tests)
+
 add_executable(pfl_offline_render
     offline_render.cpp
 )
