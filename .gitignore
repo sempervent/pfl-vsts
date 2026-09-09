@@ -27,6 +27,7 @@ DerivedData/
 __pycache__/
 .venv/
 *.pyc
+/tools/
 
 # Secrets
 .env

@@ -33,6 +33,23 @@ target_include_directories(pfl_performance_tests PRIVATE ${CMAKE_SOURCE_DIR}/src
 target_compile_features(pfl_performance_tests PRIVATE cxx_std_20)
 add_test(NAME performance_tests COMMAND pfl_performance_tests)
 
+add_executable(pfl_broken_conductor_tests
+    broken_conductor_tests.cpp
+)
+target_include_directories(pfl_broken_conductor_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_features(pfl_broken_conductor_tests PRIVATE cxx_std_20)
+add_test(NAME broken_conductor_tests COMMAND pfl_broken_conductor_tests)
+
+add_executable(pfl_plugin_identity_tests
+    plugin_identity_tests.cpp
+)
+target_include_directories(pfl_plugin_identity_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_features(pfl_plugin_identity_tests PRIVATE cxx_std_20)
+target_compile_definitions(pfl_plugin_identity_tests PRIVATE
+    PFL_SOURCE_ROOT="${CMAKE_SOURCE_DIR}"
+)
+add_test(NAME plugin_identity_tests COMMAND pfl_plugin_identity_tests)
+
 add_executable(pfl_offline_render
     offline_render.cpp
 )

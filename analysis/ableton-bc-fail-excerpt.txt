@@ -1,0 +1,17 @@
+2026-09-09T14:06:43.002321: info: VST3: Going to create: PFL Broken Conductor
+2026-09-09T14:06:43.006505: info: VST3: plugin processor successfully loaded: PFL 'PFL Broken Conductor' v0.1.0 (cid: {ABCDEF01-9182-FAEB-5066-6C4742726B31})
+2026-09-09T14:06:43.006556: error: Vst3: plugin has an effect category, but no valid audio input bus
+2026-09-09T14:06:43.006566: error: VST3: No valid input bus could be found
+2026-09-09T14:06:43.006609: error: VST3: Failed: PFL Broken Conductor
+2026-09-09T14:06:43.022941: info: VST3: couldn't get controller state of PFL Drone Organism: not implemented
+2026-09-09T14:06:43.188385: info: MemoryUsage: V: 425 GB, R: 795 MB, P: 0 Bytes
+2026-09-09T14:06:45.178155: info: VST3: Going to restore: PFL Drone Organism
+2026-09-09T14:06:45.178930: info: VST3: plugin processor successfully loaded: PFL 'PFL Drone Organism' v0.1.0 (cid: {ABCDEF01-9182-FAEB-5066-6C4744726F31})
+2026-09-09T14:06:45.179219: info: VST3: plugin supports the IInfoListener interface
+2026-09-09T14:06:45.181936: info: VST3: parameter count is 2093
+2026-09-09T14:06:45.184946: info: VST3: Restored: PFL Drone Organism
+2026-09-09T14:06:57.234419: info: VST3: Going to create: PFL Broken Conductor
+2026-09-09T14:06:57.236622: info: VST3: plugin processor successfully loaded: PFL 'PFL Broken Conductor' v0.1.0 (cid: {ABCDEF01-9182-FAEB-5066-6C4742726B31})
+2026-09-09T14:06:57.236671: error: Vst3: plugin has an effect category, but no valid audio input bus
+2026-09-09T14:06:57.236679: error: VST3: No valid input bus could be found
+2026-09-09T14:06:57.236708: error: VST3: Failed: PFL Broken Conductor

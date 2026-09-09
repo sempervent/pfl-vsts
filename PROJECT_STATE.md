@@ -1,119 +1,82 @@
 # PROJECT_STATE
 
-Authoritative session memory for PFL Generative Instruments / Drone Organism.
+Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vsts`).
 
 ## Current milestone
 
-**Phase 4 — Performance Instrument** (performance-engine v1). Composer algorithm remains v3 (Phrase DNA).
+**Broken Conductor Stage 2** — Rhythmic Language (monophonic Foundation).  
+Stage 1C Ableton host instantiation verified and tagged. Stage 3 not started.
 
-## Last known-good commit
+## Branch / tags
 
-Phase 4: tag `drone-organism-phase4-performance` / branch `phase4-performance-baseline` (engine feature `cc77e94`…`fa48285`, docs `ef9e4ee`)  
-Phase 3: `5419d83` / tag `drone-organism-phase3-phrase-dna` / branch `phase3-phrase-dna-baseline`  
-Phase 2: `aea6cdd` / tag `drone-organism-phase2-composer`  
-Audio engine: tag `drone-organism-audio-v0.1`
+- Working: `broken-conductor-stage1c-host-forensics` → Stage 2 work continues here (or `broken-conductor-stage2-rhythm`)
+- Stage 1C lock: `broken-conductor-stage1c-ableton-verified` @ `407670b`
+- Stage 1B lock: `broken-conductor-stage1b-ableton` @ `6e43fb6`
+- Engine Stage 1 lock: `broken-conductor-stage1` @ `72d742e`
+- Pre-BC DO: `drone-organism-pre-broken-conductor`
+- DO Phase 4: `drone-organism-phase4-performance`
 
-## Plugin version
-
-CMake project `0.1.0` (plugin binary); performance-engine **1**
-
-## Composer algorithm version
-
-`3`
-
-## Performance-engine version
-
-`1`
-
-## Build command
+## Build / test
 
 ```bash
 ./scripts/configure.sh
 ./scripts/build.sh
-```
-
-## Test command
-
-```bash
 ./scripts/test.sh
-# performance render:
-./build/tests/pfl_performance_render demo renders/phase4
-./build/tests/pfl_performance_render gestures renders/phase4
 ```
 
 ## Plugin artifacts
 
 ```text
+~/Library/Audio/Plug-Ins/VST3/PFL Broken Conductor.vst3   # Instrument|Synth, stereo in+out, MIDI out
 ~/Library/Audio/Plug-Ins/VST3/PFL Drone Organism.vst3
-~/Library/Audio/Plug-Ins/Components/PFL Drone Organism.component
-build/.../DroneOrganism_artefacts/Release/{VST3,AU,Standalone}/
+~/Library/Audio/Plug-Ins/Components/…
 ```
 
-## Performance render
+---
 
-```text
-renders/phase4/performance-demo-seed-2002.wav   # ~7 min scripted
-renders/phase4/performance-demo-events.txt
-renders/phase4/performance-gestures-45s.wav
-```
+## Drone Organism
 
-## Approved seeds
+| Field | Value |
+|-------|--------|
+| Status | Software milestone complete (Phase 4); listening/controller validation pending |
+| Composer | v3 |
+| Performance-engine | v1 |
 
-None formally approved by creative director. Representative: `2002`.
+## Broken Conductor
 
-## Current controls
+| Field | Value |
+|-------|--------|
+| Engine | Stage 1 → Stage 2 RhythmDNA (algorithm bump pending) |
+| Host shell | **Stage 1C** Instrument + stereo in (ignored) + silent stereo out + MIDI out |
+| Root cause (1B fail) | Live: “effect category, but no valid audio input bus” after processor load |
+| Params | SEED, DENSITY, MUTATION |
+| Formats | AU + VST3 (no Standalone) |
+| Unit tests | `broken_conductor_tests` + `plugin_identity_tests` + DO regression |
+| Identities | `docs/PLUGIN_IDENTITIES.md` |
 
-Continuous: SEED, DENSITY, MUTATION, DRIFT, DIRT, SPACE, OUTPUT  
-Actions: FREEZE, MUTATE, COLLAPSE, RESEED, SILENCE
+### Ableton host acceptance (manual)
 
-## FREEZE behavior
+| Check | Status |
+|-------|--------|
+| VST3 builds / installs | Automated (build) |
+| Log root cause captured | Done (`analysis/ableton-bc-fail-excerpt.txt`) |
+| Identity collision vs DO | Ruled out |
+| pluginval 1.0.4 | Pass (`analysis/pluginval-bc-stage1c.txt`) |
+| **HOST INSTANTIATION** (opens in Live 11.3.43) | **VERIFIED** (creative director, 2026-09-09) |
+| **END-TO-END LIVE MIDI ROUTING** (MIDI From → stock instrument audible) | **NOT YET RECORDED** |
+| Stop: no hanging notes (in Live) | **NOT YET RECORDED** |
 
-Composition lock; DSP stays alive; missed evolution discarded; MUTATE allowed while frozen.
+Engine unit tests already prove MIDI generation / pairing / stop panic internally — separate from Live routing.
 
-## MUTATE behavior
+See `docs/BROKEN_CONDUCTOR.md` for exact Live 11 routing.
 
-One Phrase DNA element via `manualMutation` RNG; immediate if frozen/collapsed else next bar.
+### Next software task
 
-## COLLAPSE behavior
+**Broken Conductor Stage 2: Rhythmic Language** (in progress).  
+Do not start Stage 3 multi-voice until Stage 2 is host-accepted.
 
-8-bar DESTABILIZE→THIN→DECAY→RESIDUE; ends COLLAPSED; overrides FREEZE.
+---
 
-## RESEED behavior
+## Roadmap
 
-Deterministic next seed → SEED param; applySeedAtBar epoch; ~1 beat fade.
-
-## SILENCE behavior
-
-~5 ms ramp; highest priority; pauses composition; resume prior mode.
-
-## Command priority
-
-SILENCE > COLLAPSE > FREEZE > MUTATE
-
-## Verified buffer sizes
-
-64, 128, 256, 512 (`performance_tests` scripted determinism)
-
-## Verified sample rates
-
-48 kHz primary (tests/renders); engine also prepared at host rate.
-
-## Performance determinism status
-
-Scripted event traces identical across buffer sizes; freeze ON/OFF + mutate isolation tests green.
-
-## Known technical defects
-
-- Prior auval/Ableton notes unchanged
-- Trigger float params do not auto-return to 0 after edge (host/UI must release)
-- MUTATE audibility depends on later phrase-follow pitch motion
-
-## Known musical weaknesses
-
-- Manual mutate is DNA-only (subtle until pitches move)
-- Collapse is structural/macro, not a dedicated failure FX bus
-- No creative-director approved performance patches yet
-
-## Next highest-value task
-
-Map FREEZE/MUTATE/COLLAPSE/RESEED/SILENCE + continuous macros to physical controllers (FCB1010 / Launch Control / etc.) **after** listening validation of this layer.
+Drone Organism → Broken Conductor → Ruin Engine → Memory Eater → Pulse Colony → Signal Parasite

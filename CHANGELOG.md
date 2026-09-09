@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+### Broken Conductor — Stage 1C (Ableton host forensics)
+
+- Root cause: Live loads processor then rejects MIDI-out VST3 without a valid **audio input** bus
+- Fix: stereo audio in (ignored) + silent stereo out; bus-layout accepts matching mono/stereo
+- `docs/PLUGIN_IDENTITIES.md` + `plugin_identity_tests` (unique codes + `.withInput` regression)
+- pluginval 1.0.4 passes; identity/arch/dylib/quarantine ruled out
+- **HOST INSTANTIATION** verified in Ableton Live 11.3.43 (creative director)
+- **END-TO-END LIVE MIDI ROUTING** not yet recorded
+- Tag: `broken-conductor-stage1c-ableton-verified`
+
+### Broken Conductor — Stage 1B (Ableton host shell)
+
+- Convert VST3/AU from pure MIDI-effect (`Fx`, zero audio buses) to **Instrument** with **silent stereo** out + MIDI out
+- Ableton Live 11 cannot reliably open empty-bus MIDI-effect VST3s; document two-track MIDI From topology
+- Drop Broken Conductor Standalone format
+- ConductorEngine Stage 1 musical behavior unchanged
+- Host instantiation / audible MIDI path require creative-director confirmation in Live
+
+### Broken Conductor — Stage 1
+
+- `ConductorEngine` one-voice deterministic MIDI composer (Foundation) reusing generative primitives
+- `PFL Broken Conductor` AU/VST3/Standalone MIDI effect target
+- `MidiNoteTracker` + transport panic/seek policy
+- `broken_conductor_tests` (determinism, buffers, tempos, pairing, stop/seek, long-run)
+- Docs: `docs/BROKEN_CONDUCTOR.md`
+- Drone Organism Composer v3 behavior preserved (regression suite green)
+
 ### Phase 4 — Performance Instrument (performance-engine v1)
 
 - Performance command layer above Composer (`PerformanceController`)

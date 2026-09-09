@@ -88,3 +88,107 @@ Phase 3 established Phrase DNA (v3). Phase 4 turns the organism into a steerable
 
 See `docs/PERFORMANCE.md`. Ready for external controller mapping after listening validation.
 
+---
+
+## 2026-09-09 — Broken Conductor Stage 1 architecture
+
+### Context
+
+Second real plugin use case for the generative brain. Stage 1 must emit deterministic MIDI without changing Drone Organism algorithm v3 behavior.
+
+### Decisions
+
+1. **Do not modify Composer autonomous behavior** for Stage 1. Keep `Composer::kAlgorithmVersion = 3` and DO regression tests as the lock.
+2. **Share concrete modules** already in `src/generative/`: `DeterministicRNG`, `Scale`, `MusicalClock`, `MusicalMemory`, `RandomWalk`, `PhraseDNA`, `MusicalEvent`. No speculative plugin framework.
+3. **Add `ConductorEngine`** (Broken Conductor Stage 1 brain): one Foundation voice with beat-grid rhythm, rests, and explicit durations — reusing pitch primitives (walk / memory / Phrase DNA) without routing through the drone `Composer` population model.
+4. **DENSITY / MUTATION semantics differ** from Drone Organism: density → rest probability + duration bias; mutation → pitch adventurousness + duration bias + Phrase DNA (same as DO pitch DNA). Not voice count / audio macros.
+5. **MIDI plugin type**: `IS_MIDI_EFFECT TRUE`, `NEEDS_MIDI_OUTPUT TRUE`, `AU_MAIN_TYPE kAudioUnitType_MIDIProcessor`, `VST3_CATEGORIES Fx`, empty audio buses (JUCE Arpeggiator pattern). Validated against pinned JUCE 8.0.15.
+6. **MIDI channel**: fixed channel 1 (no public channel param in Stage 1).
+7. **Seek policy**: all-notes-off / clear ownership → deterministic `ConductorEngine` reconstruct from seed via fast-forward to target PPQ → resume. Safety over mid-note continuity.
+8. **Performance layer** (FREEZE/MUTATE/COLLAPSE/RESEED/SILENCE): deferred to later BC stages.
+
+### Consequences
+
+Broken Conductor Stage 1 proves host PPQ → shared primitives → MIDI note-on/off. Multi-voice / performance controls / Euclidean rhythm wait for later stages.
+
+---
+
+## 2026-09-09 — Broken Conductor Stage 1B Ableton host shell
+
+### Context
+
+Stage 1 VST3 (`IS_MIDI_EFFECT` / `Fx` / zero audio buses) compiled and passed unit tests but Ableton Live 11 reported **“This VST3 plug-in could not be opened.”** User also placed it after Drone Organism in the audio-effect portion of a MIDI track.
+
+### Evidence
+
+- On-disk VST3 `moduleinfo.json`: Sub Categories `["Fx"]`, no audio bus layout; JUCE MIDI-effect pattern.
+- Ableton does not treat third-party VST3 as native MIDI Effects; MIDI generators need Instrument-class loading + cross-track **MIDI From**.
+- Placement after an Instrument is audio-domain and cannot feed MIDI into that instrument.
+
+### Decisions
+
+1. **Supersede Stage 1 host flags** for Ableton: `IS_SYNTH TRUE`, `IS_MIDI_EFFECT FALSE`, `VST3_CATEGORIES Instrument Synth`, `AU_MAIN_TYPE MusicDevice`.
+2. **Silent stereo output bus** required for Live; clear every block; **no** test oscillator.
+3. Keep `NEEDS_MIDI_OUTPUT TRUE` (and MIDI input declared).
+4. **Disable Standalone** for Broken Conductor (does not prove DAW MIDI routing).
+5. **Do not change ConductorEngine** Stage 1 musical behavior.
+6. Document two-track Ableton topology; forbid DO → BC audio-chain placement.
+7. Unit tests ≠ host acceptance; document validation ladder.
+
+### Consequences
+
+Broken Conductor appears in Live as an Instrument with silent audio and MIDI out. Creative director must confirm load + MIDI routing + audible target instrument.
+
+---
+
+## 2026-09-09 — Broken Conductor Stage 1C Ableton audio input bus
+
+### Context
+
+Stage 1B Instrument shell still failed Ableton instantiate with “could not be opened,” alone on a MIDI track.
+
+### Evidence (Live 11.3.43 `Log.txt`)
+
+```text
+VST3: plugin processor successfully loaded: PFL Broken Conductor
+error: Vst3: plugin has an effect category, but no valid audio input bus
+error: VST3: No valid input bus could be found
+error: VST3: Failed: PFL Broken Conductor
+```
+
+Identity collision with Drone Organism ruled out (unique `PLUGIN_CODE` / CIDs / bundle IDs). Architecture, dylibs, quarantine ruled out.
+
+### Decisions
+
+1. **One targeted fix:** declare stereo **audio input** + stereo output; `isBusesLayoutSupported` accepts matching mono/stereo in+out.
+2. Input audio is **ignored**; output remains silent; **ConductorEngine unchanged**.
+3. Do not cycle VST3 categories further without new log evidence.
+4. Add `docs/PLUGIN_IDENTITIES.md` + `plugin_identity_tests` (unique codes + BC must keep `.withInput`).
+5. Host milestone incomplete until Live opens the device and MIDI routing is confirmed.
+
+### Consequences
+
+Ableton’s MIDI-out VST3 path requires a valid audio input bus even when scanned as `instr`. Silent-out-only instruments that also produce MIDI fail Live bus setup.
+
+---
+
+## 2026-09-09 — Stage 1C Ableton host instantiation verified
+
+### Context
+
+Creative director confirmed the Stage 1C binary opens and works as a loadable device in Ableton Live 11.3.43.
+
+### Recorded vs not recorded
+
+| Claim | Status |
+|-------|--------|
+| Host instantiation (device opens, no “could not be opened”) | **VERIFIED** |
+| End-to-end Live MIDI From → stock instrument audible | **NOT YET RECORDED** |
+| Engine MIDI generation (unit tests) | Proven separately |
+
+### Decisions
+
+1. Tag `broken-conductor-stage1c-ableton-verified` at the Stage 1C fix commit; do not rewrite earlier tags.
+2. Proceed to Stage 2 Rhythmic Language without revisiting the bus-layout diagnosis unless new evidence appears.
+3. Future PFL MIDI-generator VST3s targeting Live 11 must expose a valid audio input bus (stereo in ignored + silent stereo out is the proven shell).
+

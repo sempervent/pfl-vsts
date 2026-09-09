@@ -1,6 +1,18 @@
 # Architecture
 
-## Phase 4 signal / control flow
+## Repository layout
+
+```text
+src/
+  generative/   # Shared musical brain primitives + ConductorEngine (BC)
+  performance/  # Drone Organism performance commands (FREEZE…)
+  dsp/          # Drone Organism audio DSP
+  plugins/
+    DroneOrganism/
+    BrokenConductor/
+```
+
+## Drone Organism (Phase 4)
 
 ```text
 Host tempo / transport / PPQ
@@ -9,36 +21,33 @@ Host automation / UI performance commands
         ↓
 PerformanceController (FREEZE MUTATE COLLAPSE RESEED SILENCE)
         ↓
-Composer  (may be composition-locked)
+Composer  (algorithm v3 — Phrase DNA; may be composition-locked)
         ↓
-MusicalEvent → voice pitch + gate targets (+ collapse voice cap)
+MusicalEvent / voice state → DSP voices
         ↓
-Existing audio engine × silenceGain × reseedFade
-        ↓
-Stereo out
+Dirt → Space → DC → Limiter → out
 ```
 
 Composer lives in `src/generative/` and has **no** knowledge of oscillators, filters, distortion, or GUI.  
-Performance lives in `src/performance/` and does not redesign Composer; it locks/mutates/reseeds through a small public API.
+Performance lives in `src/performance/`.
 
-## Architecture
+Composer algorithm version: **3**. Performance-engine version: **1**.
+
+## Broken Conductor (Stage 1 / 1B)
 
 ```text
-src/
-  performance/  # PerformanceCommand, PerformanceController
-  generative/   # Composer, PhraseDNA, RNG, scale, walks, events
-  dsp/          # Voices, FX, safety
-  plugins/
-    DroneOrganism/
+Host tempo / transport / PPQ
+        ↓
+ConductorEngine (algorithm v1 — Foundation MIDI voice)
+        ↓
+MidiTraceEvent → MidiNoteTracker → juce::MidiBuffer
+        ↓
+Stereo audio in (ignored) + silent stereo out (Ableton MIDI-out VST3 shell; no synthesis)
 ```
 
-Composer algorithm version is `Composer::kAlgorithmVersion` (currently **3** = Phrase DNA).  
-Performance-engine version is `pfl::performance::kPerformanceEngineVersion` (**1**).
+Stage 1B host flags: `IS_SYNTH`, not `IS_MIDI_EFFECT`; VST3 `Instrument|Synth`.  
+See `docs/BROKEN_CONDUCTOR.md` for Ableton routing.
 
-See `docs/PERFORMANCE.md` for command semantics.
+## Audio engine (Drone Organism)
 
-## Audio engine (unchanged responsibility)
-
-Voices, drift, dirt bus, feedback delay, DC blocker, safety limiter — see audio-engine v0.1.
-
-Recoverable via branch/tag: `audio-engine-v0.1` / `drone-organism-audio-v0.1`.
+Voices, drift, dirt bus, feedback delay, DC blocker, safety limiter — audio-engine v0.1.
