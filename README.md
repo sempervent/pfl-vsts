@@ -4,7 +4,7 @@ Family of generative audio plugins for experimental, dirty, evolving drone music
 
 ## Current focus
 
-**PFL Drone Organism 0.1** — self-composing AU/VST3 instrument (no MIDI required).
+**PFL Drone Organism 0.1** — self-composing AU/VST3 instrument with live performance controls (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE). No MIDI required for autonomous play; MIDI-ready for future controller mapping.
 
 ## Requirements
 

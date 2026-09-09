@@ -63,3 +63,28 @@ Creates A → A′ → A″ lineage so sparse events can still feel related, wit
 ### Expected musical effect
 
 Recognizable degree-step motifs that evolve by single-element mutation every ~8–32 bars; pitch changes often follow DNA while free walk remains available; stillness preserved.
+
+---
+
+## 2026-09-08 — Phase 4: Performance layer above Composer
+
+### Context
+
+Phase 3 established Phrase DNA (v3). Phase 4 turns the organism into a steerable live instrument without redesigning Composer or adding another autonomous generative subsystem.
+
+### Decisions
+
+1. **PerformanceController** owns FREEZE/MUTATE/COLLAPSE/RESEED/SILENCE; Composer gains only `setCompositionLocked` + `applyManualMutation`.
+2. **Composer algorithm version stays 3** — autonomous output unchanged when no performance commands fire. Introduce **performance-engine v1** instead.
+3. **FREEZE** = composition lock (not audio freeze); discarded evolution, not queued catch-up.
+4. **MUTATE** ≠ MUTATION param; uses isolated `manualMutation` RNG; one DNA element; works while frozen.
+5. **COLLAPSE** = 8-bar staged trajectory ending in COLLAPSED residue; overrides FREEZE; MUTATE ignored during COLLAPSING.
+6. **RESEED** = deterministic seed derivation + `applySeedAtBar` (new epoch, no bar-1 rewind); seed always written to SEED.
+7. **SILENCE** = highest priority; ~5 ms ramp; pauses composition.
+8. **Project restore**: persistent macros/seed; transient freeze/collapse/silence reset safely.
+9. **No hardware MIDI maps** in this phase — control-ready only.
+
+### Consequences
+
+See `docs/PERFORMANCE.md`. Ready for external controller mapping after listening validation.
+

@@ -17,6 +17,20 @@
 | `audio_engine_smoke` | Hostile DSP finite; buffers/SR |
 | `composer_tests` | Scale; determinism; seed difference; buffer independence; tempo; timbre isolation; density/mutation; long run; seek |
 | `phrase_tests` | Algorithm v3; DNA determinism; mutation lineage; phrase/timbre isolation; buffer independence |
+| `performance_tests` | FREEZE/MUTATE/COLLAPSE/RESEED/SILENCE; scripted determinism; buffer 64–512; mutate-while-frozen; long ~50 min musical script |
+
+## Phase 4 performance renders
+
+| File | Notes |
+|------|-------|
+| `renders/phase4/performance-demo-seed-2002.wav` | ~7 min @ 72 BPM, scripted interventions |
+| `renders/phase4/performance-demo-events.txt` | Script + event trace |
+| `renders/phase4/performance-gestures-45s.wav` | Freeze/mutate/collapse sketch |
+
+```bash
+./build/tests/pfl_performance_render demo renders/phase4
+./build/tests/pfl_performance_render gestures renders/phase4
+```
 
 ## Phase 2 renders (72 BPM, 4/4)
 

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Phase 4 — Performance Instrument (performance-engine v1)
+
+- Performance command layer above Composer (`PerformanceController`)
+- FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE with explicit priority and state machine
+- Host-automatable toggles + edge-triggered actions; minimal performance buttons in editor
+- `performance_tests` (determinism, buffer independence, long scripted stability)
+- Renders: `renders/phase4/performance-demo-seed-2002.wav`, gestures A/B
+- Docs: `docs/PERFORMANCE.md`
+- Composer algorithm remains **v3**; Phase 3 recoverable via `phase3-phrase-dna-baseline` / `drone-organism-phase3-baseline`
+
 ### Phase 3 — Phrase DNA (composer v3)
 
 - Phrase DNA model with isolated RNG stream and single-element mutation

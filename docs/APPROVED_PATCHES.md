@@ -1,6 +1,6 @@
 # Approved Patches
 
-No generative patches approved yet. Creative director evaluation pending for Phase 2 renders.
+No generative or performance patches approved yet. Creative director evaluation pending.
 
 When approving, record:
 
@@ -8,6 +8,8 @@ When approving, record:
 name:
 Git commit:
 plugin version:
+performance-engine version:
+composer algorithm version:
 seed:
 tempo:
 time signature:
@@ -17,5 +19,6 @@ DRIFT:
 DIRT:
 SPACE:
 OUTPUT:
+performance script (if any):
 notes:
 ```

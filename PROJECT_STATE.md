@@ -4,14 +4,26 @@ Authoritative session memory for PFL Generative Instruments / Drone Organism.
 
 ## Current milestone
 
-**Phase 3 — Phrase DNA** (composer algorithm v3). Phase 2 recoverable.
+**Phase 4 — Performance Instrument** (performance-engine v1). Composer algorithm remains v3 (Phrase DNA).
 
 ## Last known-good commit
 
-`5419d83` — Phrase DNA integration  
-Phase 2: `aea6cdd` / tag `drone-organism-phase2-composer` / branch `phase2-composer-baseline`  
-Audio engine: tag `drone-organism-audio-v0.1`  
-Tag: `drone-organism-phase3-phrase-dna`
+Phase 4: (this milestone — see git log)  
+Phase 3: `5419d83` / tag `drone-organism-phase3-phrase-dna` / branch `phase3-phrase-dna-baseline`  
+Phase 2: `aea6cdd` / tag `drone-organism-phase2-composer`  
+Audio engine: tag `drone-organism-audio-v0.1`
+
+## Plugin version
+
+CMake project `0.1.0` (plugin binary); performance-engine **1**
+
+## Composer algorithm version
+
+`3`
+
+## Performance-engine version
+
+`1`
 
 ## Build command
 
@@ -24,83 +36,84 @@ Tag: `drone-organism-phase3-phrase-dna`
 
 ```bash
 ./scripts/test.sh
-./scripts/render.sh phase3 renders/phase3/candidate
+# performance render:
+./build/tests/pfl_performance_render demo renders/phase4
+./build/tests/pfl_performance_render gestures renders/phase4
 ```
 
 ## Plugin artifacts
 
 ```text
 ~/Library/Audio/Plug-Ins/VST3/PFL Drone Organism.vst3
-AU + Standalone under build/.../DroneOrganism_artefacts/Release/
+~/Library/Audio/Plug-Ins/Components/PFL Drone Organism.component
+build/.../DroneOrganism_artefacts/Release/{VST3,AU,Standalone}/
 ```
 
-## Render artifacts
+## Performance render
 
 ```text
-renders/phase3/baseline/baseline-seed-2002.wav
-renders/phase3/baseline/baseline-seed-3003.wav
-renders/phase3/candidate/candidate-seed-2002.wav          # 8 min
-renders/phase3/candidate/candidate-seed-3003.wav
-renders/phase3/candidate/candidate-seed-4242.wav
-renders/phase3/candidate/candidate-seed-*-180s.wav        # matched A/B length
-analysis/comparison.md
+renders/phase4/performance-demo-seed-2002.wav   # ~7 min scripted
+renders/phase4/performance-demo-events.txt
+renders/phase4/performance-gestures-45s.wav
 ```
 
-## Current Composer behavior
+## Approved seeds
 
-v3: Phase 2 walk + Phrase DNA influence/mutation. Density/mutation/seed/transport unchanged in role.
+None formally approved by creative director. Representative: `2002`.
 
-## Current default seed
+## Current controls
 
-`1001`
+Continuous: SEED, DENSITY, MUTATION, DRIFT, DIRT, SPACE, OUTPUT  
+Actions: FREEZE, MUTATE, COLLAPSE, RESEED, SILENCE
 
-## Current scale
+## FREEZE behavior
 
-D minor pentatonic
+Composition lock; DSP stays alive; missed evolution discarded; MUTATE allowed while frozen.
 
-## Current random-walk model
+## MUTATE behavior
 
-Unchanged base weights; often overridden by phrase step when following DNA
+One Phrase DNA element via `manualMutation` RNG; immediate if frozen/collapsed else next bar.
 
-## Current memory model
+## COLLAPSE behavior
 
-12-event penalties (unchanged)
+8-bar DESTABILIZE→THIN→DECAY→RESIDUE; ends COLLAPSED; overrides FREEZE.
 
-## Phrase DNA
+## RESEED behavior
 
-3–7 degree deltas; follow bias; single-element mutation every 8–32 bars; isolated `phrase` stream
+Deterministic next seed → SEED param; applySeedAtBar epoch; ~1 beat fade.
 
-## DENSITY / MUTATION / Transport / Seeking
+## SILENCE behavior
 
-As Phase 2; MUTATION also shortens phrase lifespan and lowers follow bias slightly
+~5 ms ramp; highest priority; pauses composition; resume prior mode.
 
-## Composer algorithm version
+## Command priority
 
-`3`
+SILENCE > COLLAPSE > FREEZE > MUTATE
 
-## Verified determinism / buffers / sample rates
+## Verified buffer sizes
 
-composer_tests + phrase_tests green (incl. phrase lineage + isolation + buffer independence)
+64, 128, 256, 512 (`performance_tests` scripted determinism)
 
-## Known defects
+## Verified sample rates
+
+48 kHz primary (tests/renders); engine also prepared at host rate.
+
+## Performance determinism status
+
+Scripted event traces identical across buffer sizes; freeze ON/OFF + mutate isolation tests green.
+
+## Known technical defects
 
 - Prior auval/Ableton notes unchanged
-- Occasional no-op DNA mutations (e.g. 0→0) still advance generation
-- Seed output **differs** from v2 by design (versioned)
+- Trigger float params do not auto-return to 0 after edge (host/UI must release)
+- MUTATE audibility depends on later phrase-follow pitch motion
 
 ## Known musical weaknesses
 
-- Phrase follow may still be subtle at dens=0.45 (few pitch events to reveal DNA)
-- No approved patches yet
+- Manual mutate is DNA-only (subtle until pitches move)
+- Collapse is structural/macro, not a dedicated failure FX bus
+- No creative-director approved performance patches yet
 
-## Approved patches/seeds
+## Next highest-value task
 
-None
-
-## Questions for creative director
-
-Phrase DNA listening set (see session report)
-
-## Next highest-value engineering step
-
-Await Phrase DNA evaluation before Weather / Weirdness / FREEZE
+Map FREEZE/MUTATE/COLLAPSE/RESEED/SILENCE + continuous macros to physical controllers (FCB1010 / Launch Control / etc.) **after** listening validation of this layer.

@@ -23,6 +23,12 @@ Decisions occur on **bar boundaries** (4/4 default). Phrase grouping (4 bars) is
 
 DSP drift/dirt/space continue every sample; they are not compositional events.
 
+## Performance layer (Phase 4)
+
+Performance commands sit **above** Composer. FREEZE locks autonomous bar decisions while DSP motion continues. See `docs/PERFORMANCE.md`.
+
+`MUTATE` (command) ≠ `MUTATION` (parameter). Manual mutations use a dedicated RNG stream and do not alter algorithm v3 autonomous paths when unused.
+
 ## Random-walk model
 
 Base weights (before MUTATION shaping):
