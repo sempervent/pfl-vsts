@@ -8,7 +8,7 @@
 #include "dsp/ParamSmoother.h"
 #include "dsp/SafetyLimiter.h"
 #include "dsp/Voice.h"
-#include "generative/DeterministicRNG.h"
+#include "generative/Composer.h"
 
 #include <array>
 
@@ -16,7 +16,7 @@
 class DroneOrganismProcessor final : public juce::AudioProcessor
 {
 public:
-    static constexpr int kNumVoices = 3;
+    static constexpr int kNumVoices = pfl::generative::Composer::kMaxVoices;
 
     DroneOrganismProcessor();
     ~DroneOrganismProcessor() override;
@@ -46,28 +46,33 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     juce::AudioProcessorValueTreeState& getAPVTS() noexcept { return apvts_; }
+    pfl::generative::Composer& composer() noexcept { return composer_; }
 
-    /** Offline / test: force transport-playing gate (Option B). */
     void setOfflineTransportPlaying (bool playing) noexcept { offlineTransportPlaying_ = playing; }
+    void setOfflineTempoBpm (double bpm) noexcept { offlineTempoBpm_ = bpm; }
+    void setOfflinePpq (double ppq) noexcept { offlinePpq_ = ppq; }
+    void resetOfflineTimeline() noexcept;
 
     void renderOffline (juce::AudioBuffer<float>& buffer);
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
-    void updateVoicesFromParams (bool transportPlaying) noexcept;
-    void reseedDriftStreams() noexcept;
-    bool isHostTransportPlaying() const noexcept;
+    void syncComposerFromParams() noexcept;
+    void applyComposerToVoices (bool transportPlaying) noexcept;
+    bool readHostClock (pfl::generative::ClockSnapshot& snap, int numSamples) noexcept;
 
     juce::AudioProcessorValueTreeState apvts_;
+    pfl::generative::Composer composer_;
 
     double sampleRate_ = 44100.0;
-    int lastSeed_ = -1;
+    int lastSeedParam_ = -1;
     bool offlineTransportPlaying_ = true;
+    double offlineTempoBpm_ = 72.0;
+    double offlinePpq_ = 0.0;
+    bool wasPlaying_ = false;
+    double lastHostPpq_ = 0.0;
 
     std::array<pfl::dsp::Voice, kNumVoices> voices_;
-
-    // Fixed drone voicing: D2, A2, D3
-    static constexpr std::array<float, kNumVoices> kBaseNotes { 38.0f, 45.0f, 50.0f };
     static constexpr std::array<float, kNumVoices> kVoiceDriftOffsets { -3.5f, 2.0f, 1.5f };
     static constexpr std::array<float, kNumVoices> kPans { -0.28f, 0.05f, 0.32f };
 
@@ -77,9 +82,8 @@ private:
     pfl::dsp::DCBlocker dcRight_;
     pfl::dsp::SafetyLimiter limiterLeft_;
     pfl::dsp::SafetyLimiter limiterRight_;
-
     pfl::dsp::ParamSmoother outputSmooth_;
-    pfl::dsp::ParamSmoother transportGate_; // Option B fade
+    pfl::dsp::ParamSmoother transportGate_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DroneOrganismProcessor)
 };
