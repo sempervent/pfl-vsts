@@ -29,4 +29,4 @@ error: VST3: No valid input bus could be found
 error: VST3: Failed: PFL Broken Conductor
 ```
 
-MIDI-out VST3s are rejected by Live without a valid **audio input** bus, even when scanned as `instr`. Stage 1C adds stereo in+out (input ignored; output silent).
+MIDI-out VST3s are rejected by Live without a valid **audio input** bus, even when scanned as `instr`. Stage 1C adds stereo in+out (input ignored; output silent). Host instantiation verified 2026-09-09 (`broken-conductor-stage1c-ableton-verified`).

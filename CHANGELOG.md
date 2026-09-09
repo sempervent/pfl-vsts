@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Broken Conductor — Stage 1C (Ableton host forensics)
+
+- Root cause: Live loads processor then rejects MIDI-out VST3 without a valid **audio input** bus
+- Fix: stereo audio in (ignored) + silent stereo out; bus-layout accepts matching mono/stereo
+- `docs/PLUGIN_IDENTITIES.md` + `plugin_identity_tests` (unique codes + `.withInput` regression)
+- pluginval 1.0.4 passes; identity/arch/dylib/quarantine ruled out
+- **HOST INSTANTIATION** verified in Ableton Live 11.3.43 (creative director)
+- **END-TO-END LIVE MIDI ROUTING** not yet recorded
+- Tag: `broken-conductor-stage1c-ableton-verified`
+
 ### Broken Conductor — Stage 1B (Ableton host shell)
 
 - Convert VST3/AU from pure MIDI-effect (`Fx`, zero audio buses) to **Instrument** with **silent stereo** out + MIDI out

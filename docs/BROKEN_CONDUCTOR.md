@@ -14,8 +14,9 @@ It is a **MIDI generator / musical source**, not an audio effect and not a proce
 |-------|--------|
 | **1** | Engine + deterministic MIDI tests (`broken-conductor-stage1`) |
 | **1B** | Instrument shell + silent stereo out (`broken-conductor-stage1b-ableton`) — still failed Live load |
-| **1C** | Forensic host fix: stereo **in+out** for Ableton MIDI-out VST3 (in progress / awaiting Live) |
-| **2+** | Not started |
+| **1C** | Ableton host instantiation verified (`broken-conductor-stage1c-ableton-verified`) |
+| **2** | Rhythmic Language (monophonic) — in progress |
+| **3+** | Not started (multi-voice deferred) |
 
 ## Architecture
 
@@ -111,7 +112,8 @@ Broken Conductor does not process Drone Organism audio and cannot feed MIDI “b
 9. Confirm Operator receives notes (channel 1).
 10. **Stop** — notes should release (no hang).
 
-Creative-director confirmation of steps 3–9 is required to mark host items fully verified in `PROJECT_STATE.md`.
+**HOST INSTANTIATION:** creative director confirmed Live 11.3.43 opens the Stage 1C VST3 (2026-09-09).  
+**END-TO-END LIVE MIDI ROUTING** (steps 5–10): **NOT YET RECORDED** — do not conflate with instantiation.
 
 ## Current musical behavior (unchanged from Stage 1)
 

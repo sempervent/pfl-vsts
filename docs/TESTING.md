@@ -22,7 +22,9 @@
 
 ### Host acceptance (not covered by unit tests)
 
-Ableton Live 11 VST3 load + two-track **MIDI From** routing + audible stock instrument is a **manual** Stage 1C gate. Build/scanner ≠ host instantiate. See `docs/BROKEN_CONDUCTOR.md`.
+Ableton Live 11.3.43 **host instantiation** of Stage 1C Broken Conductor is **verified**.  
+**End-to-end MIDI From → stock instrument** is a separate manual gate (not yet recorded).  
+Build/scanner ≠ instantiate ≠ routing. See `docs/BROKEN_CONDUCTOR.md`.
 
 ```text
 compile ≠ artifact ≠ scanner ≠ Live instantiates ≠ MIDI routable ≠ target sounds

@@ -170,3 +170,25 @@ Identity collision with Drone Organism ruled out (unique `PLUGIN_CODE` / CIDs / 
 
 Ableton’s MIDI-out VST3 path requires a valid audio input bus even when scanned as `instr`. Silent-out-only instruments that also produce MIDI fail Live bus setup.
 
+---
+
+## 2026-09-09 — Stage 1C Ableton host instantiation verified
+
+### Context
+
+Creative director confirmed the Stage 1C binary opens and works as a loadable device in Ableton Live 11.3.43.
+
+### Recorded vs not recorded
+
+| Claim | Status |
+|-------|--------|
+| Host instantiation (device opens, no “could not be opened”) | **VERIFIED** |
+| End-to-end Live MIDI From → stock instrument audible | **NOT YET RECORDED** |
+| Engine MIDI generation (unit tests) | Proven separately |
+
+### Decisions
+
+1. Tag `broken-conductor-stage1c-ableton-verified` at the Stage 1C fix commit; do not rewrite earlier tags.
+2. Proceed to Stage 2 Rhythmic Language without revisiting the bus-layout diagnosis unless new evidence appears.
+3. Future PFL MIDI-generator VST3s targeting Live 11 must expose a valid audio input bus (stereo in ignored + silent stereo out is the proven shell).
+
