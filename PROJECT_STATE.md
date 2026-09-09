@@ -8,8 +8,9 @@ Authoritative session memory for PFL Generative Instruments / Drone Organism.
 
 ## Last known-good commit
 
-*`aea6cdd`* Phase 2 composer integration  
+`aea6cdd` — Phase 2 composer integration  
 Audio-engine recovery: tag `drone-organism-audio-v0.1` / branch `audio-engine-v0.1`
+Tag: `drone-organism-phase2-composer`
 
 ## Build command
 
