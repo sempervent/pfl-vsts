@@ -8,7 +8,8 @@ Drone Organism **audio engine v0.1** — playable dirty stereo drone (no generat
 
 ## Last known-good commit
 
-*(updated on commit in this session)*
+`395477a` — feat: establish Drone Organism playable audio engine  
+Tag: `drone-organism-audio-v0.1`
 
 ## Build command
 
