@@ -18,6 +18,7 @@
 | `composer_tests` | Scale; determinism; seed difference; buffer independence; tempo; timbre isolation; density/mutation; long run; seek |
 | `phrase_tests` | Algorithm v3; DNA determinism; mutation lineage; phrase/timbre isolation; buffer independence |
 | `performance_tests` | FREEZE/MUTATE/COLLAPSE/RESEED/SILENCE; scripted determinism; buffer 64–512; mutate-while-frozen; long ~50 min musical script |
+| `broken_conductor_tests` | BC Stage 1: same-seed MIDI; different seed; buffers 64–1024; tempos 40/72/120/180; note pairing; stop/seek panic; restart; long-run ~30 min; param restore |
 
 ## Phase 4 performance renders
 

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Broken Conductor — Stage 1
+
+- `ConductorEngine` one-voice deterministic MIDI composer (Foundation) reusing generative primitives
+- `PFL Broken Conductor` AU/VST3/Standalone MIDI effect target
+- `MidiNoteTracker` + transport panic/seek policy
+- `broken_conductor_tests` (determinism, buffers, tempos, pairing, stop/seek, long-run)
+- Docs: `docs/BROKEN_CONDUCTOR.md`
+- Drone Organism Composer v3 behavior preserved (regression suite green)
+
 ### Phase 4 — Performance Instrument (performance-engine v1)
 
 - Performance command layer above Composer (`PerformanceController`)
