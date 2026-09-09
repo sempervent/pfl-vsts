@@ -244,3 +244,17 @@ Host values **did** reach `ConductorEngine` every `processBlock`. Failure was ge
 5. Algorithm version **3**. Stage 3 multi-voice not started.
 6. Do not tag Stage 2 complete until Ableton endpoint/automation acceptance.
 
+---
+
+## 2026-09-09 — Broken Conductor Stage 2 complete (Ableton acceptance)
+
+### Context
+
+Creative director passed Stage 2B Ableton acceptance: open, MIDI route, audible target, live DENSITY, live MUTATION, no reload/reseed required.
+
+### Decisions
+
+1. Tag `broken-conductor-stage2-complete` at the accepted tip.
+2. Stage 2 is closed; Stage 3 multi-voice remains not started.
+3. Publish as a stacked GitHub PR series (Stage 1 / Stage 2 rhythm / Stage 2B controls).
+

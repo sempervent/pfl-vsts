@@ -15,8 +15,9 @@ It is a **MIDI generator / musical source**, not an audio effect and not a proce
 | **1** | Engine + deterministic MIDI tests (`broken-conductor-stage1`) |
 | **1B** | Instrument shell + silent stereo out (`broken-conductor-stage1b-ableton`) — still failed Live load |
 | **1C** | Ableton host instantiation verified (`broken-conductor-stage1c-ableton-verified`) |
-| **2** | Rhythmic Language — algorithm v2 @ `5d33a32` (controls failed live) |
-| **2B** | Control response — algorithm **v3** (awaiting Ableton endpoint test) |
+| **2** | Rhythmic Language — algorithm v2 @ `5d33a32` |
+| **2B** | Control response — algorithm **v3**; creative-director Ableton **PASS** |
+| **2 complete** | Tag `broken-conductor-stage2-complete` |
 | **3+** | Not started |
 
 ## Architecture
@@ -58,7 +59,9 @@ Drone Organism still uses `Composer` v3. Broken Conductor does not call `Compose
 | Gate | Status |
 |------|--------|
 | **HOST INSTANTIATION** | **VERIFIED** (Stage 1C) |
-| **END-TO-END LIVE MIDI ROUTING** | **NOT YET RECORDED** for Stage 1C; Stage 2 requires re-check |
+| **END-TO-END LIVE MIDI ROUTING** | **VERIFIED** (creative director, Stage 2 acceptance) |
+| **Stage 2B live DENSITY / MUTATION** | **PASS** |
+| **Stage 2 overall** | **COMPLETE** |
 | Engine MIDI (unit tests) | Proven |
 
 Stage 1B failure log (exact):
@@ -141,6 +144,7 @@ Live: rising mutation shortens remaining lifespan (≤1–4 bars). No transport 
 | `phrase` | Pitch Phrase DNA |
 | `pitch` | Walk / follow / pitch-eval period |
 | `velocity` | Accent jitter |
+
 ## Current musical behavior
 
 - **One voice:** Foundation only
@@ -184,9 +188,9 @@ compile
 
 - Monophonic Foundation only (no Pulse/Wanderer/Accent)
 - 4/4 only; no triplets / microtiming
-- Pitch may remain static for stretches (rhythm is the Stage 2 focus)
+- Pitch may remain static for stretches at low MUTATION (Foundation identity)
 - AU MusicDevice MIDI-out routing may be weaker than VST3 in Live
-- Stage 2 Live end-to-end routing not tagged until creative-director confirmation
+- Stage 3 multi-voice not started
 
 ## Future stages
 

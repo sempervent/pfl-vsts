@@ -4,16 +4,18 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**Broken Conductor Stage 2B** — DENSITY/MUTATION live control response (algorithm v3).  
-**WAITING FOR USER STAGE 2B ACCEPTANCE.** Stage 3 not started. Stage 2 not tagged complete.
+**Broken Conductor Stage 2 — COMPLETE** (algorithm v3, Ableton-accepted).  
+Stage 3 multi-voice **NOT STARTED**.
 
 ## Branch / tags
 
-- Working: `broken-conductor-stage2b-control-response`
-- Stage 2 baseline (failing controls): `broken-conductor-stage2-rhythm` @ `5d33a32`
+- Stage 2 complete: `broken-conductor-stage2-complete` (final accepted Stage 2B tip)
+- Stage 2B branch: `broken-conductor-stage2b-control-response`
+- Stage 2 rhythm: `broken-conductor-stage2-rhythm` @ `5d33a32`
 - Stage 1C: `broken-conductor-stage1c-ableton-verified` @ `c9bacb2`
 - Stage 1B: `broken-conductor-stage1b-ableton` @ `6e43fb6`
-- Stage 1 engine: `broken-conductor-stage1` @ `72d742e`
+- Stage 1: `broken-conductor-stage1` @ `72d742e`
+- Pre-BC: `drone-organism-pre-broken-conductor` @ `fdbf97f` (also local `main`)
 
 ## Build / test
 
@@ -24,24 +26,35 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 ./build/tests/pfl_broken_conductor_render renders/broken-conductor
 ```
 
+## Drone Organism
+
+| Field | Value |
+|-------|--------|
+| Status | Software milestone complete (Phase 4) |
+| Composer | v3 |
+| Performance-engine | v1 |
+
 ## Broken Conductor
 
 | Field | Value |
 |-------|--------|
-| Engine | algorithm **v3** (Stage 2B control response) |
-| Host | Stage 1C stereo in+out; Live open+route verified at Stage 2 |
+| Status | **Stage 2 COMPLETE** |
+| Engine | algorithm **v3** (RhythmDNA + live DENSITY/MUTATION) |
+| Host shell | Stage 1C stereo in (ignored) + silent stereo out |
 | Voices | Foundation only |
-| Params | SEED, DENSITY, MUTATION — must be audibly distinct |
+| Params | SEED, DENSITY, MUTATION |
 
-### Ableton
+### Ableton host acceptance
 
 | Check | Status |
 |-------|--------|
-| Stage 1C instantiation | VERIFIED |
-| Stage 2 open + MIDI route + audible | VERIFIED (creative director) |
-| Stage 2 DENSITY/MUTATION endpoints | **FAILED** → Stage 2B fix |
-| Stage 2B endpoint/automation acceptance | **WAITING FOR USER STAGE 2B ACCEPTANCE** |
+| Stage 1C HOST INSTANTIATION | **VERIFIED** |
+| End-to-end MIDI routing + audible target | **VERIFIED** (creative director) |
+| Stage 2B live DENSITY response | **PASS** |
+| Stage 2B live MUTATION response | **PASS** |
+| Control changes without reload/reseed | **PASS** |
+| Stage 2 overall | **COMPLETE** |
 
-### Next
+### Next software task
 
-After Stage 2B Ableton pass: tag Stage 2 complete. Stage 3 only when explicitly requested.
+**Broken Conductor Stage 3** (Foundation + Pulse + Wanderer + Accent) only when explicitly requested.
