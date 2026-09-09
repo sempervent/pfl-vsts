@@ -433,3 +433,55 @@ Creative director accepted Stage 4 in Ableton: deterministic role projection (EN
 2. Mark PR #7 ready for review; creative director merges (agent does not merge).
 3. Stage 5 performance intervention must branch from `main` only after PR #7 is merged — do not stack on an unmerged draft.
 
+---
+
+## 2026-09-09 — Broken Conductor Stage 5 performance intervention
+
+### Context
+
+Stage 4 role projection accepted. Need live steering: preserve / nudge / destroy / replace / silence the four-role ensemble without breaking determinism or projection union.
+
+### Architecture
+
+```text
+Host / automation
+      ↓
+ConductorPerformanceController  (src/performance/ConductorPerformanceController.h)
+      ↓
+ConductorEngine  (full ensemble + evolution locks / collapse multipliers / silence)
+      ↓
+role projection
+      ↓
+MIDI
+```
+
+BC-specific controller (not DO `PerformanceController`): MIDI panic instead of audio fades; collapse modulates role presence, not DSP.
+
+Performance-engine version: **1**. Generative algorithm remains **v5**.
+
+### Semantics
+
+| Command | Behavior |
+|---------|----------|
+| **FREEZE** | Lock evolution (pitch eval, Phrase/Rhythm DNA `onBar`, hunger). Continue performing frozen DNA onsets. Hunger paused (no post-unfreeze Accent explosion). |
+| **MUTATE** | One bounded Phrase or Rhythm DNA change via `manualMutation` stream. Weighted roles (Wanderer high, Foundation low). Allowed while Frozen (stays frozen). Ignored while Collapsing/Silenced. Queued to next bar when Normal. |
+| **COLLAPSE** | 24 beats: Destabilize→Thin→Fragment→Residue (6 beats each). Accent dies first; Foundation lasts into residue. Stays Collapsed until RESEED / transport restart. Overrides FREEZE. |
+| **RESEED** | Panic → derive seed `f(currentSeed, reseedCount)` in [0,999999] → store to SEED param → `engine.reseed`. No unknowable entropy. |
+| **SILENCE** | Highest priority. Immediate panic/offs; suppress commits; evolution locked. Off restores prior Frozen/Collapsed/Normal. No queued burst. |
+
+Priority: `SILENCE > COLLAPSE > FREEZE > MUTATE`.
+
+### Projection
+
+Commands apply to the full ensemble before OUTPUT ROLE filtering. Same command timeline ⇒ same universe ⇒ ENSEMBLE == ∪ projections.
+
+Multi-instance RESEED: no IPC. Ableton must fan the same edge to all instances; divergent reseed counts ⇒ divergent universes (documented).
+
+### Host params
+
+Continuous: DENSITY, MUTATION. Config: OUTPUT ROLE. Performance: FREEZE/SILENCE toggles; MUTATE/COLLAPSE/RESEED edge triggers (0→1).
+
+### Out of scope
+
+Per-role channels/density/mute, IPC, MPE/CC, custom GUI, Stage 6.
+

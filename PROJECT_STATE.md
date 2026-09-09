@@ -4,13 +4,13 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**Broken Conductor Stage 4 — COMPLETE** (Ableton-accepted).  
-Awaiting PR #7 merge before Stage 5 (performance intervention).
+**Broken Conductor Stage 5 — IN PROGRESS** (performance intervention).  
+Draft PR; awaiting Ableton host acceptance. Do not tag complete / mark ready until PASS.
 
 ## Branch / tags
 
-- Stage 4 complete: `broken-conductor-stage4-complete` (this tip)
-- Stage 4 PR: #7 `pr/broken-conductor-stage4-role-projection` (ready for review; not merged by agent)
+- Stage 5 branch: `pr/broken-conductor-stage5-performance` (from `main` after PR #7 merge)
+- Stage 4 complete: `broken-conductor-stage4-complete`
 - Stage 3 complete: `broken-conductor-stage3-complete` @ `dc68bb7`
 - Stage 2 complete: `broken-conductor-stage2-complete` @ `0f42d56`
 
@@ -20,7 +20,7 @@ Awaiting PR #7 merge before Stage 5 (performance intervention).
 ./scripts/configure.sh
 ./scripts/build.sh
 ./scripts/test.sh
-./build/tests/pfl_broken_conductor_render renders/broken-conductor/stage4
+./build/tests/pfl_broken_conductor_render --stage5
 ```
 
 ## Drone Organism
@@ -35,22 +35,9 @@ Awaiting PR #7 merge before Stage 5 (performance intervention).
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 4 COMPLETE** (Ableton PASS) |
-| Engine | algorithm **v5** (ensemble + role hunger + OUTPUT ROLE projection) |
+| Status | **Stage 5 draft** — FREEZE/MUTATE/COLLAPSE/RESEED/SILENCE |
+| Engine | algorithm **v5** + performance-engine **v1** |
 | Host shell | Stage 1C stereo in (ignored) + silent stereo out |
-| Voices | Four roles; OUTPUT ROLE projects subset after arbitration |
-| Params | SEED, DENSITY, MUTATION, OUTPUT ROLE (config) |
-
-### Ableton host acceptance
-
-| Check | Status |
-|-------|--------|
-| Stage 1C HOST INSTANTIATION | **VERIFIED** |
-| End-to-end MIDI routing + audible target | **VERIFIED** |
-| Stage 2B live DENSITY / MUTATION | **PASS** |
-| Stage 3 ensemble + DENSITY/MUTATION | **PASS** |
-| Stage 4 role projection + hunger | **PASS** |
-
-### Next software task
-
-**Stage 5 performance intervention** only after PR #7 is merged to `main`. Do not stack Stage 5 on an unmerged draft.
+| Continuous params | DENSITY, MUTATION |
+| Config | OUTPUT ROLE |
+| Performance | FREEZE, SILENCE (toggle); MUTATE, COLLAPSE, RESEED (edge) |

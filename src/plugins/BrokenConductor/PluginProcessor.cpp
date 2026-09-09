@@ -12,6 +12,7 @@ BrokenConductorProcessor::BrokenConductorProcessor()
       apvts_ (*this, nullptr, "PARAMS", createParameterLayout())
 {
     engine_.reseed (1001);
+    performance_.reset (1001);
 }
 
 BrokenConductorProcessor::~BrokenConductorProcessor() = default;
@@ -32,11 +33,27 @@ juce::AudioProcessorValueTreeState::ParameterLayout BrokenConductorProcessor::cr
         juce::NormalisableRange<float> { 0.0f, 1.0f, 0.001f }, 0.35f));
 
     // Configuration / routing — not a continuous performance control.
-    // Prefer leave at ENSEMBLE unless projecting a single role to a Live track.
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "outputRole", 1 }, "Output Role",
         juce::StringArray { "ENSEMBLE", "FOUNDATION", "PULSE", "WANDERER", "ACCENT" },
         0));
+
+    // Performance toggles
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "freeze", 1 }, "Freeze", false));
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "silence", 1 }, "Silence", false));
+
+    // Performance one-shots (0→1 edge fires once)
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "mutate", 1 }, "Mutate",
+        juce::NormalisableRange<float> { 0.0f, 1.0f, 0.01f }, 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "collapse", 1 }, "Collapse",
+        juce::NormalisableRange<float> { 0.0f, 1.0f, 0.01f }, 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "reseed", 1 }, "Reseed",
+        juce::NormalisableRange<float> { 0.0f, 1.0f, 0.01f }, 0.0f));
 
     return { params.begin(), params.end() };
 }
@@ -61,6 +78,12 @@ void BrokenConductorProcessor::prepareToPlay (double sampleRate, int /*samplesPe
     lastSeedParam_ = -1;
     wasPlaying_ = false;
     lastHostPpq_ = 0.0;
+    lastPerfBar_ = -1;
+    lastFreezeParam_ = false;
+    lastSilenceParam_ = false;
+    lastMutateParam_ = 0.0f;
+    lastCollapseParam_ = 0.0f;
+    lastReseedParam_ = 0.0f;
     syncEngineFromParams();
 }
 
@@ -72,8 +95,6 @@ void BrokenConductorProcessor::releaseResources()
 
 bool BrokenConductorProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
-    // Ableton requires a valid audio input bus for this MIDI-out VST3; accept mono/stereo
-    // main in+out with matching channel counts. Input audio is ignored.
     const auto in = layouts.getMainInputChannelSet();
     const auto out = layouts.getMainOutputChannelSet();
 
@@ -91,8 +112,23 @@ void BrokenConductorProcessor::resetOfflineTimeline() noexcept
     wasPlaying_ = false;
     lastHostPpq_ = 0.0;
     lastSeedParam_ = -1;
+    lastPerfBar_ = -1;
     syncEngineFromParams();
-    engine_.reseed (static_cast<uint64_t> (apvts_.getRawParameterValue ("seed")->load()));
+    const auto seed = static_cast<uint64_t> (apvts_.getRawParameterValue ("seed")->load());
+    engine_.reseed (seed);
+    performance_.reset (seed);
+}
+
+void BrokenConductorProcessor::writeSeedToHost (uint64_t seed) noexcept
+{
+    const int s = static_cast<int> (std::clamp (seed, 0ull, 999999ull));
+    if (auto* p = apvts_.getParameter ("seed"))
+    {
+        const float norm = apvts_.getParameterRange ("seed").convertTo0to1 (static_cast<float> (s));
+        p->setValueNotifyingHost (norm);
+    }
+    lastSeedParam_ = s;
+    pendingReseed_ = false;
 }
 
 void BrokenConductorProcessor::syncEngineFromParams() noexcept
@@ -111,14 +147,52 @@ void BrokenConductorProcessor::syncEngineFromParams() noexcept
     if (lastSeedParam_ < 0)
     {
         engine_.reseed (static_cast<uint64_t> (seed));
+        performance_.reset (static_cast<uint64_t> (seed));
         lastSeedParam_ = seed;
     }
     else if (seed != lastSeedParam_)
     {
-        // Reseed applied in processBlock after panic when transport is live
         lastSeedParam_ = seed;
         pendingReseed_ = true;
     }
+}
+
+void BrokenConductorProcessor::syncPerformanceCommands (double ppq) noexcept
+{
+    using Cmd = pfl::conductor_perf::Command;
+
+    const bool freeze = apvts_.getRawParameterValue ("freeze")->load() > 0.5f;
+    const bool silence = apvts_.getRawParameterValue ("silence")->load() > 0.5f;
+    const float mutate = apvts_.getRawParameterValue ("mutate")->load();
+    const float collapse = apvts_.getRawParameterValue ("collapse")->load();
+    const float reseed = apvts_.getRawParameterValue ("reseed")->load();
+
+    if (freeze && ! lastFreezeParam_)
+        performance_.trigger (Cmd::FreezeOn, ppq, engine_);
+    else if (! freeze && lastFreezeParam_)
+        performance_.trigger (Cmd::FreezeOff, ppq, engine_);
+
+    if (silence && ! lastSilenceParam_)
+        performance_.trigger (Cmd::SilenceOn, ppq, engine_);
+    else if (! silence && lastSilenceParam_)
+        performance_.trigger (Cmd::SilenceOff, ppq, engine_);
+
+    if (mutate >= 0.5f && lastMutateParam_ < 0.5f)
+        performance_.trigger (Cmd::Mutate, ppq, engine_);
+    if (collapse >= 0.5f && lastCollapseParam_ < 0.5f)
+        performance_.trigger (Cmd::Collapse, ppq, engine_);
+    if (reseed >= 0.5f && lastReseedParam_ < 0.5f)
+        performance_.trigger (Cmd::Reseed, ppq, engine_);
+
+    lastFreezeParam_ = freeze;
+    lastSilenceParam_ = silence;
+    lastMutateParam_ = mutate;
+    lastCollapseParam_ = collapse;
+    lastReseedParam_ = reseed;
+
+    uint64_t newSeed = 0;
+    if (performance_.takeSeedDirty (newSeed))
+        writeSeedToHost (newSeed);
 }
 
 bool BrokenConductorProcessor::readHostClock (pfl::generative::ClockSnapshot& snap, int numSamples) noexcept
@@ -168,9 +242,6 @@ bool BrokenConductorProcessor::readHostClock (pfl::generative::ClockSnapshot& sn
 
 void BrokenConductorProcessor::flushHostNotes (juce::MidiBuffer& midi, int sampleOffset) noexcept
 {
-    // Explicit offs for owned notes + channel panic
-    std::vector<pfl::generative::MidiTraceEvent> offs;
-    // Copy active set via panic into temp without relying on engine.panic side effects alone
     engine_.panic (lastHostPpq_);
     const auto pending = engine_.drainPending();
     for (const auto& e : pending)
@@ -217,11 +288,9 @@ void BrokenConductorProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 {
     juce::ScopedNoDenormals noDenormals;
 
-    // Silent stereo (or mono) audio — host-required bus; product is MIDI only.
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
         buffer.clear (ch, 0, buffer.getNumSamples());
 
-    // Generative MIDI: replace incoming MIDI with our output
     midi.clear();
 
     syncEngineFromParams();
@@ -241,6 +310,7 @@ void BrokenConductorProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         flushHostNotes (midi, 0);
         const auto seed = static_cast<uint64_t> (apvts_.getRawParameterValue ("seed")->load());
         engine_.reseed (seed);
+        performance_.reset (seed);
         pendingReseed_ = false;
     }
 
@@ -250,6 +320,14 @@ void BrokenConductorProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         {
             const auto seed = static_cast<uint64_t> (apvts_.getRawParameterValue ("seed")->load());
             engine_.reseed (seed);
+            performance_.reset (seed);
+            // Clear sticky performance toggles on transport restart from zero
+            if (auto* freeze = apvts_.getParameter ("freeze"))
+                freeze->setValueNotifyingHost (0.0f);
+            if (auto* silence = apvts_.getParameter ("silence"))
+                silence->setValueNotifyingHost (0.0f);
+            lastFreezeParam_ = false;
+            lastSilenceParam_ = false;
         }
     }
 
@@ -263,6 +341,7 @@ void BrokenConductorProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         {
             flushHostNotes (midi, 0);
             engine_.handleSeek (ppqStart);
+            performance_.syncEngine (engine_);
             if (engine_.needsHostRetrigger())
             {
                 pfl::generative::ConductorEngine::HostSoundingNote notes[pfl::generative::ConductorEngine::kNumVoices];
@@ -282,6 +361,19 @@ void BrokenConductorProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
     if (snap.playing)
     {
+        syncPerformanceCommands (ppqStart);
+
+        const int bar = static_cast<int> (std::floor (ppqStart / 4.0));
+        if (bar != lastPerfBar_)
+        {
+            performance_.tick (ppqStart, bar, engine_);
+            lastPerfBar_ = bar;
+        }
+        else
+        {
+            performance_.tick (ppqStart, bar, engine_);
+        }
+
         engine_.clock().advance (snap);
         engine_.processTimeRange (ppqStart, ppqEnd, true);
         const auto pending = engine_.drainPending();
@@ -314,6 +406,11 @@ void BrokenConductorProcessor::setStateInformation (const void* data, int sizeIn
             apvts_.replaceState (juce::ValueTree::fromXml (*xml));
 
     lastSeedParam_ = -1;
+    lastFreezeParam_ = apvts_.getRawParameterValue ("freeze")->load() > 0.5f;
+    lastSilenceParam_ = apvts_.getRawParameterValue ("silence")->load() > 0.5f;
+    lastMutateParam_ = apvts_.getRawParameterValue ("mutate")->load();
+    lastCollapseParam_ = apvts_.getRawParameterValue ("collapse")->load();
+    lastReseedParam_ = apvts_.getRawParameterValue ("reseed")->load();
     syncEngineFromParams();
 }
 

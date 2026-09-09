@@ -1121,6 +1121,287 @@ static void testRoleHungerTimescales()
     EXPECT (ga.median > gw.median); // Accent rarer than Wanderer
 }
 
+//==============================================================================
+// Stage 5 — performance intervention
+//==============================================================================
+
+#include "performance/ConductorPerformanceController.h"
+
+using pfl::conductor_perf::Command;
+using pfl::conductor_perf::ConductorPerformanceController;
+using pfl::conductor_perf::Mode;
+
+struct PerfCmdAt
+{
+    double ppq = 0.0;
+    Command cmd = Command::FreezeOn;
+};
+
+static std::vector<MidiTraceEvent> runPerformanceScript (
+    uint64_t seed, float density, float mutation,
+    OutputRole role, double bpm, double endPpq,
+    int bufferSamples, double sampleRate,
+    const std::vector<PerfCmdAt>& cmds,
+    ConductorPerformanceController* perfOut = nullptr)
+{
+    ConductorEngine eng;
+    ConductorPerformanceController perf;
+    eng.setCapture (true);
+    eng.setParams ({ density, mutation });
+    eng.setOutputRole (role);
+    eng.reseed (seed);
+    perf.reset (seed);
+    perf.setTraceEnabled (true);
+
+    size_t cmdIdx = 0;
+    const double beatsPerSec = bpm / 60.0;
+    double ppq = 0.0;
+    int lastBar = -1;
+
+    while (ppq < endPpq - 1.0e-12)
+    {
+        while (cmdIdx < cmds.size() && cmds[cmdIdx].ppq <= ppq + 1.0e-9)
+        {
+            perf.trigger (cmds[cmdIdx].cmd, cmds[cmdIdx].ppq, eng);
+            ++cmdIdx;
+        }
+
+        const double blockBeats = (static_cast<double> (bufferSamples) / sampleRate) * beatsPerSec;
+        const double ppqEnd = std::min (endPpq, ppq + blockBeats);
+        const int bar = static_cast<int> (std::floor (ppq / 4.0));
+        if (bar != lastBar)
+            lastBar = bar;
+        perf.tick (ppq, bar, eng);
+
+        pfl::generative::ClockSnapshot snap;
+        snap.playing = true;
+        snap.ppq = ppq;
+        snap.tempoBpm = bpm;
+        snap.timeSigNumerator = 4;
+        snap.timeSigDenominator = 4;
+        eng.clock().advance (snap);
+        eng.processTimeRange (ppq, ppqEnd, true);
+        eng.drainPending();
+        ppq = ppqEnd;
+    }
+
+    if (perfOut != nullptr)
+        *perfOut = perf;
+    return eng.captured();
+}
+
+static std::vector<PerfCmdAt> stage5Script()
+{
+    // SEED 2002 script from Stage 5 brief (beats)
+    return {
+        { 32.0, Command::FreezeOn },
+        { 48.0, Command::Mutate },
+        { 64.0, Command::Mutate },
+        { 80.0, Command::FreezeOff },
+        { 112.0, Command::Collapse },
+        { 136.0, Command::Reseed },
+        { 168.0, Command::SilenceOn },
+        { 172.0, Command::SilenceOff },
+    };
+}
+
+static void testStage5ScriptDeterminism()
+{
+    const auto cmds = stage5Script();
+    auto a = runPerformanceScript (2002, 0.50f, 0.35f, OutputRole::Ensemble, 72.0, 192.0, 256, 48000.0, cmds);
+    auto b = runPerformanceScript (2002, 0.50f, 0.35f, OutputRole::Ensemble, 72.0, 192.0, 256, 48000.0, cmds);
+    EXPECT (midiEqual (a, b));
+}
+
+static void testStage5ProjectionUnionUnderCommands()
+{
+    const auto cmds = stage5Script();
+    auto ens = runPerformanceScript (2002, 0.50f, 0.35f, OutputRole::Ensemble, 72.0, 192.0, 256, 48000.0, cmds);
+    auto f = runPerformanceScript (2002, 0.50f, 0.35f, OutputRole::Foundation, 72.0, 192.0, 256, 48000.0, cmds);
+    auto p = runPerformanceScript (2002, 0.50f, 0.35f, OutputRole::Pulse, 72.0, 192.0, 256, 48000.0, cmds);
+    auto w = runPerformanceScript (2002, 0.50f, 0.35f, OutputRole::Wanderer, 72.0, 192.0, 256, 48000.0, cmds);
+    auto a = runPerformanceScript (2002, 0.50f, 0.35f, OutputRole::Accent, 72.0, 192.0, 256, 48000.0, cmds);
+
+    std::vector<MidiTraceEvent> uni;
+    uni.insert (uni.end(), f.begin(), f.end());
+    uni.insert (uni.end(), p.begin(), p.end());
+    uni.insert (uni.end(), w.begin(), w.end());
+    uni.insert (uni.end(), a.begin(), a.end());
+    std::sort (uni.begin(), uni.end(), [] (const MidiTraceEvent& x, const MidiTraceEvent& y) {
+        if (std::abs (x.ppq - y.ppq) > 1.0e-9)
+            return x.ppq < y.ppq;
+        if (x.kind != y.kind)
+            return static_cast<int> (x.kind) < static_cast<int> (y.kind);
+        if (x.voice != y.voice)
+            return x.voice < y.voice;
+        return x.note < y.note;
+    });
+    auto ensSorted = ens;
+    std::sort (ensSorted.begin(), ensSorted.end(), [] (const MidiTraceEvent& x, const MidiTraceEvent& y) {
+        if (std::abs (x.ppq - y.ppq) > 1.0e-9)
+            return x.ppq < y.ppq;
+        if (x.kind != y.kind)
+            return static_cast<int> (x.kind) < static_cast<int> (y.kind);
+        if (x.voice != y.voice)
+            return x.voice < y.voice;
+        return x.note < y.note;
+    });
+    EXPECT (midiEqual (ensSorted, uni));
+}
+
+static void testStage5BufferIndependence()
+{
+    const auto cmds = stage5Script();
+    auto a = runPerformanceScript (2002, 0.50f, 0.35f, OutputRole::Ensemble, 72.0, 192.0, 64, 48000.0, cmds);
+    auto b = runPerformanceScript (2002, 0.50f, 0.35f, OutputRole::Ensemble, 72.0, 192.0, 512, 48000.0, cmds);
+    EXPECT (midiEqual (a, b));
+}
+
+static void testStage5FreezeContinuesPattern()
+{
+    ConductorEngine eng;
+    ConductorPerformanceController perf;
+    eng.setCapture (true);
+    eng.setParams ({ 0.55f, 0.35f });
+    eng.reseed (2002);
+    perf.reset (2002);
+
+    auto advance = [&] (double from, double to) {
+        double ppq = from;
+        while (ppq < to - 1.0e-12)
+        {
+            const double end = std::min (to, ppq + 0.25);
+            const int bar = static_cast<int> (std::floor (ppq / 4.0));
+            perf.tick (ppq, bar, eng);
+            pfl::generative::ClockSnapshot snap;
+            snap.playing = true;
+            snap.ppq = ppq;
+            snap.tempoBpm = 72.0;
+            snap.timeSigNumerator = 4;
+            snap.timeSigDenominator = 4;
+            eng.clock().advance (snap);
+            eng.processTimeRange (ppq, end, true);
+            eng.drainPending();
+            ppq = end;
+        }
+    };
+
+    advance (0.0, 32.0);
+    const int genF0 = eng.phrasesFor (pfl::generative::VoiceRole::Foundation).dna().generation;
+    const int genR0 = eng.rhythmFor (pfl::generative::VoiceRole::Pulse).dna().generation;
+    perf.trigger (Command::FreezeOn, 32.0, eng);
+    EXPECT (perf.mode() == Mode::Frozen);
+    advance (32.0, 48.0);
+    EXPECT (eng.phrasesFor (pfl::generative::VoiceRole::Foundation).dna().generation == genF0);
+    EXPECT (eng.rhythmFor (pfl::generative::VoiceRole::Pulse).dna().generation == genR0);
+    // Still emitting while frozen (pattern continues)
+    int ons = 0;
+    for (const auto& e : eng.captured())
+        if (e.kind == MidiMsgKind::NoteOn && e.ppq >= 32.0 && e.ppq < 48.0)
+            ++ons;
+    EXPECT (ons > 0);
+
+    perf.trigger (Command::Mutate, 48.0, eng);
+    EXPECT (perf.mode() == Mode::Frozen); // mutate does not unfreeze
+    EXPECT (perf.state().mutateCount == 1);
+    advance (48.0, 64.0);
+}
+
+static void testStage5CollapseOverridesFreeze()
+{
+    ConductorEngine eng;
+    ConductorPerformanceController perf;
+    eng.reseed (3003);
+    perf.reset (3003);
+    perf.trigger (Command::FreezeOn, 0.0, eng);
+    EXPECT (perf.mode() == Mode::Frozen);
+    perf.trigger (Command::Collapse, 4.0, eng);
+    EXPECT (perf.mode() == Mode::Collapsing);
+    EXPECT (eng.collapsePhase() == 1);
+}
+
+static void testStage5SilencePriorityAndRecovery()
+{
+    ConductorEngine eng;
+    ConductorPerformanceController perf;
+    eng.setCapture (true);
+    eng.setParams ({ 0.55f, 0.35f });
+    eng.reseed (2002);
+    perf.reset (2002);
+
+    auto advance = [&] (double from, double to) {
+        double ppq = from;
+        while (ppq < to - 1.0e-12)
+        {
+            const double end = std::min (to, ppq + 0.25);
+            const int bar = static_cast<int> (std::floor (ppq / 4.0));
+            perf.tick (ppq, bar, eng);
+            pfl::generative::ClockSnapshot snap;
+            snap.playing = true;
+            snap.ppq = ppq;
+            snap.tempoBpm = 72.0;
+            snap.timeSigNumerator = 4;
+            snap.timeSigDenominator = 4;
+            eng.clock().advance (snap);
+            eng.processTimeRange (ppq, end, true);
+            eng.drainPending();
+            ppq = end;
+        }
+    };
+
+    advance (0.0, 16.0);
+    perf.trigger (Command::Collapse, 16.0, eng);
+    advance (16.0, 20.0);
+    perf.trigger (Command::SilenceOn, 20.0, eng);
+    EXPECT (perf.mode() == Mode::Silenced);
+    const size_t before = eng.captured().size();
+    advance (20.0, 28.0);
+    int onsDuring = 0;
+    for (size_t i = before; i < eng.captured().size(); ++i)
+        if (eng.captured()[i].kind == MidiMsgKind::NoteOn)
+            ++onsDuring;
+    EXPECT (onsDuring == 0);
+    assertPaired (eng.captured(), false);
+
+    perf.trigger (Command::SilenceOff, 28.0, eng);
+    EXPECT (perf.mode() == Mode::Collapsed); // restore collapse residue
+}
+
+static void testStage5ReseedDeterministic()
+{
+    ConductorEngine engA, engB;
+    ConductorPerformanceController pA, pB;
+    engA.reseed (2002);
+    engB.reseed (2002);
+    pA.reset (2002);
+    pB.reset (2002);
+    pA.trigger (Command::Reseed, 8.0, engA);
+    pB.trigger (Command::Reseed, 8.0, engB);
+    EXPECT (pA.currentSeed() == pB.currentSeed());
+    EXPECT (pA.currentSeed() != 2002);
+    EXPECT (engA.masterSeed() == pA.currentSeed());
+}
+
+static void testStage5NoteSafetyUnderCommands()
+{
+    const auto cmds = stage5Script();
+    auto ev = runPerformanceScript (2002, 0.55f, 0.40f, OutputRole::Ensemble, 72.0, 192.0, 128, 48000.0, cmds);
+    assertPaired (ev, false);
+}
+
+static void testStage5HungerRegressionNormal()
+{
+    // NORMAL-only run must still show Stage 4B hunger bands
+    auto longRun = runMidiRole (OutputRole::Ensemble, 2002, 0.50f, 0.35f, 72.0, 256, 256, 48000.0);
+    const double totalBeats = 1024.0;
+    auto gw = computeGaps (longRun, 2, totalBeats);
+    auto ga = computeGaps (longRun, 3, totalBeats);
+    EXPECT (gw.events >= 8);
+    EXPECT (ga.events >= 4);
+    EXPECT (gw.median >= 2.0 && gw.median <= 20.0);
+    EXPECT (ga.median >= 16.0 && ga.median <= 96.0);
+}
+
 int main()
 {
     testAlgorithmVersion();
@@ -1159,11 +1440,21 @@ int main()
     testStage4RoleSwitchNoHang();
     testStage4ProjectionBuffers();
     testRoleHungerTimescales();
+    testStage5ScriptDeterminism();
+    testStage5ProjectionUnionUnderCommands();
+    testStage5BufferIndependence();
+    testStage5FreezeContinuesPattern();
+    testStage5CollapseOverridesFreeze();
+    testStage5SilencePriorityAndRecovery();
+    testStage5ReseedDeterministic();
+    testStage5NoteSafetyUnderCommands();
+    testStage5HungerRegressionNormal();
 
     if (gFails == 0)
     {
         std::cout << "broken_conductor_tests: OK (algorithm v"
-                  << ConductorEngine::kAlgorithmVersion << ")\n";
+                  << ConductorEngine::kAlgorithmVersion
+                  << ", perf v" << pfl::conductor_perf::kPerformanceEngineVersion << ")\n";
         return 0;
     }
     std::cerr << "broken_conductor_tests: " << gFails << " failure(s)\n";

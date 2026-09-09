@@ -30,6 +30,15 @@ Every SOURCE must share identical:
 
 Mismatched Density/Mutation ⇒ **different musical universes** (expected). There is no cross-instance sync inside the plug-in.
 
+### Stage 5 performance commands
+
+Also fan identically across instances:
+
+- **FREEZE** / **SILENCE** (toggles)
+- **MUTATE** / **COLLAPSE** / **RESEED** (0→1 edge triggers)
+
+Same command timeline required for projection lock. Divergent RESEED edges ⇒ different seeds ⇒ different universes.
+
 ### Fan-out DENSITY / MUTATION (Live 11)
 
 Practical options (pick one):
