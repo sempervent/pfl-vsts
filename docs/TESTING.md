@@ -6,41 +6,33 @@
 ./scripts/configure.sh
 ./scripts/build.sh
 ./scripts/test.sh
-./scripts/render.sh 90 renders
+./scripts/render.sh renders/phase2
 ```
 
 ## Automated
 
-| Test                   | Covers |
-|------------------------|--------|
-| `dsp_smoke`            | DC blocker; limiter NaN/bounds |
-| `audio_engine_smoke`   | RNG streams; osc pitch sanity; drift bounds; hostile finite across 44.1/48k and buffers 64–1024; delay feedback bound |
+| Test | Covers |
+|------|--------|
+| `dsp_smoke` | DC / limiter safety |
+| `audio_engine_smoke` | Hostile DSP finite; buffers/SR |
+| `composer_tests` | Scale; determinism; seed difference; buffer independence 64–1024; tempo 40 vs 180; timbre RNG isolation; density/mutation; 30‑min long run; seek |
 
-## Renders (manual audition)
+## Phase 2 renders (72 BPM, 4/4)
 
-| File | Settings |
-|------|----------|
-| `renders/drone-organism-audio-engine-v0.1.wav` | 90s, drift 0.35, dirt 0.45, space 0.55, output 0.65 |
-| `renders/clean.wav` | low macros |
-| `renders/nominal.wav` | same as reference |
-| `renders/hostile.wav` | all macros 100% |
+Shared macros unless noted: DRIFT 0.35, DIRT 0.45, SPACE 0.55, OUTPUT 0.65
 
-## Ableton Live 11 — shortest validation
+| File | SEED | DENSITY | MUTATION | Length |
+|------|------|---------|----------|--------|
+| `renders/phase2/seed-1001.wav` | 1001 | 0.45 | 0.35 | 180s |
+| `renders/phase2/seed-2002.wav` | 2002 | 0.45 | 0.35 | 180s |
+| `renders/phase2/seed-3003.wav` | 3003 | 0.45 | 0.35 | 180s |
+| `seed-2002-density-{20,50,80}.wav` | 2002 | varies | 0.35 | 120s |
+| `seed-2002-mutation-{10,40,80}.wav` | 2002 | 0.45 | varies | 120s |
 
-1. `./scripts/build.sh` (copies to `~/Library/Audio/Plug-Ins/...`)
-2. Live → Preferences → Plug-Ins → Rescan (prefer **VST3** if AU missing)
-3. MIDI track → add **PFL Drone Organism** (no MIDI clips required)
-4. Press Play — drone should fade in (D2/A2/D3)
-5. Move DRIFT / DIRT / SPACE / OUTPUT / DENSITY — each should change the sound
-6. Press Stop — texture should release/fade, not click off
-7. Save set → reopen → confirm parameter values restore
+## Ableton
 
-## Validation status
-
-| Milestone | Status |
-|-----------|--------|
-| Build succeeded | Yes |
-| Plugin validation (`auval`) | No (adhoc unsigned) |
-| Host load (Ableton) | Manual — not agent-verified |
-| Audio output (offline render) | Yes |
-| Musical approval | Pending |
+1. Rescan plug-ins (prefer VST3)
+2. Load **PFL Drone Organism** on MIDI track (no notes required)
+3. Set tempo 72 → Play — organism evolves on bar grid
+4. Stop — releases; Play from start — same SEED should recreate composition
+5. Confirm SEED / DENSITY / MUTATION / DRIFT / DIRT / SPACE / OUTPUT
