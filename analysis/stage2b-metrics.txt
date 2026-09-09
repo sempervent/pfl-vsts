@@ -1,0 +1,21 @@
+Broken Conductor Stage 2B metrics (72 BPM, 64 bars, algorithm v3)
+
+seed-1001 notes/bar=0.640625 meanDur=1.31098 offbeat%=58.5366 odd16%=0 vel=[86,96] rhythmGen=4 occupancy=0.34375
+seed-2002 notes/bar=0.84375 meanDur=0.842593 offbeat%=35.1852 odd16%=0 vel=[85,96] rhythmGen=5 occupancy=0.28125
+seed-3003 notes/bar=0.640625 meanDur=1 offbeat%=56.0976 odd16%=19.5122 vel=[73,96] rhythmGen=4 occupancy=0.333333
+seed-2002-d20 notes/bar=0.171875 meanDur=1.75 offbeat%=0 odd16%=0 vel=[96,96] rhythmGen=5 occupancy=0.21875
+seed-2002-d50 notes/bar=0.875 meanDur=0.830357 offbeat%=33.9286 odd16%=0 vel=[85,96] rhythmGen=5 occupancy=0.28125
+seed-2002-d80 notes/bar=1.70312 meanDur=1.09174 offbeat%=25.6881 odd16%=25.6881 vel=[78,96] rhythmGen=4 occupancy=0.5
+seed-2002-m10 notes/bar=0.796875 meanDur=0.936275 offbeat%=31.3725 odd16%=0 vel=[84,96] rhythmGen=3 occupancy=0.25
+seed-2002-m40 notes/bar=0.84375 meanDur=0.824074 offbeat%=37.037 odd16%=0 vel=[85,96] rhythmGen=5 occupancy=0.28125
+seed-2002-m80 notes/bar=1.09375 meanDur=0.653571 offbeat%=40 odd16%=18.5714 vel=[78,96] rhythmGen=10 occupancy=0.34375
+2b-A-d0-m0 notes/bar=0.078125 meanDur=0.75 offbeat%=0 odd16%=0 vel=[96,96] rhythmGen=3 occupancy=0.09375
+2b-B-d1-m0 notes/bar=2.5 meanDur=0.855346 offbeat%=40 odd16%=20 vel=[78,94] rhythmGen=3 occupancy=0.5
+2b-C-d05-m1 notes/bar=1.23438 meanDur=0.601266 offbeat%=39.2405 odd16%=17.7215 vel=[78,96] rhythmGen=16 occupancy=0.34375
+2b-D-d1-m1 notes/bar=3.14062 meanDur=0.69125 offbeat%=31.8408 odd16%=25.3731 vel=[70,96] rhythmGen=15 occupancy=0.5625
+
+automation sections (8 bars each):
+  bars1-8  d.10/m.10 ons=1
+  bars9-16 d1.0/m.10 ons=14
+  bars17-24 d1/m1 ons=13
+  bars25-32 d.25/m.80 ons=4

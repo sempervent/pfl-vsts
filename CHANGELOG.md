@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Broken Conductor — Stage 2B (control response)
+
+- Root cause: host params reached engine, but RhythmDNA occupancy baked at birth; mutation lifespan not shortened live; pitch eval too weak at mut=1
+- Fix: density expression gate + rebuild on large Δdensity; lifespan shorten on mutation; wider occupancy; stronger pitch evolution
+- Algorithm **v3**; endpoint + live automation tests; metrics in `analysis/stage2b-metrics.txt`
+- pluginval passes; **WAITING FOR USER STAGE 2B ACCEPTANCE**
+- Stage 2 not tagged; Stage 3 not started
+
 ### Broken Conductor — Stage 2 (Rhythmic Language)
 
 - `RhythmDNA` / `RhythmEngine`: sixteenth-grid cells with ancestry and bounded mutation

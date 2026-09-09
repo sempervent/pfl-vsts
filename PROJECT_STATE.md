@@ -4,17 +4,16 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**Broken Conductor Stage 2** — Rhythmic Language (algorithm v2).  
-**WAITING FOR USER STAGE 2 HOST ACCEPTANCE.** Stage 3 not started.
+**Broken Conductor Stage 2B** — DENSITY/MUTATION live control response (algorithm v3).  
+**WAITING FOR USER STAGE 2B ACCEPTANCE.** Stage 3 not started. Stage 2 not tagged complete.
 
 ## Branch / tags
 
-- Working: `broken-conductor-stage2-rhythm`
-- Stage 1C lock: `broken-conductor-stage1c-ableton-verified` @ `c9bacb2`
-- Stage 1B lock: `broken-conductor-stage1b-ableton` @ `6e43fb6`
-- Engine Stage 1 lock: `broken-conductor-stage1` @ `72d742e`
-- Pre-BC DO: `drone-organism-pre-broken-conductor`
-- DO Phase 4: `drone-organism-phase4-performance`
+- Working: `broken-conductor-stage2b-control-response`
+- Stage 2 baseline (failing controls): `broken-conductor-stage2-rhythm` @ `5d33a32`
+- Stage 1C: `broken-conductor-stage1c-ableton-verified` @ `c9bacb2`
+- Stage 1B: `broken-conductor-stage1b-ableton` @ `6e43fb6`
+- Stage 1 engine: `broken-conductor-stage1` @ `72d742e`
 
 ## Build / test
 
@@ -25,44 +24,24 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 ./build/tests/pfl_broken_conductor_render renders/broken-conductor
 ```
 
-## Plugin artifacts
-
-```text
-~/Library/Audio/Plug-Ins/VST3/PFL Broken Conductor.vst3
-renders/broken-conductor/stage2-seed-2002.mid
-renders/broken-conductor/stage2-metrics.txt
-```
-
----
-
-## Drone Organism
-
-| Field | Value |
-|-------|--------|
-| Status | Software milestone complete (Phase 4); listening/controller validation pending |
-| Composer | v3 |
-| Performance-engine | v1 |
-
 ## Broken Conductor
 
 | Field | Value |
 |-------|--------|
-| Engine | **Stage 2** RhythmDNA + PhraseDNA (algorithm **v2**) |
-| Host shell | Stage 1C stereo in+out Instrument |
+| Engine | algorithm **v3** (Stage 2B control response) |
+| Host | Stage 1C stereo in+out; Live open+route verified at Stage 2 |
 | Voices | Foundation only |
-| Params | SEED, DENSITY, MUTATION |
-| Formats | AU + VST3 |
-| Unit tests | `broken_conductor_tests` (v2) + `plugin_identity_tests` + DO regression |
+| Params | SEED, DENSITY, MUTATION — must be audibly distinct |
 
-### Ableton host acceptance
+### Ableton
 
 | Check | Status |
 |-------|--------|
-| Stage 1C HOST INSTANTIATION | **VERIFIED** |
-| Stage 1C END-TO-END MIDI ROUTING | **NOT YET RECORDED** |
-| Stage 2 pluginval | Pass |
-| Stage 2 Live open + audible MIDI + syncopation + clean stop | **WAITING FOR USER STAGE 2 HOST ACCEPTANCE** |
+| Stage 1C instantiation | VERIFIED |
+| Stage 2 open + MIDI route + audible | VERIFIED (creative director) |
+| Stage 2 DENSITY/MUTATION endpoints | **FAILED** → Stage 2B fix |
+| Stage 2B endpoint/automation acceptance | **WAITING FOR USER STAGE 2B ACCEPTANCE** |
 
-### Next software task
+### Next
 
-After Stage 2 Live confirmation: **Stage 3 multi-voice** only when explicitly requested.
+After Stage 2B Ableton pass: tag Stage 2 complete. Stage 3 only when explicitly requested.
