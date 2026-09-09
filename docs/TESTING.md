@@ -15,7 +15,8 @@
 |------|--------|
 | `dsp_smoke` | DC / limiter safety |
 | `audio_engine_smoke` | Hostile DSP finite; buffers/SR |
-| `composer_tests` | Scale; determinism; seed difference; buffer independence 64–1024; tempo 40 vs 180; timbre RNG isolation; density/mutation; 30‑min long run; seek |
+| `composer_tests` | Scale; determinism; seed difference; buffer independence; tempo; timbre isolation; density/mutation; long run; seek |
+| `phrase_tests` | Algorithm v3; DNA determinism; mutation lineage; phrase/timbre isolation; buffer independence |
 
 ## Phase 2 renders (72 BPM, 4/4)
 
