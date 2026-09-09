@@ -1,0 +1,14 @@
+# Broken Conductor Stage 3 ensemble trace
+# algorithm=4 seed=2002 density=0 mutation=0.35
+# foundationRhythmDNA gen=4 bars=2 DNA:X_..............................
+# format: bar.beat.slot ROLE EVENT ... [REASON]
+5.1.0 FOUNDATION note 38 vel 96 NORMAL
+5.1.2 FOUNDATION off  38 dur 0.5
+7.1.0 FOUNDATION note 38 vel 96 NORMAL
+7.1.2 FOUNDATION off  38 dur 0.5
+9.1.0 FOUNDATION note 38 vel 96 NORMAL
+9.1.2 FOUNDATION off  38 dur 0.5
+19.1.0 FOUNDATION note 38 vel 96 NORMAL
+19.1.2 FOUNDATION off  38 dur 0.5
+31.1.1 FOUNDATION note 38 vel 77 NORMAL
+31.1.3 FOUNDATION off  38 dur 0.5

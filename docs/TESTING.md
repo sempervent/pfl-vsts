@@ -25,7 +25,7 @@
 Ableton Live 11.3.43 Broken Conductor Stage 2 acceptance is **PASS** (instantiation, MIDI From routing, audible target, live DENSITY/MUTATION).  
 Build/scanner ≠ instantiate ≠ routing ≠ control response — all distinguished. See `docs/BROKEN_CONDUCTOR.md`.
 
-Broken Conductor algorithm **v3** tests cover sixteenth grid, odd buffers, awkward tempos, density/mutation endpoints, and live automation determinism.
+Broken Conductor algorithm **v4** tests cover ensemble roles, collision ownership, RNG isolation, sixteenth grid, odd buffers, awkward tempos, density/mutation endpoints, live automation determinism, and long-run soak.
 
 ```text
 compile ≠ artifact ≠ scanner ≠ Live instantiates ≠ MIDI routable ≠ target sounds

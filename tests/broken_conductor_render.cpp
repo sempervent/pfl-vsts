@@ -1,15 +1,18 @@
 #include "generative/ConductorEngine.h"
+#include "generative/EnsembleTypes.h"
 #include "generative/Scale.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <map>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -31,17 +34,15 @@ static void writeTrace (const fs::path& path, const std::vector<MidiTraceEvent>&
                         const ConductorEngine& eng)
 {
     std::ofstream out (path);
-    out << "# Broken Conductor Stage 2 trace\n";
+    out << "# Broken Conductor Stage 3 ensemble trace\n";
     out << "# algorithm=" << ConductorEngine::kAlgorithmVersion
         << " seed=" << eng.masterSeed()
         << " density=" << eng.params().density
         << " mutation=" << eng.params().mutation << "\n";
-    out << "# rhythmDNA " << eng.rhythm().dna().describe() << "\n";
-    out << "# format: bar.beat.slot EVENT ...\n";
+    out << "# foundationRhythmDNA " << eng.rhythm().dna().describe() << "\n";
+    out << "# format: bar.beat.slot ROLE EVENT ... [REASON]\n";
 
-    for (const auto& e : eng.rhythm().traces())
-        out << "# rhythm " << e.kind << " bar=" << e.bar << " " << e.detail << "\n";
-
+    std::map<std::tuple<int, int, int>, double> open;
     for (const auto& e : ev)
     {
         const double beatsPerBar = 4.0;
@@ -51,12 +52,30 @@ static void writeTrace (const fs::path& path, const std::vector<MidiTraceEvent>&
         const int slot = static_cast<int> (std::lround ((inBar - std::floor (inBar)) / 0.25));
         char loc[32];
         std::snprintf (loc, sizeof loc, "%d.%d.%d", bar, beat, slot);
+        const char* role = pfl::generative::voiceRoleName (
+            static_cast<pfl::generative::VoiceRole> (std::clamp (e.voice, 0, 3)));
+        const char* reason = pfl::generative::interactionReasonName (
+            static_cast<pfl::generative::InteractionReason> (e.reason));
 
         if (e.kind == MidiMsgKind::NoteOn)
-            out << loc << " NOTE " << noteName (e.note) << " midi=" << e.note
-                << " vel=" << e.velocity << "\n";
+        {
+            open[{ e.voice, e.channel, e.note }] = e.ppq;
+            out << loc << " " << role << " note " << e.note
+                << " vel " << e.velocity << " " << reason << "\n";
+        }
         else if (e.kind == MidiMsgKind::NoteOff)
-            out << loc << " OFF  " << noteName (e.note) << " midi=" << e.note << "\n";
+        {
+            double dur = 0.0;
+            auto key = std::tuple { e.voice, e.channel, e.note };
+            auto it = open.find (key);
+            if (it != open.end())
+            {
+                dur = e.ppq - it->second;
+                open.erase (it);
+            }
+            out << loc << " " << role << " off  " << e.note
+                << " dur " << dur << "\n";
+        }
     }
 }
 
@@ -163,6 +182,127 @@ static void writeSmf (const fs::path& path, const std::vector<MidiTraceEvent>& e
     out.write (reinterpret_cast<const char*> (file.data()), static_cast<std::streamsize> (file.size()));
 }
 
+/** Type-1 SMF with four named tracks (diagnostic; all events still channel 1). */
+static void writeSmfRoles (const fs::path& path, const std::vector<MidiTraceEvent>& ev, double bpm)
+{
+    const int tpq = 480;
+    auto writeU32 = [] (std::vector<uint8_t>& b, uint32_t v) {
+        b.push_back (static_cast<uint8_t> ((v >> 24) & 0xff));
+        b.push_back (static_cast<uint8_t> ((v >> 16) & 0xff));
+        b.push_back (static_cast<uint8_t> ((v >> 8) & 0xff));
+        b.push_back (static_cast<uint8_t> (v & 0xff));
+    };
+    auto writeU16 = [] (std::vector<uint8_t>& b, uint16_t v) {
+        b.push_back (static_cast<uint8_t> ((v >> 8) & 0xff));
+        b.push_back (static_cast<uint8_t> (v & 0xff));
+    };
+    auto writeVar = [] (std::vector<uint8_t>& b, uint32_t v) {
+        uint8_t buf[5];
+        int n = 0;
+        buf[n++] = static_cast<uint8_t> (v & 0x7f);
+        while ((v >>= 7) > 0)
+            buf[n++] = static_cast<uint8_t> ((v & 0x7f) | 0x80);
+        while (n--)
+            b.push_back (buf[n]);
+    };
+
+    auto trackForRole = [&] (int role, const char* name) {
+        struct MidiEv
+        {
+            int tick;
+            uint8_t status;
+            uint8_t d1;
+            uint8_t d2;
+        };
+        std::vector<MidiEv> events;
+        for (const auto& e : ev)
+        {
+            if (e.voice != role)
+                continue;
+            MidiEv m;
+            m.tick = static_cast<int> (std::lround (e.ppq * tpq));
+            if (e.kind == MidiMsgKind::NoteOn)
+            {
+                m.status = static_cast<uint8_t> (0x90 | ((e.channel - 1) & 0x0f));
+                m.d1 = static_cast<uint8_t> (e.note);
+                m.d2 = static_cast<uint8_t> (e.velocity);
+            }
+            else if (e.kind == MidiMsgKind::NoteOff)
+            {
+                m.status = static_cast<uint8_t> (0x80 | ((e.channel - 1) & 0x0f));
+                m.d1 = static_cast<uint8_t> (e.note);
+                m.d2 = 0;
+            }
+            else
+                continue;
+            events.push_back (m);
+        }
+        std::sort (events.begin(), events.end(), [] (const MidiEv& a, const MidiEv& b) {
+            if (a.tick != b.tick)
+                return a.tick < b.tick;
+            const bool aOff = (a.status & 0xf0) == 0x80;
+            const bool bOff = (b.status & 0xf0) == 0x80;
+            return aOff && ! bOff;
+        });
+
+        std::vector<uint8_t> track;
+        // track name
+        writeVar (track, 0);
+        track.push_back (0xff);
+        track.push_back (0x03);
+        track.push_back (static_cast<uint8_t> (std::strlen (name)));
+        for (const char* p = name; *p; ++p)
+            track.push_back (static_cast<uint8_t> (*p));
+
+        if (role == 0)
+        {
+            writeVar (track, 0);
+            track.push_back (0xff);
+            track.push_back (0x51);
+            track.push_back (0x03);
+            const uint32_t usPerQuarter = static_cast<uint32_t> (std::lround (60000000.0 / bpm));
+            track.push_back (static_cast<uint8_t> ((usPerQuarter >> 16) & 0xff));
+            track.push_back (static_cast<uint8_t> ((usPerQuarter >> 8) & 0xff));
+            track.push_back (static_cast<uint8_t> (usPerQuarter & 0xff));
+        }
+
+        int lastTick = 0;
+        for (const auto& e : events)
+        {
+            writeVar (track, static_cast<uint32_t> (std::max (0, e.tick - lastTick)));
+            lastTick = e.tick;
+            track.push_back (e.status);
+            track.push_back (e.d1);
+            track.push_back (e.d2);
+        }
+        writeVar (track, 0);
+        track.push_back (0xff);
+        track.push_back (0x2f);
+        track.push_back (0x00);
+        return track;
+    };
+
+    const char* names[] = { "Foundation", "Pulse", "Wanderer", "Accent" };
+    std::vector<std::vector<uint8_t>> tracks;
+    for (int r = 0; r < 4; ++r)
+        tracks.push_back (trackForRole (r, names[r]));
+
+    std::vector<uint8_t> file;
+    file.insert (file.end(), { 'M', 'T', 'h', 'd' });
+    writeU32 (file, 6);
+    writeU16 (file, 1); // format 1
+    writeU16 (file, 4);
+    writeU16 (file, static_cast<uint16_t> (tpq));
+    for (const auto& track : tracks)
+    {
+        file.insert (file.end(), { 'M', 'T', 'r', 'k' });
+        writeU32 (file, static_cast<uint32_t> (track.size()));
+        file.insert (file.end(), track.begin(), track.end());
+    }
+    std::ofstream out (path, std::ios::binary);
+    out.write (reinterpret_cast<const char*> (file.data()), static_cast<std::streamsize> (file.size()));
+}
+
 struct Metrics
 {
     int bars = 0;
@@ -245,10 +385,12 @@ static RunResult runFull (uint64_t seed, float density, float mutation, int bars
 int main (int argc, char** argv)
 {
     const fs::path outDir = (argc > 1) ? fs::path (argv[1])
-                                       : fs::path ("renders/broken-conductor");
+                                       : fs::path ("renders/broken-conductor/stage3");
     fs::create_directories (outDir);
 
-    std::ofstream metrics (outDir / "stage2-metrics.txt");
+    std::ofstream metrics (outDir / "stage3-metrics.txt");
+    metrics << "Broken Conductor Stage 3 metrics (72 BPM, algorithm v"
+            << ConductorEngine::kAlgorithmVersion << ")\n\n";
 
     struct Case
     {
@@ -256,97 +398,54 @@ int main (int argc, char** argv)
         uint64_t seed;
         float density;
         float mutation;
+        int bars;
     };
 
     const Case cases[] = {
-        { "seed-1001", 1001, 0.45f, 0.35f },
-        { "seed-2002", 2002, 0.45f, 0.35f },
-        { "seed-3003", 3003, 0.45f, 0.35f },
-        { "seed-2002-d20", 2002, 0.20f, 0.35f },
-        { "seed-2002-d50", 2002, 0.50f, 0.35f },
-        { "seed-2002-d80", 2002, 0.80f, 0.35f },
-        { "seed-2002-m10", 2002, 0.45f, 0.10f },
-        { "seed-2002-m40", 2002, 0.45f, 0.40f },
-        { "seed-2002-m80", 2002, 0.45f, 0.80f },
-        // Stage 2B extremes
-        { "2b-A-d0-m0", 2002, 0.0f, 0.0f },
-        { "2b-B-d1-m0", 2002, 1.0f, 0.0f },
-        { "2b-C-d05-m1", 2002, 0.5f, 1.0f },
-        { "2b-D-d1-m1", 2002, 1.0f, 1.0f },
+        { "seed-1001", 1001, 0.50f, 0.35f, 96 },
+        { "seed-2002", 2002, 0.50f, 0.35f, 96 },
+        { "seed-3003", 3003, 0.50f, 0.35f, 96 },
+        { "density-0", 2002, 0.0f, 0.35f, 64 },
+        { "density-1", 2002, 1.0f, 0.35f, 64 },
+        { "mutation-0", 2002, 0.50f, 0.0f, 64 },
+        { "mutation-1", 2002, 0.50f, 1.0f, 64 },
     };
-
-    constexpr int kBars = 64;
-    metrics << "Broken Conductor Stage 2B metrics (72 BPM, 64 bars, algorithm v"
-            << ConductorEngine::kAlgorithmVersion << ")\n\n";
 
     for (const auto& c : cases)
     {
-        auto result = runFull (c.seed, c.density, c.mutation, kBars);
-        const std::string base = std::string ("stage2-") + c.label;
-        writeTrace (outDir / (base + ".txt"), result.events, result.engine);
-        writeSmf (outDir / (base + ".mid"), result.events, 72.0);
+        auto result = runFull (c.seed, c.density, c.mutation, c.bars);
+        writeTrace (outDir / (std::string (c.label) + ".txt"), result.events, result.engine);
+        writeSmf (outDir / (std::string (c.label) + ".mid"), result.events, 72.0);
+        if (std::string (c.label) == "seed-2002")
+            writeSmfRoles (outDir / "seed-2002-roles.mid", result.events, 72.0);
 
-        const auto m = computeMetrics (result.events, kBars, result.engine.rhythm().dna().generation);
-        const double notesPerBar = static_cast<double> (m.noteOns) / static_cast<double> (kBars);
-        const double meanDur = m.durCount > 0 ? m.sumDur / m.durCount : 0.0;
-        const double pctOff = m.noteOns > 0 ? 100.0 * m.offbeat / m.noteOns : 0.0;
-        const double pct16 = m.noteOns > 0 ? 100.0 * m.odd16 / m.noteOns : 0.0;
-
-        metrics << c.label
-                << " notes/bar=" << notesPerBar
-                << " meanDur=" << meanDur
-                << " offbeat%=" << pctOff
-                << " odd16%=" << pct16
-                << " vel=[" << m.velMin << "," << m.velMax << "]"
-                << " rhythmGen=" << m.rhythmGens
-                << " occupancy=" << result.engine.rhythm().dna().occupancy()
-                << "\n";
-
-        std::cout << "Wrote " << base << " (" << result.events.size() << " events)\n";
-    }
-
-    // Dynamic automation artifact
-    {
-        ConductorEngine eng;
-        eng.setCapture (true);
-        eng.setParams ({ 0.10f, 0.10f });
-        eng.reseed (2002);
-        eng.rhythm().setTraceEnabled (true);
-        double ppq = 0.0;
-        const double end = 128.0; // 32 bars
-        while (ppq < end)
+        int roleOns[4] = {};
+        double rolePitchSum[4] = {};
+        for (const auto& e : result.events)
         {
-            const int bar = static_cast<int> (std::floor (ppq / 4.0));
-            if (bar == 8)
-                eng.setParams ({ 1.00f, 0.10f });
-            if (bar == 16)
-                eng.setParams ({ 1.00f, 1.00f });
-            if (bar == 24)
-                eng.setParams ({ 0.25f, 0.80f });
-            const double next = std::min (end, ppq + 1.0);
-            eng.clock().advance ({ true, ppq, 72.0, 4, 4 });
-            eng.processTimeRange (ppq, next, true);
-            eng.drainPending();
-            ppq = next;
+            if (e.kind != MidiMsgKind::NoteOn)
+                continue;
+            const int v = std::clamp (e.voice, 0, 3);
+            ++roleOns[v];
+            rolePitchSum[v] += e.note;
         }
-        writeTrace (outDir / "stage2b-automation.txt", eng.captured(), eng);
-        writeSmf (outDir / "stage2b-automation.mid", eng.captured(), 72.0);
-
-        auto sectionOns = [&] (double a, double b) {
-            int n = 0;
-            for (const auto& e : eng.captured())
-                if (e.kind == MidiMsgKind::NoteOn && e.ppq >= a && e.ppq < b)
-                    ++n;
-            return n;
-        };
-        metrics << "\nautomation sections (8 bars each):\n"
-                << "  bars1-8  d.10/m.10 ons=" << sectionOns (0, 32) << "\n"
-                << "  bars9-16 d1.0/m.10 ons=" << sectionOns (32, 64) << "\n"
-                << "  bars17-24 d1/m1 ons=" << sectionOns (64, 96) << "\n"
-                << "  bars25-32 d.25/m.80 ons=" << sectionOns (96, 128) << "\n";
-        std::cout << "Wrote stage2b-automation\n";
+        metrics << c.label << " dens=" << c.density << " mut=" << c.mutation
+                << " notes/bar=" << (static_cast<double> (roleOns[0] + roleOns[1] + roleOns[2] + roleOns[3])
+                                     / static_cast<double> (c.bars));
+        for (int r = 0; r < 4; ++r)
+        {
+            metrics << " " << pfl::generative::voiceRoleName (static_cast<pfl::generative::VoiceRole> (r))
+                    << "=" << roleOns[r];
+            if (roleOns[r] > 0)
+                metrics << "(meanPitch=" << (rolePitchSum[r] / roleOns[r]) << ")";
+        }
+        metrics << " collisions_attempted=" << result.engine.collisionStats().attemptedSamePitch
+                << " shifted=" << result.engine.collisionStats().shifted
+                << " suppressed=" << result.engine.collisionStats().suppressed
+                << "\n";
+        std::cout << "Wrote " << c.label << " (" << result.events.size() << " events)\n";
     }
 
-    std::cout << "Metrics: " << (outDir / "stage2-metrics.txt") << "\n";
+    std::cout << "Metrics: " << (outDir / "stage3-metrics.txt") << "\n";
     return 0;
 }

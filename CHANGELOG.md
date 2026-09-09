@@ -2,11 +2,19 @@
 
 ## Unreleased
 
+### Broken Conductor — Stage 3 (four-voice ensemble) — DRAFT
+
+- Algorithm **v4**: Foundation / Pulse / Wanderer / Accent on one MIDI channel
+- Two-phase propose → arbitrate; congestion / gap / call-response; same-pitch collision policy
+- Independent per-role RNG streams; MidiNoteTracker role ownership
+- Metrics/MIDI under `renders/broken-conductor/stage3/`
+- Draft PR; Ableton acceptance **PENDING** (do not tag complete yet)
+
 ### Broken Conductor — Stage 2 COMPLETE
 
 - Creative-director Ableton acceptance **PASS** (Stage 2B controls + routing + audible MIDI)
 - Tag: `broken-conductor-stage2-complete`
-- Stage 3 not started
+- PRs #1–#3 merged to `main`
 
 ### Broken Conductor — Stage 2B (control response)
 
