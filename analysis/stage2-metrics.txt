@@ -1,0 +1,11 @@
+Broken Conductor Stage 2 objective metrics (72 BPM, 64 bars)
+
+seed-1001 notes/bar=1.34375 meanDur=1.18023 offbeat%=37.2093 odd16%=0 vel=[86,96] rhythmGen=3 occupancy=0.40625
+seed-2002 notes/bar=1.82812 meanDur=0.855603 offbeat%=45.2991 odd16%=0 vel=[84,94] rhythmGen=3 occupancy=0.40625
+seed-3003 notes/bar=1.67188 meanDur=0.953271 offbeat%=80.3738 odd16%=0 vel=[78,96] rhythmGen=2 occupancy=0.395833
+seed-2002-d20 notes/bar=1.67188 meanDur=0.42217 offbeat%=29.9065 odd16%=10.2804 vel=[70,96] rhythmGen=3 occupancy=0.1875
+seed-2002-d50 notes/bar=1.82812 meanDur=0.855603 offbeat%=45.2991 odd16%=0 vel=[84,94] rhythmGen=3 occupancy=0.40625
+seed-2002-d80 notes/bar=2 meanDur=0.992126 offbeat%=25 odd16%=25 vel=[78,94] rhythmGen=3 occupancy=0.5
+seed-2002-m10 notes/bar=1.79688 meanDur=0.866228 offbeat%=44.3478 odd16%=0 vel=[84,94] rhythmGen=3 occupancy=0.40625
+seed-2002-m40 notes/bar=1.82812 meanDur=0.855603 offbeat%=45.2991 odd16%=0 vel=[84,94] rhythmGen=3 occupancy=0.40625
+seed-2002-m80 notes/bar=1.875 meanDur=0.773109 offbeat%=20 odd16%=26.6667 vel=[78,94] rhythmGen=4 occupancy=0.375

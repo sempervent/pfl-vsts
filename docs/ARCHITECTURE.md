@@ -33,20 +33,24 @@ Performance lives in `src/performance/`.
 
 Composer algorithm version: **3**. Performance-engine version: **1**.
 
-## Broken Conductor (Stage 1 / 1B)
+## Broken Conductor (Stage 2)
 
 ```text
 Host tempo / transport / PPQ
         ↓
-ConductorEngine (algorithm v1 — Foundation MIDI voice)
+ConductorEngine (algorithm v2 — Foundation + RhythmDNA)
         ↓
 MidiTraceEvent → MidiNoteTracker → juce::MidiBuffer
         ↓
-Stereo audio in (ignored) + silent stereo out (Ableton MIDI-out VST3 shell; no synthesis)
+Stereo audio in (ignored) + silent stereo out (Ableton MIDI-out VST3 shell)
 ```
 
-Stage 1B host flags: `IS_SYNTH`, not `IS_MIDI_EFFECT`; VST3 `Instrument|Synth`.  
-See `docs/BROKEN_CONDUCTOR.md` for Ableton routing.
+RhythmDNA: sixteenth cells (`X`/`_`/`.`), 1–4 bar phrases, bounded mutation.  
+Pitch Phrase DNA remains independent (`phrase` vs `rhythm` RNG).  
+Stage 1C host flags unchanged. See `docs/BROKEN_CONDUCTOR.md`.
+
+Composer algorithm version: **3** (Drone Organism). Conductor algorithm version: **2**.
+Performance-engine version: **1**.
 
 ## Audio engine (Drone Organism)
 
