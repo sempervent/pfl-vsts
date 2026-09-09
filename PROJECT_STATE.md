@@ -8,7 +8,7 @@ Authoritative session memory for PFL Generative Instruments / Drone Organism.
 
 ## Last known-good commit
 
-Phase 4: (this milestone — see git log)  
+Phase 4: `ef9e4ee` / tag `drone-organism-phase4-performance`  
 Phase 3: `5419d83` / tag `drone-organism-phase3-phrase-dna` / branch `phase3-phrase-dna-baseline`  
 Phase 2: `aea6cdd` / tag `drone-organism-phase2-composer`  
 Audio engine: tag `drone-organism-audio-v0.1`
