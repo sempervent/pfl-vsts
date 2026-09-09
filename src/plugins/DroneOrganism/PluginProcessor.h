@@ -9,6 +9,7 @@
 #include "dsp/SafetyLimiter.h"
 #include "dsp/Voice.h"
 #include "generative/Composer.h"
+#include "performance/PerformanceController.h"
 
 #include <array>
 
@@ -47,6 +48,10 @@ public:
 
     juce::AudioProcessorValueTreeState& getAPVTS() noexcept { return apvts_; }
     pfl::generative::Composer& composer() noexcept { return composer_; }
+    pfl::performance::PerformanceController& performance() noexcept { return performance_; }
+
+    /** UI / test helpers — edge-trigger performance commands at current PPQ. */
+    void performanceTrigger (pfl::performance::Command cmd) noexcept;
 
     void setOfflineTransportPlaying (bool playing) noexcept { offlineTransportPlaying_ = playing; }
     void setOfflineTempoBpm (double bpm) noexcept { offlineTempoBpm_ = bpm; }
@@ -58,19 +63,31 @@ public:
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     void syncComposerFromParams() noexcept;
-    void applyComposerToVoices (bool transportPlaying) noexcept;
+    void pollPerformanceParams (double ppq) noexcept;
+    void applyPerformanceSeedToParams (uint64_t seed) noexcept;
+    void applyComposerToVoices (bool transportPlaying, const pfl::performance::PerformanceOutputs& perf) noexcept;
     bool readHostClock (pfl::generative::ClockSnapshot& snap, int numSamples) noexcept;
 
     juce::AudioProcessorValueTreeState apvts_;
     pfl::generative::Composer composer_;
+    pfl::performance::PerformanceController performance_;
 
     double sampleRate_ = 44100.0;
     int lastSeedParam_ = -1;
+    bool suppressingSeedSync_ = false;
     bool offlineTransportPlaying_ = true;
     double offlineTempoBpm_ = 72.0;
     double offlinePpq_ = 0.0;
     bool wasPlaying_ = false;
     double lastHostPpq_ = 0.0;
+
+    bool lastFreezeParam_ = false;
+    bool lastSilenceParam_ = false;
+    float lastMutateParam_ = 0.0f;
+    float lastCollapseParam_ = 0.0f;
+    float lastReseedParam_ = 0.0f;
+
+    pfl::performance::PerformanceOutputs lastPerfOut_{};
 
     std::array<pfl::dsp::Voice, kNumVoices> voices_;
     static constexpr std::array<float, kNumVoices> kVoiceDriftOffsets { -3.5f, 2.0f, 1.5f };

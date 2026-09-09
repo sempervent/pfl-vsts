@@ -8,6 +8,7 @@ DroneOrganismProcessor::DroneOrganismProcessor()
       apvts_ (*this, nullptr, "PARAMS", createParameterLayout())
 {
     composer_.reseed (1001);
+    performance_.reset (1001);
 }
 
 DroneOrganismProcessor::~DroneOrganismProcessor() = default;
@@ -42,6 +43,26 @@ juce::AudioProcessorValueTreeState::ParameterLayout DroneOrganismProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "output", 1 }, "Output",
         juce::NormalisableRange<float> { 0.0f, 1.0f, 0.001f, 0.5f }, 0.65f));
+
+    // Performance — toggles
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "freeze", 1 }, "Freeze", false));
+
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "silence", 1 }, "Silence", false));
+
+    // Performance — momentary triggers (0→1 edge fires once; hold at 1 does not retrigger)
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "mutate", 1 }, "Mutate",
+        juce::NormalisableRange<float> { 0.0f, 1.0f, 0.01f }, 0.0f));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "collapse", 1 }, "Collapse",
+        juce::NormalisableRange<float> { 0.0f, 1.0f, 0.01f }, 0.0f));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "reseed", 1 }, "Reseed",
+        juce::NormalisableRange<float> { 0.0f, 1.0f, 0.01f }, 0.0f));
 
     return { params.begin(), params.end() };
 }
@@ -82,8 +103,17 @@ void DroneOrganismProcessor::prepareToPlay (double sampleRate, int /*samplesPerB
     lastSeedParam_ = -1;
     wasPlaying_ = false;
     lastHostPpq_ = 0.0;
+    lastFreezeParam_ = false;
+    lastSilenceParam_ = false;
+    lastMutateParam_ = 0.0f;
+    lastCollapseParam_ = 0.0f;
+    lastReseedParam_ = 0.0f;
+
+    // Transient performance gestures reset safely on prepare
     syncComposerFromParams();
-    applyComposerToVoices (false);
+    performance_.reset (static_cast<uint64_t> (apvts_.getRawParameterValue ("seed")->load()));
+    composer_.setCompositionLocked (false);
+    applyComposerToVoices (false, {});
 }
 
 void DroneOrganismProcessor::releaseResources() {}
@@ -100,8 +130,39 @@ void DroneOrganismProcessor::resetOfflineTimeline() noexcept
     wasPlaying_ = false;
     lastHostPpq_ = 0.0;
     lastSeedParam_ = -1;
+    lastFreezeParam_ = false;
+    lastSilenceParam_ = false;
+    lastMutateParam_ = 0.0f;
+    lastCollapseParam_ = 0.0f;
+    lastReseedParam_ = 0.0f;
     syncComposerFromParams();
-    composer_.reseed (static_cast<uint64_t> (apvts_.getRawParameterValue ("seed")->load()));
+    const auto seed = static_cast<uint64_t> (apvts_.getRawParameterValue ("seed")->load());
+    composer_.reseed (seed);
+    performance_.reset (seed);
+}
+
+void DroneOrganismProcessor::performanceTrigger (pfl::performance::Command cmd) noexcept
+{
+    performance_.trigger (cmd, lastHostPpq_, composer_);
+    uint64_t newSeed = 0;
+    if (performance_.takeSeedDirty (newSeed))
+        applyPerformanceSeedToParams (newSeed);
+}
+
+void DroneOrganismProcessor::applyPerformanceSeedToParams (uint64_t seed) noexcept
+{
+    suppressingSeedSync_ = true;
+    lastSeedParam_ = static_cast<int> (seed);
+    if (auto* p = apvts_.getParameter ("seed"))
+    {
+        const float norm = p->convertTo0to1 (static_cast<float> (seed));
+        p->setValueNotifyingHost (norm);
+    }
+    dirtBus_.setNoiseSeed (seed);
+    for (int i = 0; i < kNumVoices; ++i)
+        voices_[static_cast<size_t> (i)].setDriftRng (
+            pfl::generative::DeterministicRNG::derived (seed, 0x44524654ull + static_cast<uint64_t> (i)));
+    suppressingSeedSync_ = false;
 }
 
 void DroneOrganismProcessor::syncComposerFromParams() noexcept
@@ -111,10 +172,14 @@ void DroneOrganismProcessor::syncComposerFromParams() noexcept
     cp.mutation = apvts_.getRawParameterValue ("mutation")->load();
     composer_.setParams (cp);
 
+    if (suppressingSeedSync_)
+        return;
+
     const int seed = static_cast<int> (apvts_.getRawParameterValue ("seed")->load());
     if (lastSeedParam_ < 0)
     {
         composer_.reseed (static_cast<uint64_t> (seed));
+        performance_.reset (static_cast<uint64_t> (seed));
         lastSeedParam_ = seed;
         dirtBus_.setNoiseSeed (static_cast<uint64_t> (seed));
         for (int i = 0; i < kNumVoices; ++i)
@@ -125,6 +190,7 @@ void DroneOrganismProcessor::syncComposerFromParams() noexcept
     else if (seed != lastSeedParam_)
     {
         composer_.requestReseed (static_cast<uint64_t> (seed));
+        performance_.reset (static_cast<uint64_t> (seed));
         lastSeedParam_ = seed;
         dirtBus_.setNoiseSeed (static_cast<uint64_t> (seed));
         for (int i = 0; i < kNumVoices; ++i)
@@ -132,6 +198,48 @@ void DroneOrganismProcessor::syncComposerFromParams() noexcept
                 pfl::generative::DeterministicRNG::derived (static_cast<uint64_t> (seed),
                                                             0x44524654ull + static_cast<uint64_t> (i)));
     }
+}
+
+void DroneOrganismProcessor::pollPerformanceParams (double ppq) noexcept
+{
+    const bool freeze = apvts_.getRawParameterValue ("freeze")->load() > 0.5f;
+    const bool silence = apvts_.getRawParameterValue ("silence")->load() > 0.5f;
+    const float mutate = apvts_.getRawParameterValue ("mutate")->load();
+    const float collapse = apvts_.getRawParameterValue ("collapse")->load();
+    const float reseed = apvts_.getRawParameterValue ("reseed")->load();
+
+    if (freeze && ! lastFreezeParam_)
+        performance_.trigger (pfl::performance::Command::FreezeOn, ppq, composer_);
+    else if (! freeze && lastFreezeParam_)
+        performance_.trigger (pfl::performance::Command::FreezeOff, ppq, composer_);
+
+    if (silence && ! lastSilenceParam_)
+        performance_.trigger (pfl::performance::Command::SilenceOn, ppq, composer_);
+    else if (! silence && lastSilenceParam_)
+        performance_.trigger (pfl::performance::Command::SilenceOff, ppq, composer_);
+
+    if (mutate >= 0.5f && lastMutateParam_ < 0.5f)
+        performance_.trigger (pfl::performance::Command::Mutate, ppq, composer_);
+    if (collapse >= 0.5f && lastCollapseParam_ < 0.5f)
+        performance_.trigger (pfl::performance::Command::Collapse, ppq, composer_);
+    if (reseed >= 0.5f && lastReseedParam_ < 0.5f)
+    {
+        const double beatsPerSec = offlineTempoBpm_ / 60.0;
+        // Prefer ~1 bar fade at current tempo
+        const int fadeSamples = static_cast<int> (sampleRate_ * (4.0 / std::max (1.0e-9, beatsPerSec)));
+        performance_.armReseedFade (std::max (1, fadeSamples / 4)); // ~1 beat
+        performance_.trigger (pfl::performance::Command::Reseed, ppq, composer_);
+    }
+
+    lastFreezeParam_ = freeze;
+    lastSilenceParam_ = silence;
+    lastMutateParam_ = mutate;
+    lastCollapseParam_ = collapse;
+    lastReseedParam_ = reseed;
+
+    uint64_t newSeed = 0;
+    if (performance_.takeSeedDirty (newSeed))
+        applyPerformanceSeedToParams (newSeed);
 }
 
 bool DroneOrganismProcessor::readHostClock (pfl::generative::ClockSnapshot& snap, int numSamples) noexcept
@@ -179,9 +287,11 @@ bool DroneOrganismProcessor::readHostClock (pfl::generative::ClockSnapshot& snap
     return false;
 }
 
-void DroneOrganismProcessor::applyComposerToVoices (bool transportPlaying) noexcept
+void DroneOrganismProcessor::applyComposerToVoices (bool transportPlaying,
+                                                    const pfl::performance::PerformanceOutputs& perf) noexcept
 {
-    const float drift = apvts_.getRawParameterValue ("drift")->load();
+    float drift = apvts_.getRawParameterValue ("drift")->load();
+    drift = std::clamp (drift + perf.driftBoost, 0.0f, 1.0f);
 
     for (int i = 0; i < kNumVoices; ++i)
     {
@@ -196,7 +306,12 @@ void DroneOrganismProcessor::applyComposerToVoices (bool transportPlaying) noexc
         p.pan = kPans[static_cast<size_t> (i)];
         p.driftAmount = drift;
         p.driftVoiceOffsetCents = kVoiceDriftOffsets[static_cast<size_t> (i)] * (0.35f + drift);
-        p.gate = transportPlaying && cv.active;
+
+        bool active = cv.active;
+        if (perf.maxActiveVoices >= 0 && i >= perf.maxActiveVoices)
+            active = false;
+
+        p.gate = transportPlaying && active;
         voices_[static_cast<size_t> (i)].setParams (p);
     }
 }
@@ -221,6 +336,8 @@ void DroneOrganismProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     const double ppqStart = snap.ppq;
     const double ppqEnd = ppqStart + blockBeats;
 
+    pollPerformanceParams (ppqStart);
+
     // Transport start from beginning → full deterministic restart
     if (snap.playing && ! wasPlaying_)
     {
@@ -228,6 +345,7 @@ void DroneOrganismProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         {
             const auto seed = static_cast<uint64_t> (apvts_.getRawParameterValue ("seed")->load());
             composer_.reseed (seed);
+            performance_.reset (seed);
         }
     }
 
@@ -243,18 +361,40 @@ void DroneOrganismProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     if (snap.playing)
     {
         composer_.clock().advance (snap);
+
+        const double bpb = std::max (1.0e-9, composer_.clock().beatsPerBar());
+        const int first = static_cast<int> (std::floor (ppqStart / bpb + 1.0e-9)) + 1;
+        const int last = static_cast<int> (std::floor (ppqEnd / bpb + 1.0e-9));
+        for (int b = first; b <= last; ++b)
+            performance_.onBar (b, static_cast<double> (b) * bpb, composer_);
+
+        performance_.syncComposerLock (composer_);
+
+        // Density override during collapse (params for any unlocked path)
+        if (lastPerfOut_.densityOverride >= 0.0f)
+        {
+            pfl::generative::ComposerParams cp = composer_.params();
+            cp.density = lastPerfOut_.densityOverride;
+            composer_.setParams (cp);
+        }
+
         composer_.processTimeRange (ppqStart, ppqEnd, true);
     }
 
     wasPlaying_ = snap.playing;
     lastHostPpq_ = snap.playing ? ppqEnd : ppqStart;
 
-    applyComposerToVoices (snap.playing);
+    float dirt = apvts_.getRawParameterValue ("dirt")->load();
+    float spaceAmt = apvts_.getRawParameterValue ("space")->load();
+    dirt = std::clamp (dirt + lastPerfOut_.dirtBoost, 0.0f, 1.0f);
+    spaceAmt = std::clamp (spaceAmt + lastPerfOut_.spaceBoost, 0.0f, 1.0f);
+
+    applyComposerToVoices (snap.playing, lastPerfOut_);
 
     transportGate_.setTime (snap.playing ? 0.8f : 2.5f);
     transportGate_.setTarget (snap.playing ? 1.0f : 0.0f);
-    dirtBus_.setDirt (apvts_.getRawParameterValue ("dirt")->load());
-    space_.setSpace (apvts_.getRawParameterValue ("space")->load());
+    dirtBus_.setDirt (dirt);
+    space_.setSpace (spaceAmt);
     outputSmooth_.setTarget (apvts_.getRawParameterValue ("output")->load());
 
     const int numSamples = buffer.getNumSamples();
@@ -264,6 +404,11 @@ void DroneOrganismProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
     for (int i = 0; i < numSamples; ++i)
     {
+        pfl::performance::PerformanceOutputs perf;
+        performance_.processSample (sampleRate_, perf);
+        lastPerfOut_ = perf;
+        performance_.syncComposerLock (composer_);
+
         float mixL = 0.0f, mixR = 0.0f;
         for (auto& v : voices_)
         {
@@ -287,8 +432,9 @@ void DroneOrganismProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         R = limiterRight_.processSample (R);
 
         const float outG = outputSmooth_.getNext();
-        L = std::clamp (L * outG, -0.99f, 0.99f);
-        R = std::clamp (R * outG, -0.99f, 0.99f);
+        const float fade = perf.silenceGain * perf.reseedFade;
+        L = std::clamp (L * outG * fade, -0.99f, 0.99f);
+        R = std::clamp (R * outG * fade, -0.99f, 0.99f);
 
         left[i] = L;
         if (right != nullptr)
@@ -326,6 +472,27 @@ void DroneOrganismProcessor::setStateInformation (const void* data, int sizeInBy
     if (auto xml = getXmlFromBinary (data, sizeInBytes))
         if (xml->hasTagName (apvts_.state.getType()))
             apvts_.replaceState (juce::ValueTree::fromXml (*xml));
+
+    // Transient performance gestures do not restore mid-collapse/freeze
+    lastFreezeParam_ = false;
+    lastSilenceParam_ = false;
+    lastMutateParam_ = 0.0f;
+    lastCollapseParam_ = 0.0f;
+    lastReseedParam_ = 0.0f;
+    if (auto* freeze = apvts_.getParameter ("freeze"))
+        freeze->setValueNotifyingHost (0.0f);
+    if (auto* silence = apvts_.getParameter ("silence"))
+        silence->setValueNotifyingHost (0.0f);
+    if (auto* mutate = apvts_.getParameter ("mutate"))
+        mutate->setValueNotifyingHost (0.0f);
+    if (auto* collapse = apvts_.getParameter ("collapse"))
+        collapse->setValueNotifyingHost (0.0f);
+    if (auto* reseed = apvts_.getParameter ("reseed"))
+        reseed->setValueNotifyingHost (0.0f);
+
+    const auto seed = static_cast<uint64_t> (apvts_.getRawParameterValue ("seed")->load());
+    performance_.reset (seed);
+    composer_.setCompositionLocked (false);
 }
 
 //==============================================================================
