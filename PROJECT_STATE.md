@@ -24,7 +24,7 @@ Manual held D-minor-pentatonic stack (MIDI 38/45/53/60). No generative compositi
 
 ## Last known good Git commit
 
-`101e5eb` — Phase 0 shell (update after Phase 1 commit)
+`0f1e639` — Phase 1 multi-voice drone with drift and safe output
 
 ## Build command
 
