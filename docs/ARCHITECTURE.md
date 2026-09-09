@@ -1,33 +1,33 @@
 # Architecture
 
-## Audio engine v0.1 signal flow
+## Phase 2 signal / control flow
 
 ```text
-Host transport (Option B gate)
+Host tempo / transport / PPQ
         ↓
-3 Voices (dual osc + drift + env + pan)
+MusicalClock (seek detect, bar grid)
         ↓
-DirtBus (pre-gain, sat, noise, resonant LP)
+Composer  (pitch / memory / density / mutation)
         ↓
-FeedbackDelay (stereo, crossfeed, tanh feedback)
+MusicalEvent → voice pitch + gate targets
         ↓
-Transport fade
-        ↓
-DCBlocker → SafetyLimiter → OUTPUT → hard ceiling
+Existing audio engine (Voice / Drift / Dirt / Space / Safety)
         ↓
 Stereo out
 ```
 
-Pitch values are assigned in the processor (fixed D2/A2/D3). Oscillators do not own compositional pitch logic.
+Composer lives in `src/generative/` and has **no** knowledge of oscillators, filters, distortion, or GUI.
 
-## Future (Phase 2+)
+## Generative modules
 
 ```text
-Host Transport → Composer → MusicalEvent → Voices / MIDI
+DeterministicRNG  MusicalEvent  Scale
+MusicalMemory     RandomWalk    MusicalClock
+Composer
 ```
 
-Composer must not depend on oscillator implementation.
+## Audio engine (unchanged responsibility)
 
-## Formats
+Voices, drift, dirt bus, feedback delay, DC blocker, safety limiter — see audio-engine v0.1.
 
-JUCE 8.0.15 — AU / VST3 / Standalone via CMake + Ninja.
+Recoverable via branch/tag: `audio-engine-v0.1` / `drone-organism-audio-v0.1`.
