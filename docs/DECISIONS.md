@@ -188,7 +188,44 @@ Creative director confirmed the Stage 1C binary opens and works as a loadable de
 
 ### Decisions
 
-1. Tag `broken-conductor-stage1c-ableton-verified` at the Stage 1C fix commit; do not rewrite earlier tags.
+1. Tag `broken-conductor-stage1c-ableton-verified` after documentation of Live open confirmation; do not rewrite earlier tags.
 2. Proceed to Stage 2 Rhythmic Language without revisiting the bus-layout diagnosis unless new evidence appears.
 3. Future PFL MIDI-generator VST3s targeting Live 11 must expose a valid audio input bus (stereo in ignored + silent stereo out is the proven shell).
+
+---
+
+## 2026-09-09 — Broken Conductor Stage 2 Rhythmic Language
+
+### Context
+
+Stage 1C Ableton instantiation verified. Single Foundation voice still used a coarse integer beat grid (`{1,2,4}` durations, per-beat rest draws). Goal: recognizable rhythmic ancestry before multi-voice Stage 3.
+
+### Subagent reconciliation
+
+| Source | Kept |
+|--------|------|
+| Archaeologist | Split `rhythm` from pitch-eval draws; DNA must own onsets |
+| Designer | RhythmDNA cells X/_/.; 16th grid; occupancy caps; 4 mutation ops |
+| Scheduling | Absolute slot iterator `(from,to]`; no per-block RNG |
+| Critic | Stillness quota; no 100% fill; bounded mutation; long bias |
+
+Rejected for v2: triplets, pattern banks, Euclidean, multi-voice, per-block Bernoulli.
+
+### Decisions
+
+1. **`ConductorEngine::kAlgorithmVersion = 2`**. Stage 1 outputs remain at tag `broken-conductor-stage1`.
+2. **`RhythmDNA` / `RhythmEngine`** in `src/generative/RhythmDNA.h`; playback walks cells.
+3. **Grid:** 0.25 beat; durations `{0.25,0.5,1,2,4}` with long bias; max occupancy **0.58**.
+4. **DENSITY** → occupancy band + duration/syncopation; **MUTATION** → DNA lifespan + one-op mutate.
+5. **RNG:** `rhythm` exclusive to RhythmDNA; pitch-eval period moves to `pitch` stream.
+6. Host bus shell unchanged (Stage 1C). Stage 2 requires fresh Live acceptance for MIDI timing.
+7. Stage 3 not started.
+
+### Musical hypotheses
+
+- H1: 2-bar DNA + holds/rests yields recognizable Foundation groove.
+- H2: Eighth offbeats create identity without arpeggiator chatter.
+- H3: Bounded mutation yields `A → A'` kinship across 8–32 bar lifespans.
+- H4: Density 80% still contains rests (occupancy ≤ 0.58).
+
 
