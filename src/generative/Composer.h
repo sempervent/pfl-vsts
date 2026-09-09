@@ -4,6 +4,7 @@
 #include "MusicalClock.h"
 #include "MusicalEvent.h"
 #include "MusicalMemory.h"
+#include "PhraseDNA.h"
 #include "RandomWalk.h"
 #include "Scale.h"
 
@@ -49,14 +50,23 @@ class Composer
 {
 public:
     static constexpr int kMaxVoices = 3;
+    /** Phase 2 = 2; Phrase DNA = 3. Seed output is versioned by this. */
+    static constexpr int kAlgorithmVersion = 3;
 
     Composer() { setupIdentities(); }
 
-    void setEventCapture (bool enabled) noexcept { captureEvents_ = enabled; }
+    void setEventCapture (bool enabled) noexcept
+    {
+        captureEvents_ = enabled;
+        phrases_.setTraceEnabled (enabled);
+    }
 
     const std::vector<MusicalEvent>& capturedEvents() const noexcept { return captured_; }
 
     void clearCaptured() noexcept { captured_.clear(); }
+
+    const PhraseEngine& phrases() const noexcept { return phrases_; }
+    PhraseEngine& phrases() noexcept { return phrases_; }
 
     void reseed (uint64_t masterSeed) noexcept
     {
@@ -68,10 +78,12 @@ public:
         structureRng_ = DeterministicRNG::derived (masterSeed, hashTag ("structure"));
         rhythmRng_ = DeterministicRNG::derived (masterSeed, hashTag ("rhythm"));
         timbreRng_ = DeterministicRNG::derived (masterSeed, hashTag ("timbre"));
+        auto phraseRng = DeterministicRNG::derived (masterSeed, hashTag ("phrase"));
         memory_.clear();
         captured_.clear();
         lastProcessedPpq_ = 0.0;
         clock_.reset (0.0);
+        phrases_.reset (phraseRng, params_.mutation, 0);
         initVoicesAtOrigin (0.0, 0);
     }
 
@@ -86,7 +98,9 @@ public:
         structureRng_ = DeterministicRNG::derived (newSeed, hashTag ("structure"));
         rhythmRng_ = DeterministicRNG::derived (newSeed, hashTag ("rhythm"));
         timbreRng_ = DeterministicRNG::derived (newSeed, hashTag ("timbre"));
+        auto phraseRng = DeterministicRNG::derived (newSeed, hashTag ("phrase"));
         memory_.clear();
+        phrases_.reset (phraseRng, params_.mutation, barIndex);
         initVoicesAtOrigin (barPpq, barIndex);
     }
 
@@ -101,7 +115,11 @@ public:
 
     uint64_t masterSeed() const noexcept { return masterSeed_; }
 
-    void setParams (const ComposerParams& p) noexcept { params_ = p; }
+    void setParams (const ComposerParams& p) noexcept
+    {
+        params_ = p;
+        phrases_.setMutation (p.mutation);
+    }
 
     ComposerParams params() const noexcept { return params_; }
 
@@ -244,6 +262,8 @@ private:
         // Population adjust at bar
         adjustPopulation (barIndex, barPpq);
 
+        phrases_.onBar (barIndex);
+
         for (int i = 0; i < kMaxVoices; ++i)
         {
             auto& v = voices_[static_cast<size_t> (i)];
@@ -330,19 +350,52 @@ private:
         if (pitchRng_.nextFloat() > chance)
             return; // stillness
 
-        const PitchState next = walk_.step (v.pitch, pitchRng_, memory_, m, id.chromaticBoost);
-        // Clamp to voice register
-        PitchState clamped = next;
-        clamped.octave = std::clamp (clamped.octave, id.minOctave, id.maxOctave);
-        if (! clamped.chromatic)
-            clamped.midiNote = Scale::toMidi (clamped.degree, clamped.octave);
-        else
-            clamped.midiNote = std::clamp (clamped.midiNote, Scale::toMidi (0, id.minOctave), Scale::toMidi (0, id.maxOctave) + 10);
+        PitchState next = v.pitch;
+        const bool followPhrase = (pitchRng_.nextFloat() < phrases_.followBias());
 
-        if (clamped.midiNote == v.pitch.midiNote)
+        if (followPhrase)
+        {
+            const int delta = phrases_.consumePhraseStep();
+            next.degree += delta;
+            next.chromatic = false;
+            while (next.degree < 0)
+            {
+                next.degree += Scale::kNumDegrees;
+                --next.octave;
+            }
+            while (next.degree >= Scale::kNumDegrees)
+            {
+                next.degree -= Scale::kNumDegrees;
+                ++next.octave;
+            }
+            next.octave = std::clamp (next.octave, id.minOctave, id.maxOctave);
+            next.midiNote = Scale::toMidi (next.degree, next.octave);
+
+            // Mild memory soft-reject: if heavily penalized, fall back toward phrase root motion (0)
+            const float pen = memory_.penaltyMultiplier (next.midiNote);
+            if (pen < 0.25f && pitchRng_.nextFloat() > pen)
+            {
+                next.degree = id.preferredDegree;
+                next.octave = std::clamp (v.pitch.octave, id.minOctave, id.maxOctave);
+                next.midiNote = Scale::toMidi (next.degree, next.octave);
+            }
+        }
+        else
+        {
+            next = walk_.step (v.pitch, pitchRng_, memory_, m, id.chromaticBoost);
+            next.octave = std::clamp (next.octave, id.minOctave, id.maxOctave);
+            if (! next.chromatic)
+                next.midiNote = Scale::toMidi (next.degree, next.octave);
+            else
+                next.midiNote = std::clamp (next.midiNote,
+                                           Scale::toMidi (0, id.minOctave),
+                                           Scale::toMidi (0, id.maxOctave) + 10);
+        }
+
+        if (next.midiNote == v.pitch.midiNote)
             return;
 
-        v.pitch = clamped;
+        v.pitch = next;
         memory_.push (v.pitch.midiNote);
         emit ({ barPpq, 0.0, v.pitch.midiNote, 0.75f, voiceIndex, EventType::NoteChange });
     }
@@ -365,6 +418,7 @@ private:
     DeterministicRNG structureRng_{};
     DeterministicRNG rhythmRng_{};
     DeterministicRNG timbreRng_{};
+    PhraseEngine phrases_{};
     std::array<VoiceIdentity, kMaxVoices> identities_{};
     std::array<VoiceRuntime, kMaxVoices> voices_{};
     double lastProcessedPpq_ = 0.0;

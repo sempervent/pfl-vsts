@@ -4,13 +4,13 @@ Authoritative session memory for PFL Generative Instruments / Drone Organism.
 
 ## Current milestone
 
-**Phase 2 — Deterministic Generative Composition** (audio engine v0.1 preserved)
+**Phase 3 — Phrase DNA** (composer algorithm v3). Phase 2 recoverable.
 
 ## Last known-good commit
 
-`aea6cdd` — Phase 2 composer integration  
-Audio-engine recovery: tag `drone-organism-audio-v0.1` / branch `audio-engine-v0.1`
-Tag: `drone-organism-phase2-composer`
+*(updated on commit)* Phrase DNA integration  
+Phase 2: `aea6cdd` / tag `drone-organism-phase2-composer` / branch `phase2-composer-baseline`  
+Audio engine: tag `drone-organism-audio-v0.1`
 
 ## Build command
 
@@ -23,31 +23,31 @@ Tag: `drone-organism-phase2-composer`
 
 ```bash
 ./scripts/test.sh
-./scripts/render.sh renders/phase2
+./scripts/render.sh phase3 renders/phase3/candidate
 ```
 
 ## Plugin artifacts
 
 ```text
-build/.../Release/AU/PFL Drone Organism.component
-build/.../Release/VST3/PFL Drone Organism.vst3
-build/.../Release/Standalone/PFL Drone Organism.app
 ~/Library/Audio/Plug-Ins/VST3/PFL Drone Organism.vst3
+AU + Standalone under build/.../DroneOrganism_artefacts/Release/
 ```
 
 ## Render artifacts
 
 ```text
-renders/phase2/seed-1001.wav
-renders/phase2/seed-2002.wav
-renders/phase2/seed-3003.wav
-renders/phase2/seed-2002-density-{20,50,80}.wav
-renders/phase2/seed-2002-mutation-{10,40,80}.wav
+renders/phase3/baseline/baseline-seed-2002.wav
+renders/phase3/baseline/baseline-seed-3003.wav
+renders/phase3/candidate/candidate-seed-2002.wav          # 8 min
+renders/phase3/candidate/candidate-seed-3003.wav
+renders/phase3/candidate/candidate-seed-4242.wav
+renders/phase3/candidate/candidate-seed-*-180s.wav        # matched A/B length
+analysis/comparison.md
 ```
 
 ## Current Composer behavior
 
-Host-PPQ bar-grid composer: D minor pentatonic weighted walk + memory + voice identities; density gates 1–3 voices; mutation scales change rate/chromatic chance. No weather/tension/weirdness.
+v3: Phase 2 walk + Phrase DNA influence/mutation. Density/mutation/seed/transport unchanged in role.
 
 ## Current default seed
 
@@ -55,65 +55,51 @@ Host-PPQ bar-grid composer: D minor pentatonic weighted walk + memory + voice id
 
 ## Current scale
 
-D minor pentatonic (`0,3,5,7,10`)
+D minor pentatonic
 
 ## Current random-walk model
 
-stay 20 / ±1 25 / ±2 10 / octave 5 / mutation 5 — reshaped by MUTATION; gravity on root/fifth/m3
+Unchanged base weights; often overridden by phrase step when following DNA
 
 ## Current memory model
 
-12-event MIDI history with recency penalties
+12-event penalties (unchanged)
 
-## DENSITY behavior
+## Phrase DNA
 
-Target active voices 1–3; mild effect on eval period / change probability; enter/exit on bar boundaries
+3–7 degree deltas; follow bias; single-element mutation every 8–32 bars; isolated `phrase` stream
 
-## MUTATION behavior
+## DENSITY / MUTATION / Transport / Seeking
 
-Compositional evolution rate (not DSP drift); low = stillness, high = more walks + chromatic
+As Phase 2; MUTATION also shortens phrase lifespan and lowers follow bias slightly
 
-## Transport policy
+## Composer algorithm version
 
-Stop = no new events + release. Play from start (ppq≤0.25) = full reseed. Continue = PPQ advance.
+`3`
 
-## Seeking policy
+## Verified determinism / buffers / sample rates
 
-Discontinuous jump → reseed + deterministic fast-forward to seek PPQ (not continuous mid-performance identity)
-
-## Verified determinism
-
-Same seed/params → identical event sequences (composer_tests)
-
-## Verified buffer sizes
-
-64, 128, 256, 512, 1024
-
-## Verified sample rates
-
-44.1k / 48k on DSP smoke; composer is sample-rate agnostic (PPQ/bar based)
+composer_tests + phrase_tests green (incl. phrase lineage + isolation + buffer independence)
 
 ## Known defects
 
-- `auval` adhoc AU registration failure
-- Ableton load not agent-verified
-- Seek path ≠ uninterrupted playback identity (documented)
-- Foundation can walk toward very low register (D1)
+- Prior auval/Ableton notes unchanged
+- Occasional no-op DNA mutations (e.g. 0→0) still advance generation
+- Seed output **differs** from v2 by design (versioned)
 
 ## Known musical weaknesses
 
-- Default density 0.45 uses 2 voices — texture voice often absent until density raised
-- Over 64 bars at defaults, pitch changes are sparse (by design); may feel static to some listeners
-- Chromatic events exist but are minority; may be hard to notice at low mutation
+- Phrase follow may still be subtle at dens=0.45 (few pitch events to reveal DNA)
+- No approved patches yet
 
 ## Approved patches/seeds
 
-None yet — see `docs/APPROVED_PATCHES.md`
+None
 
 ## Questions for creative director
 
-See session report (seed identity, pacing, density/mutation feel, stillness, preserve patch)
+Phrase DNA listening set (see session report)
 
 ## Next highest-value engineering step
 
-Await musical evaluation before weather / FREEZE / phrase DNA / MIDI out
+Await Phrase DNA evaluation before Weather / Weirdness / FREEZE

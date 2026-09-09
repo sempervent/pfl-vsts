@@ -169,24 +169,39 @@ static int renderJob (const juce::File& outDir, const RenderJob& job)
 
 int main (int argc, char** argv)
 {
-    const juce::File outDir = (argc > 1) ? juce::File (argv[1])
-                                         : juce::File::getCurrentWorkingDirectory().getChildFile ("renders/phase2");
+    const std::string mode = (argc > 1) ? argv[1] : "phase2";
+    const juce::File outDir = (argc > 2) ? juce::File (argv[2])
+                                         : juce::File::getCurrentWorkingDirectory().getChildFile (
+                                               mode == "phase3" ? "renders/phase3/candidate" : "renders/phase2");
 
     const float drift = 0.35f, dirt = 0.45f, space = 0.55f, output = 0.65f;
     const double bpm = 72.0;
-    const double dur = 180.0;
 
-    std::vector<RenderJob> jobs = {
-        { "seed-1001.wav", 1001, 0.45f, 0.35f, drift, dirt, space, output, bpm, dur },
-        { "seed-2002.wav", 2002, 0.45f, 0.35f, drift, dirt, space, output, bpm, dur },
-        { "seed-3003.wav", 3003, 0.45f, 0.35f, drift, dirt, space, output, bpm, dur },
-        { "seed-2002-density-20.wav", 2002, 0.20f, 0.35f, drift, dirt, space, output, bpm, 120.0 },
-        { "seed-2002-density-50.wav", 2002, 0.50f, 0.35f, drift, dirt, space, output, bpm, 120.0 },
-        { "seed-2002-density-80.wav", 2002, 0.80f, 0.35f, drift, dirt, space, output, bpm, 120.0 },
-        { "seed-2002-mutation-10.wav", 2002, 0.45f, 0.10f, drift, dirt, space, output, bpm, 120.0 },
-        { "seed-2002-mutation-40.wav", 2002, 0.45f, 0.40f, drift, dirt, space, output, bpm, 120.0 },
-        { "seed-2002-mutation-80.wav", 2002, 0.45f, 0.80f, drift, dirt, space, output, bpm, 120.0 },
-    };
+    std::vector<RenderJob> jobs;
+    if (mode == "phase3")
+    {
+        const double dur = 480.0; // 8 minutes
+        jobs = {
+            { "candidate-seed-2002.wav", 2002, 0.45f, 0.35f, drift, dirt, space, output, bpm, dur },
+            { "candidate-seed-3003.wav", 3003, 0.45f, 0.35f, drift, dirt, space, output, bpm, dur },
+            { "candidate-seed-4242.wav", 4242, 0.45f, 0.35f, drift, dirt, space, output, bpm, dur },
+        };
+    }
+    else
+    {
+        const double dur = 180.0;
+        jobs = {
+            { "seed-1001.wav", 1001, 0.45f, 0.35f, drift, dirt, space, output, bpm, dur },
+            { "seed-2002.wav", 2002, 0.45f, 0.35f, drift, dirt, space, output, bpm, dur },
+            { "seed-3003.wav", 3003, 0.45f, 0.35f, drift, dirt, space, output, bpm, dur },
+            { "seed-2002-density-20.wav", 2002, 0.20f, 0.35f, drift, dirt, space, output, bpm, 120.0 },
+            { "seed-2002-density-50.wav", 2002, 0.50f, 0.35f, drift, dirt, space, output, bpm, 120.0 },
+            { "seed-2002-density-80.wav", 2002, 0.80f, 0.35f, drift, dirt, space, output, bpm, 120.0 },
+            { "seed-2002-mutation-10.wav", 2002, 0.45f, 0.10f, drift, dirt, space, output, bpm, 120.0 },
+            { "seed-2002-mutation-40.wav", 2002, 0.45f, 0.40f, drift, dirt, space, output, bpm, 120.0 },
+            { "seed-2002-mutation-80.wav", 2002, 0.45f, 0.80f, drift, dirt, space, output, bpm, 120.0 },
+        };
+    }
 
     int rc = 0;
     for (auto& j : jobs)

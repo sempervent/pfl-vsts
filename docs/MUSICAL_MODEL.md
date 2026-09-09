@@ -76,7 +76,18 @@ Master SEED derives independent streams via FNV-ish tag hash + splitmix-style mi
 
 Timbre stream is unused by pitch/voice logic (isolation tested).
 
-## Determinism guarantees
+## Phrase DNA (composer algorithm v3)
+
+Independent `phrase` RNG stream.
+
+- DNA: 3–7 relative degree steps (values in −2…+2)
+- When a voice decides to change pitch, it follows the next DNA step with high probability (follow bias ~0.45–0.88, higher when MUTATION is low)
+- Otherwise free weighted walk (unchanged)
+- Every 8–32 bars (MUTATION shortens lifespan): mutate **one** DNA element (nudge / invert / stay / ±2 / copy neighbor)
+- Trace capture (non-RT, when event capture enabled): born/mutate records
+
+Stillness and voice identities remain primary; phrase proposes direction, does not sequence a loop clip.
+
 
 Same SEED + density + mutation + tempo timeline + bar grid → same MusicalEvent sequence across buffer sizes 64–1024 and tempos 40–180 BPM (bar-based).
 

@@ -18,13 +18,17 @@ Stereo out
 
 Composer lives in `src/generative/` and has **no** knowledge of oscillators, filters, distortion, or GUI.
 
-## Generative modules
+## Architecture
 
 ```text
-DeterministicRNG  MusicalEvent  Scale
-MusicalMemory     RandomWalk    MusicalClock
-Composer
+src/
+  generative/   # Composer, PhraseDNA, RNG, scale, walks, events
+  dsp/          # Voices, FX, safety
+  plugins/
+    DroneOrganism/
 ```
+
+Composer algorithm version is `Composer::kAlgorithmVersion` (currently **3** = Phrase DNA).
 
 ## Audio engine (unchanged responsibility)
 

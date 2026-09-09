@@ -19,6 +19,13 @@ target_include_directories(pfl_composer_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_compile_features(pfl_composer_tests PRIVATE cxx_std_20)
 add_test(NAME composer_tests COMMAND pfl_composer_tests)
 
+add_executable(pfl_phrase_tests
+    phrase_tests.cpp
+)
+target_include_directories(pfl_phrase_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_features(pfl_phrase_tests PRIVATE cxx_std_20)
+add_test(NAME phrase_tests COMMAND pfl_phrase_tests)
+
 add_executable(pfl_offline_render
     offline_render.cpp
 )

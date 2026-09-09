@@ -1,0 +1,3 @@
+composer_algorithm_version=2 (phase2)
+seeds: 2002, 3003
+params: density=0.45 mutation=0.35 drift=0.35 dirt=0.45 space=0.55 output=0.65 tempo=72
