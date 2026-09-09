@@ -1,0 +1,9 @@
+Broken Conductor Stage 3 metrics (72 BPM, algorithm v4)
+
+seed-1001 dens=0.5 mut=0.35 notes/bar=1.11458 FOUNDATION=53(meanPitch=30.1509) PULSE=39(meanPitch=48.2051) WANDERER=15(meanPitch=60.4) ACCENT=0 collisions_attempted=0 shifted=0 suppressed=0
+seed-2002 dens=0.5 mut=0.35 notes/bar=0.635417 FOUNDATION=27(meanPitch=39.1111) PULSE=15(meanPitch=54.8) WANDERER=18(meanPitch=65.7778) ACCENT=1(meanPitch=74) collisions_attempted=0 shifted=0 suppressed=0
+seed-3003 dens=0.5 mut=0.35 notes/bar=1.01042 FOUNDATION=74(meanPitch=40.3919) PULSE=13(meanPitch=53.4615) WANDERER=9(meanPitch=61.6667) ACCENT=1(meanPitch=74) collisions_attempted=0 shifted=0 suppressed=0
+density-0 dens=0 mut=0.35 notes/bar=0.078125 FOUNDATION=5(meanPitch=38) PULSE=0 WANDERER=0 ACCENT=0 collisions_attempted=0 shifted=0 suppressed=0
+density-1 dens=1 mut=0.35 notes/bar=4.26562 FOUNDATION=128(meanPitch=39.0078) PULSE=114(meanPitch=50.7193) WANDERER=30(meanPitch=60.9) ACCENT=1(meanPitch=74) collisions_attempted=0 shifted=0 suppressed=0
+mutation-0 dens=0.5 mut=0 notes/bar=0.484375 FOUNDATION=17(meanPitch=38.3529) PULSE=6(meanPitch=50.3333) WANDERER=7(meanPitch=60) ACCENT=1(meanPitch=74) collisions_attempted=0 shifted=0 suppressed=0
+mutation-1 dens=0.5 mut=1 notes/bar=0.671875 FOUNDATION=17(meanPitch=34.4706) PULSE=16(meanPitch=51.125) WANDERER=9(meanPitch=59.1111) ACCENT=1(meanPitch=74) collisions_attempted=0 shifted=0 suppressed=0

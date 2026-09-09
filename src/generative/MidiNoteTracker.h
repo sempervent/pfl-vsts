@@ -12,27 +12,45 @@ namespace pfl::generative
 
 /**
  * Bounded MIDI note ownership — guarantees stop/seek/reset can panic cleanly.
+ * Stage 3: each active (channel, note) tracks owning role + scheduled end.
  * Channels 1..16, notes 0..127.
  */
 class MidiNoteTracker
 {
 public:
+    struct Ownership
+    {
+        bool active = false;
+        int role = -1; // VoiceRole as int, or -1
+        double startPpq = 0.0;
+        double endPpq = 0.0;
+    };
+
     void clear() noexcept
     {
-        active_.fill (false);
+        for (auto& o : owners_)
+            o = Ownership{};
         count_ = 0;
     }
 
     bool noteOn (int channel, int note) noexcept
     {
+        return noteOn (channel, note, -1, 0.0, 0.0);
+    }
+
+    bool noteOn (int channel, int note, int role, double startPpq, double endPpq) noexcept
+    {
         if (! valid (channel, note))
             return false;
         const size_t i = index (channel, note);
-        if (! active_[i])
+        if (! owners_[i].active)
         {
-            active_[i] = true;
+            owners_[i].active = true;
             ++count_;
         }
+        owners_[i].role = role;
+        owners_[i].startPpq = startPpq;
+        owners_[i].endPpq = endPpq;
         return true;
     }
 
@@ -41,20 +59,47 @@ public:
         if (! valid (channel, note))
             return false;
         const size_t i = index (channel, note);
-        if (active_[i])
+        if (owners_[i].active)
         {
-            active_[i] = false;
+            owners_[i] = Ownership{};
             --count_;
             return true;
         }
         return false;
     }
 
+    /** NoteOff only if the named role currently owns the pitch. */
+    bool noteOffIfOwner (int channel, int note, int role) noexcept
+    {
+        if (! valid (channel, note))
+            return false;
+        const size_t i = index (channel, note);
+        if (! owners_[i].active || owners_[i].role != role)
+            return false;
+        owners_[i] = Ownership{};
+        --count_;
+        return true;
+    }
+
     bool isActive (int channel, int note) const noexcept
     {
         if (! valid (channel, note))
             return false;
-        return active_[index (channel, note)];
+        return owners_[index (channel, note)].active;
+    }
+
+    int ownerRole (int channel, int note) const noexcept
+    {
+        if (! isActive (channel, note))
+            return -1;
+        return owners_[index (channel, note)].role;
+    }
+
+    Ownership ownership (int channel, int note) const noexcept
+    {
+        if (! valid (channel, note))
+            return {};
+        return owners_[index (channel, note)];
     }
 
     int activeCount() const noexcept { return count_; }
@@ -73,7 +118,7 @@ public:
                 e.channel = ch;
                 e.note = n;
                 e.velocity = 0;
-                e.voice = voice;
+                e.voice = owners_[index (ch, n)].role >= 0 ? owners_[index (ch, n)].role : voice;
                 e.kind = MidiMsgKind::NoteOff;
                 out.push_back (e);
             }
@@ -92,7 +137,7 @@ private:
         return static_cast<size_t> ((channel - 1) * 128 + note);
     }
 
-    std::array<bool, 16 * 128> active_ {};
+    std::array<Ownership, 16 * 128> owners_ {};
     int count_ = 0;
 };
 

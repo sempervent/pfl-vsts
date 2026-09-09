@@ -4,13 +4,15 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**Broken Conductor Stage 2 — COMPLETE** (algorithm v3, Ableton-accepted).  
-Stage 3 multi-voice **NOT STARTED**.
+**Broken Conductor Stage 3 — IN DEVELOPMENT** (algorithm v4, four-voice ensemble).
+Draft PR stacks on Stage 2 tip; **Ableton host acceptance PENDING**.
+Stage 2 remains recoverable via `broken-conductor-stage2-complete`.
 
 ## Branch / tags
 
-- Stage 2 complete: `broken-conductor-stage2-complete` @ `879c038`
-- Stage 2B branch: `broken-conductor-stage2b-control-response`
+- Stage 3 working: `pr/broken-conductor-stage3`
+- Stage 2 complete: `broken-conductor-stage2-complete` @ `0f42d56` (content also on `main` via merged PRs #1–#3)
+- Stage 2B branch tip: `pr/broken-conductor-stage2b`
 - Stage 2 rhythm: `broken-conductor-stage2-rhythm` @ `5d33a32`
 - Stage 1C: `broken-conductor-stage1c-ableton-verified` @ `c9bacb2`
 - Stage 1B: `broken-conductor-stage1b-ableton` @ `6e43fb6`
@@ -23,7 +25,7 @@ Stage 3 multi-voice **NOT STARTED**.
 ./scripts/configure.sh
 ./scripts/build.sh
 ./scripts/test.sh
-./build/tests/pfl_broken_conductor_render renders/broken-conductor
+./build/tests/pfl_broken_conductor_render renders/broken-conductor/stage3
 ```
 
 ## Drone Organism
@@ -38,11 +40,11 @@ Stage 3 multi-voice **NOT STARTED**.
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 2 COMPLETE** |
-| Engine | algorithm **v3** (RhythmDNA + live DENSITY/MUTATION) |
+| Status | **Stage 3 DRAFT** (awaiting Ableton acceptance) |
+| Engine | algorithm **v4** (Foundation / Pulse / Wanderer / Accent) |
 | Host shell | Stage 1C stereo in (ignored) + silent stereo out |
-| Voices | Foundation only |
-| Params | SEED, DENSITY, MUTATION |
+| Voices | Four roles, **one MIDI channel** |
+| Params | SEED, DENSITY, MUTATION (no per-role controls yet) |
 
 ### Ableton host acceptance
 

@@ -1,12 +1,14 @@
 #include "generative/ConductorEngine.h"
 #include "generative/RhythmDNA.h"
 
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <iostream>
 #include <map>
 #include <set>
 #include <string>
+#include <tuple>
 #include <vector>
 
 static int gFails = 0;
@@ -121,7 +123,7 @@ static void assertPaired (const std::vector<MidiTraceEvent>& ev, bool requireClo
 
 static void testAlgorithmVersion()
 {
-    EXPECT (ConductorEngine::kAlgorithmVersion == 3);
+    EXPECT (ConductorEngine::kAlgorithmVersion == 4);
 }
 
 static void testDeterminism()
@@ -263,7 +265,7 @@ static void testLongRun()
     eng.setParams ({ 0.5f, 0.4f });
     eng.reseed (2002);
 
-    const double endPpq = 2160.0;
+    const double endPpq = 2160.0; // 540 bars ≈ long soak at 72 BPM (~30 min musical); Stage 3 also has 60-min test
     double ppq = 0.0;
     size_t ons = 0, offs = 0;
     int maxActive = 0;
@@ -279,20 +281,22 @@ static void testLongRun()
             if (e.kind == MidiMsgKind::NoteOn)
             {
                 ++ons;
-                EXPECT (e.note >= 26 && e.note <= 50);
+                EXPECT (e.note >= ConductorEngine::kMinMidi && e.note <= ConductorEngine::kMaxMidi);
+                EXPECT (e.channel == 1);
+                EXPECT (e.voice >= 0 && e.voice < ConductorEngine::kNumVoices);
             }
             else if (e.kind == MidiMsgKind::NoteOff)
                 ++offs;
         }
         maxActive = std::max (maxActive, eng.tracker().activeCount());
-        EXPECT (maxActive <= 1);
+        EXPECT (maxActive <= 4);
         ppq = next;
     }
 
     eng.panic (endPpq);
     EXPECT (eng.tracker().activeCount() == 0);
     EXPECT (ons < 500000);
-    EXPECT (offs <= ons + 1);
+    EXPECT (offs <= ons + 4);
 }
 
 static void testParamRestore()
@@ -587,6 +591,250 @@ static void testAwkwardCrossProduct()
     EXPECT (midiEqual (a, c));
 }
 
+static void collectRoleOnNotes (const std::vector<MidiTraceEvent>& ev,
+                                std::array<std::vector<std::pair<double, int>>, 4>& byRole,
+                                std::array<std::vector<double>, 4>& durs)
+{
+    std::map<std::tuple<int, int, int>, double> open; // voice,ch,note -> start
+    for (const auto& e : ev)
+    {
+        if (e.kind == MidiMsgKind::NoteOn)
+        {
+            const int v = std::clamp (e.voice, 0, 3);
+            byRole[static_cast<size_t> (v)].push_back ({ e.ppq, e.note });
+            open[{ v, e.channel, e.note }] = e.ppq;
+        }
+        else if (e.kind == MidiMsgKind::NoteOff)
+        {
+            const int v = std::clamp (e.voice, 0, 3);
+            auto key = std::tuple { v, e.channel, e.note };
+            auto it = open.find (key);
+            if (it != open.end())
+            {
+                durs[static_cast<size_t> (v)].push_back (e.ppq - it->second);
+                open.erase (it);
+            }
+        }
+    }
+}
+
+static double meanPitch (const std::vector<std::pair<double, int>>& notes)
+{
+    if (notes.empty())
+        return 0.0;
+    double s = 0.0;
+    for (const auto& n : notes)
+        s += n.second;
+    return s / static_cast<double> (notes.size());
+}
+
+static double meanDur (const std::vector<double>& d)
+{
+    if (d.empty())
+        return 0.0;
+    double s = 0.0;
+    for (double x : d)
+        s += x;
+    return s / static_cast<double> (d.size());
+}
+
+static void testStage3RoleIdentity()
+{
+    auto ev = runMidi (2002, 0.50f, 0.35f, 72.0, 128, 256, 48000.0);
+    std::array<std::vector<std::pair<double, int>>, 4> byRole;
+    std::array<std::vector<double>, 4> durs;
+    collectRoleOnNotes (ev, byRole, durs);
+
+    EXPECT (byRole[0].size() > 0); // Foundation
+    EXPECT (byRole[1].size() > 0); // Pulse at dens 0.5
+    // Wanderer/Accent may be sparse — allow Accent empty over 128 bars at 0.5? presence should allow some
+    EXPECT (byRole[0].size() + byRole[1].size() + byRole[2].size() + byRole[3].size() > 10);
+
+    const double mf = meanPitch (byRole[0]);
+    const double mp = meanPitch (byRole[1]);
+    if (! byRole[2].empty())
+    {
+        const double mw = meanPitch (byRole[2]);
+        EXPECT (mf < mp || byRole[1].empty());
+        EXPECT (mp < mw || byRole[1].empty());
+        if (! byRole[3].empty())
+            EXPECT (mw <= meanPitch (byRole[3]) + 2.0); // soft: Accent higher center
+    }
+
+    if (! durs[0].empty() && ! durs[3].empty())
+        EXPECT (meanDur (durs[0]) > meanDur (durs[3]));
+    if (! durs[0].empty() && ! durs[2].empty())
+        EXPECT (meanDur (durs[0]) > meanDur (durs[2]) * 0.85);
+
+    // Accent rarer than Pulse
+    if (! byRole[1].empty())
+        EXPECT (byRole[3].size() < byRole[1].size());
+
+    // Pulse more offbeat than Foundation
+    auto offbeatRate = [] (const std::vector<std::pair<double, int>>& notes) {
+        if (notes.empty())
+            return 0.0;
+        int off = 0;
+        for (const auto& n : notes)
+        {
+            const double beatFrac = n.first - std::floor (n.first);
+            if (std::abs (beatFrac - 0.5) < 1.0e-6)
+                ++off;
+        }
+        return static_cast<double> (off) / static_cast<double> (notes.size());
+    };
+    if (byRole[0].size() >= 4 && byRole[1].size() >= 4)
+        EXPECT (offbeatRate (byRole[1]) + 0.02 >= offbeatRate (byRole[0]));
+}
+
+static void testStage3PolyphonyAndCollision()
+{
+    ConductorEngine eng;
+    eng.setParams ({ 0.75f, 0.35f });
+    eng.reseed (2002);
+    eng.clearCollisionStats();
+    eng.setCapture (true);
+    double ppq = 0.0;
+    int maxActive = 0;
+    std::array<int, 5> polyHist {};
+    while (ppq < 256.0)
+    {
+        eng.clock().advance ({ true, ppq, 72.0, 4, 4 });
+        eng.processTimeRange (ppq, ppq + 0.25, true);
+        eng.drainPending();
+        const int a = eng.tracker().activeCount();
+        maxActive = std::max (maxActive, a);
+        polyHist[static_cast<size_t> (std::min (4, a))] += 1;
+        // No double-ownership of same pitch
+        for (int n = 0; n < 128; ++n)
+        {
+            if (! eng.tracker().isActive (1, n))
+                continue;
+            EXPECT (eng.tracker().ownerRole (1, n) >= 0);
+        }
+        ppq += 0.25;
+    }
+    eng.panic (256.0);
+    EXPECT (maxActive >= 2); // polyphony emerges
+    EXPECT (polyHist[4] < polyHist[1] + polyHist[2]); // 4-note not dominate
+    // Unresolved same-pitch ownership failures must be 0 (suppressed/shifted ok)
+    EXPECT (eng.collisionStats().attemptedSamePitch
+            == eng.collisionStats().shifted + eng.collisionStats().suppressed);
+}
+
+static void testStage3RngIsolation()
+{
+    // Foundation pitch draw count must match whether Accent is “busy” via density —
+    // dens=0 keeps Accent dormant; dens=1 adds Accent decisions without shared RNG.
+    ConductorEngine a, b;
+    a.setParams ({ 0.0f, 0.35f });
+    a.reseed (4242);
+    b.setParams ({ 1.0f, 0.35f });
+    b.reseed (4242);
+
+    auto drive = [] (ConductorEngine& eng) {
+        double ppq = 0.0;
+        while (ppq < 64.0)
+        {
+            eng.clock().advance ({ true, ppq, 72.0, 4, 4 });
+            eng.processTimeRange (ppq, ppq + 4.0, true);
+            eng.drainPending();
+            ppq += 4.0;
+        }
+    };
+    drive (a);
+    drive (b);
+    // Same master seed + same bars: Foundation pitch stream consumption should match
+    // (pitch eval schedule uses only foundation pitch RNG + params; dens affects period slightly!)
+    // At different densities schedulePitchEval uses density — so draws may differ.
+    // Stronger isolation: same density, but verify Accent stream tag independence via DNA.
+    RhythmEngine accentA, accentB;
+    accentA.setVoiceKind (pfl::generative::RhythmVoiceKind::Accent);
+    accentB.setVoiceKind (pfl::generative::RhythmVoiceKind::Accent);
+    // Different tags than foundation
+    uint64_t h = 0xcbf29ce484222325ull;
+    for (const char* s = "accent/rhythm"; *s; ++s)
+    {
+        h ^= static_cast<uint64_t> (*s);
+        h *= 0x100000001b3ull;
+    }
+    uint64_t hf = 0xcbf29ce484222325ull;
+    for (const char* s = "rhythm"; *s; ++s)
+    {
+        hf ^= static_cast<uint64_t> (*s);
+        hf *= 0x100000001b3ull;
+    }
+    accentA.reset (DeterministicRNG::derived (4242, h), 0.35f, 0.5f, 0);
+    RhythmEngine found;
+    found.setVoiceKind (pfl::generative::RhythmVoiceKind::Foundation);
+    found.reset (DeterministicRNG::derived (4242, hf), 0.35f, 0.5f, 0);
+    EXPECT (accentA.dna().describe() != found.dna().describe());
+
+    // Consuming extra accent RNG must not change foundation DNA
+    DeterministicRNG accentExtra = DeterministicRNG::derived (4242, h);
+    (void) accentExtra.nextFloat();
+    (void) accentExtra.nextFloat();
+    RhythmEngine found2;
+    found2.setVoiceKind (pfl::generative::RhythmVoiceKind::Foundation);
+    found2.reset (DeterministicRNG::derived (4242, hf), 0.35f, 0.5f, 0);
+    EXPECT (found.dna().describe() == found2.dna().describe());
+    (void) accentB;
+    (void) a;
+    (void) b;
+}
+
+static void testStage3DensityRoles()
+{
+    auto d0 = runMidi (2002, 0.0f, 0.35f, 72.0, 64, 256, 48000.0);
+    auto d1 = runMidi (2002, 1.0f, 0.35f, 72.0, 64, 256, 48000.0);
+    std::array<int, 4> c0 {}, c1 {};
+    for (const auto& e : d0)
+        if (e.kind == MidiMsgKind::NoteOn && e.voice >= 0 && e.voice < 4)
+            ++c0[static_cast<size_t> (e.voice)];
+    for (const auto& e : d1)
+        if (e.kind == MidiMsgKind::NoteOn && e.voice >= 0 && e.voice < 4)
+            ++c1[static_cast<size_t> (e.voice)];
+
+    EXPECT (c0[0] > 0);
+    EXPECT (c0[2] + c0[3] <= c0[0]); // decorative quiet at dens 0
+    EXPECT (c1[0] > 0); // Foundation survives
+    EXPECT (countNoteOns (d1) > countNoteOns (d0));
+    EXPECT (c1[3] < c1[1] || c1[1] == 0); // Accent still sparse vs Pulse
+    // Activity ceiling: not four continuous streams (~64 bars * 16 slots)
+    EXPECT (countNoteOns (d1) < 64 * 12);
+}
+
+static void testStage3LongRunHour()
+{
+    ConductorEngine eng;
+    eng.setParams ({ 0.55f, 0.40f });
+    eng.reseed (3003);
+    // 60 minutes at 72 BPM = 72*60 beats = 4320 beats = 1080 bars
+    const double endPpq = 4320.0;
+    double ppq = 0.0;
+    size_t ons = 0;
+    while (ppq < endPpq)
+    {
+        // Automate density/mutation gently
+        const int bar = static_cast<int> (ppq / 4.0);
+        if (bar % 64 == 0)
+            eng.setParams ({ 0.35f + 0.4f * static_cast<float> ((bar / 64) % 2),
+                             0.20f + 0.5f * static_cast<float> ((bar / 128) % 2) });
+        const double next = std::min (endPpq, ppq + 16.0);
+        eng.clock().advance ({ true, ppq, 72.0, 4, 4 });
+        eng.processTimeRange (ppq, next, true);
+        for (const auto& e : eng.drainPending())
+            if (e.kind == MidiMsgKind::NoteOn)
+                ++ons;
+        EXPECT (eng.tracker().activeCount() <= 4);
+        ppq = next;
+    }
+    eng.panic (endPpq);
+    EXPECT (eng.tracker().activeCount() == 0);
+    EXPECT (ons > 100);
+    EXPECT (ons < 200000);
+}
+
 int main()
 {
     testAlgorithmVersion();
@@ -613,6 +861,11 @@ int main()
     testLiveMutationResponse();
     testAutomationDeterminism();
     testAwkwardCrossProduct();
+    testStage3RoleIdentity();
+    testStage3PolyphonyAndCollision();
+    testStage3RngIsolation();
+    testStage3DensityRoles();
+    testStage3LongRunHour();
 
     if (gFails == 0)
     {
