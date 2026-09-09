@@ -58,7 +58,7 @@ Why this order compounds shared architecture:
 
 1. **PFL Drone Organism** — Implemented AU/VST3 drone instrument. Deterministic self-composition, Phrase DNA / memory, host-synced evolution, macros (SEED / DENSITY / MUTATION / DRIFT / DIRT / SPACE / OUTPUT), and performance commands (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE). Functionally complete software milestone; awaiting creative-director listening validation and separate physical controller/studio integration. Do not claim full musical approval or hardware validation unless `PROJECT_STATE.md` / `docs/APPROVED_PATCHES.md` say so.
 
-2. **PFL Broken Conductor** — Stage 3 complete (algorithm v4, Ableton-accepted). Stage 4 deterministic role projection in development. Stage 5 not started.
+2. **PFL Broken Conductor** — Stage 4 complete (algorithm v5, Ableton-accepted role projection + hunger). Stage 5 performance intervention waits for PR #7 merge.
 
 3. **PFL Ruin Engine** — Planned generative audio transformation. Incoming audio as material; effects become arrangement events (clean → unstable → narrow → distort → smear → feedback → recover/decay). May reuse dirt/drift/filter/feedback/safety DSP concepts without being “Drone Organism FX without oscillators.” Possible signature: **AGE / DECAY**.
 

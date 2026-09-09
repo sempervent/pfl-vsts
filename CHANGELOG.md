@@ -2,18 +2,19 @@
 
 ## Unreleased
 
+### Broken Conductor — Stage 4 COMPLETE
+
+- Creative-director Ableton acceptance **PASS** (role projection + hunger timescales)
+- OUTPUT ROLE: ENSEMBLE / FOUNDATION / PULSE / WANDERER / ACCENT
+- Algorithm **v5** role hunger; projection union preserved
+- Tag: `broken-conductor-stage4-complete`
+- PR #7 ready for review (merge by creative director)
+
 ### Broken Conductor — Stage 3 COMPLETE
 
 - Creative-director Ableton acceptance **PASS** (ensemble + DENSITY + MUTATION + MIDI routing)
 - Tag: `broken-conductor-stage3-complete`
 - PR #5 merged to `main`
-
-### Broken Conductor — Stage 4 (deterministic role projection) — DRAFT
-
-- OUTPUT ROLE: ENSEMBLE / FOUNDATION / PULSE / WANDERER / ACCENT
-- Full ensemble always computed; filter after arbitration
-- Role **hunger/pressure** (algorithm **v5**): Accent/Wanderer beat-timescale activity without forced schedules
-- Rejected Live MIDI-channel split; no IPC
 
 ### Broken Conductor — Stage 2 COMPLETE
 

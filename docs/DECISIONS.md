@@ -397,9 +397,39 @@ No cross-instance communication. Identical SEED / DENSITY / MUTATION / timeline 
 
 ### Algorithm version
 
-Composition remains algorithm **v4**. Stage 4 is an emission/routing layer.
+Composition remains algorithm **v4** for Stage 4 projection alone. Role hunger timescales bump the generative algorithm to **v5** (Accent/Wanderer pressure; Foundation/Pulse non-periodic). Projection filter still does not affect RNG.
+
+---
+
+## 2026-09-09 — Broken Conductor role hunger timescales (v5)
+
+### Problem
+
+Creative-director Ableton listening: Accent at ~0–1 events per 64–96 bars is too sparse for song/jam use. Activity must be framed in beats/phrases, not multi-minute silences.
+
+### Decision
+
+Bounded **role hunger** (`beatsSinceContribution`) raises Accent/Wanderer contribution probability as silence accumulates. Density stretches/compresses Accent’s hunger timeline. Optional deterministic hunger probes when DNA is silent (not a fixed schedule). Foundation/Pulse do not use hunger as a metronome.
+
+### Preserve
+
+Projection union, RNG isolation, congestion/gap/call-response, Accent rarer than Wanderer/Pulse, no public ROLE ACTIVITY control.
 
 ### Expected consequence
 
 Four Live instances can project four musicians from one deterministic composition onto four instruments without those musicians stopping hearing one another.
+
+---
+
+## 2026-09-09 — Broken Conductor Stage 4 complete (Ableton acceptance)
+
+### Context
+
+Creative director accepted Stage 4 in Ableton: deterministic role projection (ENSEMBLE / FOUNDATION / PULSE / WANDERER / ACCENT), coherent multi-instance sync when SEED/DENSITY/MUTATION align, algorithm v5 hunger timescales, projection union correct, pluginval green.
+
+### Decisions
+
+1. Tag `broken-conductor-stage4-complete` at the accepted Stage 4 tip.
+2. Mark PR #7 ready for review; creative director merges (agent does not merge).
+3. Stage 5 performance intervention must branch from `main` only after PR #7 is merged — do not stack on an unmerged draft.
 
