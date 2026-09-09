@@ -4,15 +4,15 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**Broken Conductor Stage 1** — one deterministic Foundation MIDI voice from host PPQ.  
-Drone Organism remains the audio reference implementation (Phase 4 performance-engine v1 / Composer v3).
+**Broken Conductor Stage 1B** — Ableton Live host acceptance (Instrument shell).  
+Stage 1 engine preserved at tag `broken-conductor-stage1` / `72d742e`.
 
-## Last known-good commits / tags
+## Branch / tags
 
-- Pre-BC baseline: tag `drone-organism-pre-broken-conductor` / branch work on `broken-conductor-stage1`
-- Drone Organism Phase 4: tag `drone-organism-phase4-performance`
-- Phase 3: `5419d83` / `drone-organism-phase3-phrase-dna`
-- Phase 2: `aea6cdd` / `drone-organism-phase2-composer`
+- Working: `broken-conductor-stage1b-ableton`
+- Engine lock: `broken-conductor-stage1` @ `72d742e`
+- Pre-BC DO: `drone-organism-pre-broken-conductor`
+- DO Phase 4: `drone-organism-phase4-performance`
 
 ## Build / test
 
@@ -25,10 +25,9 @@ Drone Organism remains the audio reference implementation (Phase 4 performance-e
 ## Plugin artifacts
 
 ```text
+~/Library/Audio/Plug-Ins/VST3/PFL Broken Conductor.vst3   # Instrument|Synth, stereo out, MIDI out
 ~/Library/Audio/Plug-Ins/VST3/PFL Drone Organism.vst3
-~/Library/Audio/Plug-Ins/VST3/PFL Broken Conductor.vst3
-~/Library/Audio/Plug-Ins/Components/… (AU)
-build/src/plugins/*/…_artefacts/Release/{VST3,AU,Standalone}/
+~/Library/Audio/Plug-Ins/Components/…
 ```
 
 ---
@@ -37,39 +36,40 @@ build/src/plugins/*/…_artefacts/Release/{VST3,AU,Standalone}/
 
 | Field | Value |
 |-------|--------|
-| Status | Software milestone complete (Phase 4); studio/controller + listening validation pending |
-| Composer algorithm | **3** |
-| Performance-engine | **1** |
-| Plugin version | CMake `0.1.0` |
-| Approved patches | None yet |
+| Status | Software milestone complete (Phase 4); listening/controller validation pending |
+| Composer | v3 |
+| Performance-engine | v1 |
 
 ## Broken Conductor
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 1 complete** (deterministic one-voice MIDI) |
-| ConductorEngine version | **1** |
-| Public params | SEED, DENSITY, MUTATION |
-| MIDI channel | 1 (fixed) |
-| Formats | AU MIDI FX, VST3 Fx, Standalone |
-| Tests | `broken_conductor_tests` + full DO regression suite |
+| Engine | Stage 1 ConductorEngine (unchanged musically) |
+| Host shell | **Stage 1B** Instrument + silent stereo + MIDI out |
+| Params | SEED, DENSITY, MUTATION |
+| Formats | AU + VST3 (no Standalone) |
+| Unit tests | `broken_conductor_tests` + DO regression |
 
-### Stage 1 behavior summary
+### Ableton host acceptance (manual)
 
-Foundation voice; D min pent; MIDI 26–50; beat grid; durations 1/2/4; rests; velocity 64–96; Phrase DNA pitch; panic on stop/seek.
+| Check | Status |
+|-------|--------|
+| VST3 builds / installs | Automated (build) |
+| Scanner lists plugin | Awaiting creative-director rescan |
+| Instantiates on MIDI track Instrument slot | **Awaiting user confirmation** |
+| UI opens (no “could not be opened”) | **Awaiting user confirmation** |
+| MIDI From → second track → stock instrument sounds | **Awaiting user confirmation** |
+| Stop: no hanging notes | **Awaiting user confirmation** |
+
+See `docs/BROKEN_CONDUCTOR.md` for exact Live 11 routing.
 
 ### Next software task
 
-**Broken Conductor Stage 2** (rhythmic language) — only when explicitly requested.  
-Physical controller mapping for Drone Organism remains a separate studio task.
+After Stage 1B host confirmation: **Broken Conductor Stage 2** only when explicitly requested.  
+Do not start Stage 2 from this milestone.
 
 ---
 
-## Known defects / limitations
-
-- DO: auval/Ableton notes; no approved patches; mutate subtlety
-- BC Stage 1: musically primitive; no performance controls; no multi-voice; no SMF export
-
-## Roadmap order (unchanged)
+## Roadmap
 
 Drone Organism → Broken Conductor → Ruin Engine → Memory Eater → Pulse Colony → Signal Parasite

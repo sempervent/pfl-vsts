@@ -33,24 +33,20 @@ Performance lives in `src/performance/`.
 
 Composer algorithm version: **3**. Performance-engine version: **1**.
 
-## Broken Conductor (Stage 1)
+## Broken Conductor (Stage 1 / 1B)
 
 ```text
 Host tempo / transport / PPQ
         ↓
 ConductorEngine (algorithm v1 — Foundation MIDI voice)
         ↓
-MidiTraceEvent
+MidiTraceEvent → MidiNoteTracker → juce::MidiBuffer
         ↓
-MidiNoteTracker + juce::MidiBuffer
-        ↓
-MIDI out (channel 1)
+Silent stereo audio bus (Ableton Instrument shell; no synthesis)
 ```
 
-`ConductorEngine` reuses `Scale`, `RandomWalk`, `MusicalMemory`, `PhraseDNA`, `MusicalClock`, `DeterministicRNG`.  
-It does **not** call `Composer`, so Drone Organism autonomous composition is isolated.
-
-See `docs/BROKEN_CONDUCTOR.md`.
+Stage 1B host flags: `IS_SYNTH`, not `IS_MIDI_EFFECT`; VST3 `Instrument|Synth`.  
+See `docs/BROKEN_CONDUCTOR.md` for Ableton routing.
 
 ## Audio engine (Drone Organism)
 

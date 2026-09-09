@@ -3,7 +3,8 @@
 
 //==============================================================================
 BrokenConductorProcessor::BrokenConductorProcessor()
-    : AudioProcessor (BusesProperties()), // MIDI effect: no audio buses
+    : AudioProcessor (BusesProperties()
+                          .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts_ (*this, nullptr, "PARAMS", createParameterLayout())
 {
     engine_.reseed (1001);
@@ -33,7 +34,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout BrokenConductorProcessor::cr
 const juce::String BrokenConductorProcessor::getName() const { return JucePlugin_Name; }
 bool BrokenConductorProcessor::acceptsMidi() const { return true; }
 bool BrokenConductorProcessor::producesMidi() const { return true; }
-bool BrokenConductorProcessor::isMidiEffect() const { return true; }
+bool BrokenConductorProcessor::isMidiEffect() const { return false; }
 double BrokenConductorProcessor::getTailLengthSeconds() const { return 0.0; }
 
 int BrokenConductorProcessor::getNumPrograms() { return 1; }
@@ -52,13 +53,21 @@ void BrokenConductorProcessor::prepareToPlay (double sampleRate, int /*samplesPe
     syncEngineFromParams();
 }
 
-void BrokenConductorProcessor::releaseResources() {}
+void BrokenConductorProcessor::releaseResources()
+{
+    // No MidiBuffer available here. Transport-stop / seek / reseed paths emit panic
+    // MIDI; abrupt host unload may leave notes depending on Live lifecycle.
+}
 
 bool BrokenConductorProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
-    // MIDI effect: accept empty / no audio I/O
-    juce::ignoreUnused (layouts);
-    return true;
+    // Silent instrument shell: stereo (or mono) main output, no audio inputs.
+    if (layouts.getMainInputChannelSet() != juce::AudioChannelSet::disabled())
+        return false;
+
+    const auto out = layouts.getMainOutputChannelSet();
+    return out == juce::AudioChannelSet::mono()
+        || out == juce::AudioChannelSet::stereo();
 }
 
 void BrokenConductorProcessor::resetOfflineTimeline() noexcept
@@ -187,7 +196,12 @@ void BrokenConductorProcessor::emitMidi (juce::MidiBuffer& midi,
 void BrokenConductorProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
-    buffer.clear();
+
+    // Silent stereo (or mono) audio — host-required bus; product is MIDI only.
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+        buffer.clear (ch, 0, buffer.getNumSamples());
+
+    // Generative MIDI: replace incoming MIDI with our output
     midi.clear();
 
     syncEngineFromParams();

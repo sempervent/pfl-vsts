@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Broken Conductor — Stage 1B (Ableton host shell)
+
+- Convert VST3/AU from pure MIDI-effect (`Fx`, zero audio buses) to **Instrument** with **silent stereo** out + MIDI out
+- Ableton Live 11 cannot reliably open empty-bus MIDI-effect VST3s; document two-track MIDI From topology
+- Drop Broken Conductor Standalone format
+- ConductorEngine Stage 1 musical behavior unchanged
+- Host instantiation / audible MIDI path require creative-director confirmation in Live
+
 ### Broken Conductor — Stage 1
 
 - `ConductorEngine` one-voice deterministic MIDI composer (Foundation) reusing generative primitives

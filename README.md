@@ -18,9 +18,9 @@ Self-composing AU/VST3 dirty-drone instrument (no MIDI required to play). Host-s
 
 **Status:** Implemented reference plugin — functionally complete software milestone. Creative-director listening validation and physical controller/studio integration remain separate follow-ups (see `PROJECT_STATE.md`).
 
-### PFL Broken Conductor (Stage 1)
+### PFL Broken Conductor (Stage 1 / 1B)
 
-Deterministic generative MIDI effect (AU/VST3). One Foundation voice from host PPQ → MIDI note-on/off. Params: SEED, DENSITY, MUTATION. See `docs/BROKEN_CONDUCTOR.md`.
+Deterministic generative MIDI **Instrument** (AU/VST3) for Ableton: silent stereo outs + MIDI out. One Foundation voice. Params: SEED, DENSITY, MUTATION. Load on its own MIDI track; route **MIDI From** to a second track with a stock instrument — **not** after Drone Organism. See `docs/BROKEN_CONDUCTOR.md`.
 
 ## Roadmap
 

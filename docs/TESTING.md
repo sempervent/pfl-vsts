@@ -20,6 +20,14 @@
 | `performance_tests` | FREEZE/MUTATE/COLLAPSE/RESEED/SILENCE; scripted determinism; buffer 64–512; mutate-while-frozen; long ~50 min musical script |
 | `broken_conductor_tests` | BC Stage 1: same-seed MIDI; different seed; buffers 64–1024; tempos 40/72/120/180; note pairing; stop/seek panic; restart; long-run ~30 min; param restore |
 
+### Host acceptance (not covered by unit tests)
+
+Ableton Live 11 VST3 load + two-track **MIDI From** routing + audible stock instrument is a **manual** Stage 1B gate. See `docs/BROKEN_CONDUCTOR.md`.
+
+```text
+compile ≠ artifact ≠ scanner ≠ Live instantiates ≠ MIDI routable ≠ target sounds
+```
+
 ## Phase 4 performance renders
 
 | File | Notes |

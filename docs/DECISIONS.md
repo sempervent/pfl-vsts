@@ -111,3 +111,31 @@ Second real plugin use case for the generative brain. Stage 1 must emit determin
 
 Broken Conductor Stage 1 proves host PPQ → shared primitives → MIDI note-on/off. Multi-voice / performance controls / Euclidean rhythm wait for later stages.
 
+---
+
+## 2026-09-09 — Broken Conductor Stage 1B Ableton host shell
+
+### Context
+
+Stage 1 VST3 (`IS_MIDI_EFFECT` / `Fx` / zero audio buses) compiled and passed unit tests but Ableton Live 11 reported **“This VST3 plug-in could not be opened.”** User also placed it after Drone Organism in the audio-effect portion of a MIDI track.
+
+### Evidence
+
+- On-disk VST3 `moduleinfo.json`: Sub Categories `["Fx"]`, no audio bus layout; JUCE MIDI-effect pattern.
+- Ableton does not treat third-party VST3 as native MIDI Effects; MIDI generators need Instrument-class loading + cross-track **MIDI From**.
+- Placement after an Instrument is audio-domain and cannot feed MIDI into that instrument.
+
+### Decisions
+
+1. **Supersede Stage 1 host flags** for Ableton: `IS_SYNTH TRUE`, `IS_MIDI_EFFECT FALSE`, `VST3_CATEGORIES Instrument Synth`, `AU_MAIN_TYPE MusicDevice`.
+2. **Silent stereo output bus** required for Live; clear every block; **no** test oscillator.
+3. Keep `NEEDS_MIDI_OUTPUT TRUE` (and MIDI input declared).
+4. **Disable Standalone** for Broken Conductor (does not prove DAW MIDI routing).
+5. **Do not change ConductorEngine** Stage 1 musical behavior.
+6. Document two-track Ableton topology; forbid DO → BC audio-chain placement.
+7. Unit tests ≠ host acceptance; document validation ladder.
+
+### Consequences
+
+Broken Conductor appears in Live as an Instrument with silent audio and MIDI out. Creative director must confirm load + MIDI routing + audible target instrument.
+
