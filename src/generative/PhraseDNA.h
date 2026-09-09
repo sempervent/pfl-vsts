@@ -111,6 +111,40 @@ public:
         mutateOne (barIndex);
     }
 
+    /**
+     * One bounded DNA mutation using an external RNG (manualMutation stream).
+     * Does not consume the autonomous phrase RNG.
+     */
+    void manualMutateOne (DeterministicRNG& rng, int barIndex) noexcept
+    {
+        if (dna_.length <= 0)
+            return;
+
+        const int idx = static_cast<int> (rng.nextFloat() * static_cast<float> (dna_.length)) % dna_.length;
+        const int old = dna_.steps[static_cast<size_t> (idx)];
+        int neu = old;
+        const float r = rng.nextFloat();
+        if (r < 0.5f)
+            neu = old + (rng.nextFloat() < 0.5f ? -1 : 1);
+        else if (r < 0.75f)
+            neu = -old;
+        else
+            neu = 0;
+        neu = std::clamp (neu, -2, 2);
+        dna_.steps[static_cast<size_t> (idx)] = neu;
+        dna_.lastMutationIndex = idx;
+        dna_.lastMutationFrom = old;
+        dna_.lastMutationTo = neu;
+        ++dna_.generation;
+        dna_.birthBar = barIndex;
+        // Keep lifespan; do not re-roll with phrase RNG
+
+        char detail[128];
+        std::snprintf (detail, sizeof detail, "%s | manual mut idx %d: %d -> %d",
+                       dna_.describe().c_str(), idx, old, neu);
+        record (barIndex, "mutate", detail);
+    }
+
 private:
     PhraseDNA generateNew (int bar) noexcept
     {

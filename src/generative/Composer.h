@@ -73,6 +73,7 @@ public:
         masterSeed_ = masterSeed;
         armedSeed_ = masterSeed;
         pendingReseed_ = false;
+        compositionLocked_ = false;
         pitchRng_ = DeterministicRNG::derived (masterSeed, hashTag ("pitch"));
         voiceRng_ = DeterministicRNG::derived (masterSeed, hashTag ("voice"));
         structureRng_ = DeterministicRNG::derived (masterSeed, hashTag ("structure"));
@@ -122,6 +123,27 @@ public:
     }
 
     ComposerParams params() const noexcept { return params_; }
+
+    /**
+     * Composition lock (FREEZE / COLLAPSE / SILENCE pause).
+     * Host time may still advance via processTimeRange; autonomous onBar decisions are discarded.
+     */
+    void setCompositionLocked (bool locked) noexcept { compositionLocked_ = locked; }
+    bool compositionLocked() const noexcept { return compositionLocked_; }
+
+    /** Alias used by performance layer for FREEZE semantics. */
+    void setFrozen (bool frozen) noexcept { compositionLocked_ = frozen; }
+    bool isFrozen() const noexcept { return compositionLocked_; }
+
+    /**
+     * One bounded manual mutation (performance MUTATE).
+     * Mutates a single Phrase DNA element; does not consume pitch/phrase autonomous RNGs.
+     */
+    void applyManualMutation (DeterministicRNG& manualRng) noexcept
+    {
+        const int bar = static_cast<int> (std::floor (lastProcessedPpq_ / std::max (1.0e-9, clock_.beatsPerBar())));
+        phrases_.manualMutateOne (manualRng, bar);
+    }
 
     /** Consume one timbre draw (for isolation tests). */
     float consumeTimbreRandom() noexcept { return timbreRng_.nextFloat(); }
@@ -258,6 +280,10 @@ private:
             applySeedAtBar (armedSeed_, barIndex, barPpq);
             return;
         }
+
+        // FREEZE / SILENCE / COLLAPSE lock: discard autonomous evolution (do not queue)
+        if (compositionLocked_)
+            return;
 
         // Population adjust at bar
         adjustPopulation (barIndex, barPpq);
@@ -422,6 +448,7 @@ private:
     std::array<VoiceIdentity, kMaxVoices> identities_{};
     std::array<VoiceRuntime, kMaxVoices> voices_{};
     double lastProcessedPpq_ = 0.0;
+    bool compositionLocked_ = false;
     bool captureEvents_ = false;
     std::vector<MusicalEvent> captured_;
 };
