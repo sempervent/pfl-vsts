@@ -7,6 +7,7 @@
 #include "MusicalMemory.h"
 #include "PhraseDNA.h"
 #include "RandomWalk.h"
+#include "RhythmDNA.h"
 #include "Scale.h"
 
 #include <algorithm>
@@ -19,24 +20,25 @@ namespace pfl::generative
 
 struct ConductorParams
 {
-    float density = 0.45f;  // rest probability + duration bias (NOT voice count)
-    float mutation = 0.35f; // pitch adventurousness + duration bias + Phrase DNA
+    float density = 0.45f;  // Stage 2: occupancy / rest / duration / syncopation allowance
+    float mutation = 0.35f; // Stage 2: pitch adventurousness + Rhythm/Phrase DNA lifespan
 };
 
 /**
- * Broken Conductor Stage 1 — one Foundation MIDI voice.
- * Musical-time beat grid; explicit durations and rests.
+ * Broken Conductor Stage 2 — one Foundation MIDI voice with RhythmDNA.
+ * Sixteenth-grid scheduling; pitch Phrase DNA unchanged in role.
  * Does not alter Drone Organism Composer behavior.
  */
 class ConductorEngine
 {
 public:
-    static constexpr int kAlgorithmVersion = 1; // Broken Conductor engine version
+    static constexpr int kAlgorithmVersion = 2; // Stage 2 rhythmic language
     static constexpr int kMidiChannel = 1;
     static constexpr int kVoice = 0;
     static constexpr int kMinMidi = 26; // D1
     static constexpr int kMaxMidi = 50; // D3
     static constexpr int kStartMidi = 38; // D2
+    static constexpr double kSlotBeats = RhythmEngine::kSlotBeats;
 
     void setCapture (bool enabled) noexcept { capture_ = enabled; }
     const std::vector<MidiTraceEvent>& captured() const noexcept { return captured_; }
@@ -55,6 +57,7 @@ public:
         lastProcessedPpq_ = 0.0;
         clock_.reset (0.0);
         phrases_.reset (phraseRng, params_.mutation, 0);
+        rhythm_.reset (rhythmRng_, params_.mutation, params_.density, 0);
         pitch_.degree = 0;
         pitch_.octave = 2;
         pitch_.midiNote = kStartMidi;
@@ -63,6 +66,8 @@ public:
         noteOffPpq_ = 0.0;
         soundingNote_ = kStartMidi;
         nextPitchEvalBar_ = 4;
+        lastSlotWasRest_ = true;
+        lastRhythmBar_ = -1;
         pending_.clear();
         schedulePitchEval (0);
     }
@@ -73,6 +78,8 @@ public:
     {
         params_ = p;
         phrases_.setMutation (p.mutation);
+        rhythm_.setMutation (p.mutation);
+        rhythm_.setDensity (p.density);
     }
 
     ConductorParams params() const noexcept { return params_; }
@@ -81,14 +88,16 @@ public:
     const MusicalClock& clock() const noexcept { return clock_; }
     const MidiNoteTracker& tracker() const noexcept { return tracker_; }
     const PhraseEngine& phrases() const noexcept { return phrases_; }
+    const RhythmEngine& rhythm() const noexcept { return rhythm_; }
+    RhythmEngine& rhythm() noexcept { return rhythm_; }
 
     int currentMidiNote() const noexcept { return pitch_.midiNote; }
     bool sounding() const noexcept { return sounding_; }
 
     /**
-     * Advance (fromPpq, toPpq]. When playing=false, only panic is expected from caller;
-     * no new note-ons. When emitOutput=false, advance state/RNGs without queueing MIDI
-     * (used for seek fast-forward on a non-emitting reconstruct).
+     * Advance (fromPpq, toPpq]. Decisions only at absolute sixteenth slots —
+     * never per processBlock. When playing=false, no new note-ons / no rhythm RNG.
+     * When emitOutput=false, advance state without queueing MIDI (seek reconstruct).
      */
     void processTimeRange (double fromPpq, double toPpq, bool playing, bool emitOutput = true) noexcept
     {
@@ -104,20 +113,16 @@ public:
             return;
         }
 
-        const int first = static_cast<int> (std::floor (fromPpq + 1.0e-9)) + 1;
-        const int last = static_cast<int> (std::floor (toPpq + 1.0e-9));
-        for (int b = first; b <= last; ++b)
-            onBeat (static_cast<double> (b));
+        const double slot = kSlotBeats;
+        const std::int64_t first = static_cast<std::int64_t> (std::floor (fromPpq / slot + 1.0e-9)) + 1;
+        const std::int64_t last = static_cast<std::int64_t> (std::floor (toPpq / slot + 1.0e-9));
+        for (std::int64_t i = first; i <= last; ++i)
+            onSlot (i, static_cast<double> (i) * slot);
 
         lastProcessedPpq_ = toPpq;
         emitOutput_ = true;
     }
 
-    /**
-     * Seek reconstruct: reseed + silent fast-forward to target.
-     * Preserves mid-sustain occupancy so post-seek rhythm RNG matches uninterrupted run.
-     * Caller must panic host MIDI before calling; then re-articulate sounding note if needed.
-     */
     void handleSeek (double targetPpq) noexcept
     {
         const uint64_t seed = masterSeed_;
@@ -137,15 +142,12 @@ public:
         capture_ = wasCapture;
         pending_.clear();
         lastProcessedPpq_ = targetPpq;
-        // Keep sounding_ / noteOffPpq_ / tracker as reconstructed at target.
     }
 
-    /** True if a note is mid-sustain after seek reconstruct (host should re-articulate). */
     bool needsHostRetrigger() const noexcept { return sounding_; }
     int soundingMidiNote() const noexcept { return soundingNote_; }
     int lastVelocity() const noexcept { return lastVelocity_; }
 
-    /** Emit NoteOffs for all owned notes into capture (and clear sounding). */
     void panic (double ppq) noexcept
     {
         if (sounding_)
@@ -174,16 +176,16 @@ private:
 
     void schedulePitchEval (int currentBar) noexcept
     {
-        // Foundation: 4–8 bars, density/mutation shorten slightly (mirror Composer)
         const float d = std::clamp (params_.density, 0.0f, 1.0f);
         const float m = std::clamp (params_.mutation, 0.0f, 1.0f);
-        int period = 4 + static_cast<int> (rhythmRng_.nextFloat() * 5.0f); // 4..8
+        // Pitch-eval period uses pitchRng — must not consume rhythm stream
+        int period = 4 + static_cast<int> (pitchRng_.nextFloat() * 5.0f); // 4..8
         period = std::max (1, static_cast<int> (std::round (static_cast<float> (period)
                                                             * (1.0f - 0.35f * d) * (1.0f - 0.25f * m))));
         nextPitchEvalBar_ = currentBar + period;
     }
 
-    void maybeChangePitch (double beatPpq) noexcept
+    void maybeChangePitch (double /*beatPpq*/) noexcept
     {
         const float m = std::clamp (params_.mutation, 0.0f, 1.0f);
         const float d = std::clamp (params_.density, 0.0f, 1.0f);
@@ -232,93 +234,87 @@ private:
             return;
         pitch_ = next;
         memory_.push (pitch_.midiNote);
-        (void) beatPpq;
     }
 
-    float restProbability() const noexcept
+    int chooseVelocity (std::int64_t absoluteSlot, bool afterRest) noexcept
     {
-        const float d = std::clamp (params_.density, 0.0f, 1.0f);
-        return std::clamp (0.55f - 0.45f * d, 0.10f, 0.55f);
-    }
-
-    double chooseDurationBeats() noexcept
-    {
-        const float d = std::clamp (params_.density, 0.0f, 1.0f);
-        const float m = std::clamp (params_.mutation, 0.0f, 1.0f);
-        // Blend duration weights: density → shorter; mutation → shorter
-        // Base at dens=0.45 mut=0.35 ≈ 50/35/15
-        float w1 = 0.50f + 0.20f * (d - 0.45f) + 0.15f * (m - 0.35f);
-        float w2 = 0.35f - 0.10f * (d - 0.45f) - 0.05f * (m - 0.35f);
-        float w4 = 1.0f - w1 - w2;
-        w1 = std::clamp (w1, 0.20f, 0.75f);
-        w2 = std::clamp (w2, 0.10f, 0.50f);
-        w4 = std::clamp (1.0f - w1 - w2, 0.05f, 0.40f);
-        const float sum = w1 + w2 + w4;
-        w1 /= sum;
-        w2 /= sum;
-        const float r = rhythmRng_.nextFloat();
-        if (r < w1)
-            return 1.0;
-        if (r < w1 + w2)
-            return 2.0;
-        return 4.0;
-    }
-
-    int chooseVelocity() noexcept
-    {
-        // Center 80, ± ±16 → [64, 96]
+        const int bias = RhythmEngine::accentBiasForSlot (absoluteSlot, afterRest);
         const float u = velocityRng_.nextFloat();
-        int v = 80 + static_cast<int> (std::round (16.0f * (u - 0.5f)));
+        int v = 80 + bias + static_cast<int> (std::round (4.0f * (u - 0.5f)));
         return std::clamp (v, 64, 96);
     }
 
-    void onBeat (double beatPpq) noexcept
+    void onSlot (std::int64_t absoluteSlot, double slotPpq) noexcept
     {
-        const int bar = static_cast<int> (std::floor (beatPpq / std::max (1.0e-9, clock_.beatsPerBar())));
+        const double beatsPerBar = std::max (1.0e-9, clock_.beatsPerBar());
+        const int bar = static_cast<int> (std::floor (slotPpq / beatsPerBar));
 
-        // Release due notes at this beat
-        if (sounding_ && beatPpq + 1.0e-9 >= noteOffPpq_)
+        // Release due notes at this slot
+        if (sounding_ && slotPpq + 1.0e-9 >= noteOffPpq_)
         {
-            emitOff (beatPpq, soundingNote_);
+            emitOff (slotPpq, soundingNote_);
             sounding_ = false;
         }
 
-        if (sounding_)
-            return; // still sustaining
-
-        phrases_.onBar (bar); // may mutate DNA at bar boundaries (idempotent if early)
-
-        if (bar >= nextPitchEvalBar_ && std::abs (beatPpq - bar * clock_.beatsPerBar()) < 1.0e-6)
+        if (bar != lastRhythmBar_)
         {
-            maybeChangePitch (beatPpq);
-            schedulePitchEval (bar);
-        }
-        else if (bar >= nextPitchEvalBar_)
-        {
-            // Pitch eval mid-bar: apply on this beat then reschedule
-            maybeChangePitch (beatPpq);
-            schedulePitchEval (bar);
+            phrases_.onBar (bar);
+            rhythm_.onBar (bar);
+            lastRhythmBar_ = bar;
         }
 
-        if (rhythmRng_.nextFloat() < restProbability())
-            return; // rest this beat
+        // Pitch eval on bar downbeats (slot 0 of bar)
+        const double barStart = static_cast<double> (bar) * beatsPerBar;
+        const bool atBarStart = std::abs (slotPpq - barStart) < 1.0e-9;
+        if (atBarStart && bar >= nextPitchEvalBar_)
+        {
+            maybeChangePitch (slotPpq);
+            schedulePitchEval (bar);
+        }
 
-        double dur = chooseDurationBeats();
-        dur = std::max (1.0, dur);
+        const RhythmCell cell = rhythm_.dna().cellForAbsoluteSlot (absoluteSlot);
+        const bool afterRest = lastSlotWasRest_;
 
-        const int vel = chooseVelocity();
-        lastVelocity_ = vel;
-        emitOn (beatPpq, pitch_.midiNote, vel);
-        sounding_ = true;
-        soundingNote_ = pitch_.midiNote;
-        noteOffPpq_ = beatPpq + dur;
+        if (cell == RhythmCell::Onset)
+        {
+            // Duration from DNA hold run at local index
+            const int n = rhythm_.dna().lengthCells();
+            const int local = n > 0 ? static_cast<int> (((absoluteSlot % n) + n) % n) : 0;
+            double dur = rhythm_.durationBeatsAt (local);
+            dur = std::max (kSlotBeats, dur);
+
+            if (sounding_)
+                emitOff (slotPpq, soundingNote_);
+
+            const int vel = chooseVelocity (absoluteSlot, afterRest);
+            lastVelocity_ = vel;
+            emitOn (slotPpq, pitch_.midiNote, vel);
+            sounding_ = true;
+            soundingNote_ = pitch_.midiNote;
+            noteOffPpq_ = slotPpq + dur;
+            lastSlotWasRest_ = false;
+            return;
+        }
+
+        if (cell == RhythmCell::Rest)
+        {
+            if (sounding_)
+            {
+                emitOff (slotPpq, soundingNote_);
+                sounding_ = false;
+            }
+            lastSlotWasRest_ = true;
+            return;
+        }
+
+        // Hold: continue sustain; do nothing if already sounding as planned
+        lastSlotWasRest_ = false;
     }
 
     void emitOn (double ppq, int note, int velocity) noexcept
     {
         if (! emitOutput_)
         {
-            // Silent reconstruct: update ownership only
             if (tracker_.isActive (kMidiChannel, note))
                 tracker_.noteOff (kMidiChannel, note);
             tracker_.noteOn (kMidiChannel, note);
@@ -357,7 +353,6 @@ private:
     }
 
 public:
-    /** Drain newly generated MIDI since last drain (for plugin/renderer). */
     std::vector<MidiTraceEvent> drainPending() noexcept
     {
         std::vector<MidiTraceEvent> out;
@@ -374,6 +369,7 @@ private:
     MusicalMemory memory_{};
     RandomWalk walk_{};
     PhraseEngine phrases_{};
+    RhythmEngine rhythm_{};
     DeterministicRNG pitchRng_{};
     DeterministicRNG rhythmRng_{};
     DeterministicRNG velocityRng_{};
@@ -384,6 +380,8 @@ private:
     int lastVelocity_ = 80;
     double noteOffPpq_ = 0.0;
     int nextPitchEvalBar_ = 4;
+    int lastRhythmBar_ = -1;
+    bool lastSlotWasRest_ = true;
     double lastProcessedPpq_ = 0.0;
     bool capture_ = false;
     bool emitOutput_ = true;

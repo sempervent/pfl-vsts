@@ -4,13 +4,13 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**Broken Conductor Stage 2** — Rhythmic Language (monophonic Foundation).  
-Stage 1C Ableton host instantiation verified and tagged. Stage 3 not started.
+**Broken Conductor Stage 2** — Rhythmic Language (algorithm v2).  
+**WAITING FOR USER STAGE 2 HOST ACCEPTANCE.** Stage 3 not started.
 
 ## Branch / tags
 
-- Working: `broken-conductor-stage1c-host-forensics` → Stage 2 work continues here (or `broken-conductor-stage2-rhythm`)
-- Stage 1C lock: `broken-conductor-stage1c-ableton-verified` @ `407670b`
+- Working: `broken-conductor-stage2-rhythm`
+- Stage 1C lock: `broken-conductor-stage1c-ableton-verified` @ `c9bacb2`
 - Stage 1B lock: `broken-conductor-stage1b-ableton` @ `6e43fb6`
 - Engine Stage 1 lock: `broken-conductor-stage1` @ `72d742e`
 - Pre-BC DO: `drone-organism-pre-broken-conductor`
@@ -22,14 +22,15 @@ Stage 1C Ableton host instantiation verified and tagged. Stage 3 not started.
 ./scripts/configure.sh
 ./scripts/build.sh
 ./scripts/test.sh
+./build/tests/pfl_broken_conductor_render renders/broken-conductor
 ```
 
 ## Plugin artifacts
 
 ```text
-~/Library/Audio/Plug-Ins/VST3/PFL Broken Conductor.vst3   # Instrument|Synth, stereo in+out, MIDI out
-~/Library/Audio/Plug-Ins/VST3/PFL Drone Organism.vst3
-~/Library/Audio/Plug-Ins/Components/…
+~/Library/Audio/Plug-Ins/VST3/PFL Broken Conductor.vst3
+renders/broken-conductor/stage2-seed-2002.mid
+renders/broken-conductor/stage2-metrics.txt
 ```
 
 ---
@@ -46,37 +47,22 @@ Stage 1C Ableton host instantiation verified and tagged. Stage 3 not started.
 
 | Field | Value |
 |-------|--------|
-| Engine | Stage 1 → Stage 2 RhythmDNA (algorithm bump pending) |
-| Host shell | **Stage 1C** Instrument + stereo in (ignored) + silent stereo out + MIDI out |
-| Root cause (1B fail) | Live: “effect category, but no valid audio input bus” after processor load |
+| Engine | **Stage 2** RhythmDNA + PhraseDNA (algorithm **v2**) |
+| Host shell | Stage 1C stereo in+out Instrument |
+| Voices | Foundation only |
 | Params | SEED, DENSITY, MUTATION |
-| Formats | AU + VST3 (no Standalone) |
-| Unit tests | `broken_conductor_tests` + `plugin_identity_tests` + DO regression |
-| Identities | `docs/PLUGIN_IDENTITIES.md` |
+| Formats | AU + VST3 |
+| Unit tests | `broken_conductor_tests` (v2) + `plugin_identity_tests` + DO regression |
 
-### Ableton host acceptance (manual)
+### Ableton host acceptance
 
 | Check | Status |
 |-------|--------|
-| VST3 builds / installs | Automated (build) |
-| Log root cause captured | Done (`analysis/ableton-bc-fail-excerpt.txt`) |
-| Identity collision vs DO | Ruled out |
-| pluginval 1.0.4 | Pass (`analysis/pluginval-bc-stage1c.txt`) |
-| **HOST INSTANTIATION** (opens in Live 11.3.43) | **VERIFIED** (creative director, 2026-09-09) |
-| **END-TO-END LIVE MIDI ROUTING** (MIDI From → stock instrument audible) | **NOT YET RECORDED** |
-| Stop: no hanging notes (in Live) | **NOT YET RECORDED** |
-
-Engine unit tests already prove MIDI generation / pairing / stop panic internally — separate from Live routing.
-
-See `docs/BROKEN_CONDUCTOR.md` for exact Live 11 routing.
+| Stage 1C HOST INSTANTIATION | **VERIFIED** |
+| Stage 1C END-TO-END MIDI ROUTING | **NOT YET RECORDED** |
+| Stage 2 pluginval | Pass |
+| Stage 2 Live open + audible MIDI + syncopation + clean stop | **WAITING FOR USER STAGE 2 HOST ACCEPTANCE** |
 
 ### Next software task
 
-**Broken Conductor Stage 2: Rhythmic Language** (in progress).  
-Do not start Stage 3 multi-voice until Stage 2 is host-accepted.
-
----
-
-## Roadmap
-
-Drone Organism → Broken Conductor → Ruin Engine → Memory Eater → Pulse Colony → Signal Parasite
+After Stage 2 Live confirmation: **Stage 3 multi-voice** only when explicitly requested.

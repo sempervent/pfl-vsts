@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Broken Conductor — Stage 2 (Rhythmic Language)
+
+- `RhythmDNA` / `RhythmEngine`: sixteenth-grid cells with ancestry and bounded mutation
+- `ConductorEngine` algorithm **v2**: schedule on absolute sixteenth slots; pitch-eval uses `pitch` RNG
+- DENSITY → occupancy/rest/duration/syncopation bands (max occupancy 0.58)
+- MUTATION → RhythmDNA lifespan + single-op mutate
+- Tests: odd buffers, awkward tempos, syncopation, RNG isolation, rests/holds
+- Artifacts: `renders/broken-conductor/stage2-*.{txt,mid}`, metrics
+- pluginval passes; **WAITING FOR USER STAGE 2 HOST ACCEPTANCE**
+- Stage 3 not started
+
 ### Broken Conductor — Stage 1C (Ableton host forensics)
 
 - Root cause: Live loads processor then rejects MIDI-out VST3 without a valid **audio input** bus

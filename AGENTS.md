@@ -58,7 +58,7 @@ Why this order compounds shared architecture:
 
 1. **PFL Drone Organism** — Implemented AU/VST3 drone instrument. Deterministic self-composition, Phrase DNA / memory, host-synced evolution, macros (SEED / DENSITY / MUTATION / DRIFT / DIRT / SPACE / OUTPUT), and performance commands (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE). Functionally complete software milestone; awaiting creative-director listening validation and separate physical controller/studio integration. Do not claim full musical approval or hardware validation unless `PROJECT_STATE.md` / `docs/APPROVED_PATCHES.md` say so.
 
-2. **PFL Broken Conductor** — **Next software development target** (planned). Generative MIDI composer: reuse/extend the musical brain independently of Drone Organism synthesis; drive Ableton/Reason/soft synths/external MIDI with rhythm, rests, duration, register, velocity, voice identity, Phrase DNA, memory, gravity, mutation, seeds, structure. Preserve FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE where appropriate. Signature idea: freeze a motif and mutate selected voices while others hold.
+2. **PFL Broken Conductor** — In progress (Stage 2 Rhythmic Language, algorithm v2). Generative MIDI composer: RhythmDNA + Phrase DNA; Ableton Instrument shell with stereo in/out. Stage 3 multi-voice not started.
 
 3. **PFL Ruin Engine** — Planned generative audio transformation. Incoming audio as material; effects become arrangement events (clean → unstable → narrow → distort → smear → feedback → recover/decay). May reuse dirt/drift/filter/feedback/safety DSP concepts without being “Drone Organism FX without oscillators.” Possible signature: **AGE / DECAY**.
 

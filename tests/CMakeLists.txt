@@ -40,6 +40,12 @@ target_include_directories(pfl_broken_conductor_tests PRIVATE ${CMAKE_SOURCE_DIR
 target_compile_features(pfl_broken_conductor_tests PRIVATE cxx_std_20)
 add_test(NAME broken_conductor_tests COMMAND pfl_broken_conductor_tests)
 
+add_executable(pfl_broken_conductor_render
+    broken_conductor_render.cpp
+)
+target_include_directories(pfl_broken_conductor_render PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_features(pfl_broken_conductor_render PRIVATE cxx_std_20)
+
 add_executable(pfl_plugin_identity_tests
     plugin_identity_tests.cpp
 )
