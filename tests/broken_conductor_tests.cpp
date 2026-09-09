@@ -1,7 +1,9 @@
 #include "generative/ConductorEngine.h"
+#include "generative/EnsembleTypes.h"
 #include "generative/RhythmDNA.h"
 
 #include <array>
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <iostream>
@@ -835,6 +837,203 @@ static void testStage3LongRunHour()
     EXPECT (ons < 200000);
 }
 
+using pfl::generative::OutputRole;
+
+static std::vector<MidiTraceEvent> runMidiRole (OutputRole role, uint64_t seed, float density,
+                                                float mutation, double bpm, int bars,
+                                                int bufferSamples, double sampleRate)
+{
+    ConductorEngine eng;
+    eng.setOutputRole (role);
+    eng.setCapture (true);
+    eng.setParams ({ density, mutation });
+    eng.reseed (seed);
+
+    const double beatsPerSec = bpm / 60.0;
+    const double endPpq = static_cast<double> (bars) * 4.0;
+    double ppq = 0.0;
+    while (ppq < endPpq - 1.0e-12)
+    {
+        const double blockBeats = (static_cast<double> (bufferSamples) / sampleRate) * beatsPerSec;
+        const double ppqEnd = std::min (endPpq, ppq + blockBeats);
+        eng.clock().advance ({ true, ppq, bpm, 4, 4 });
+        eng.processTimeRange (ppq, ppqEnd, true);
+        eng.drainPending();
+        ppq = ppqEnd;
+    }
+    return eng.captured();
+}
+
+static ConductorEngine runEngineRole (OutputRole role, uint64_t seed, float density, float mutation,
+                                      int bars)
+{
+    ConductorEngine eng;
+    eng.setOutputRole (role);
+    eng.setCapture (true);
+    eng.setParams ({ density, mutation });
+    eng.reseed (seed);
+    double ppq = 0.0;
+    const double end = static_cast<double> (bars) * 4.0;
+    while (ppq < end)
+    {
+        const double next = std::min (end, ppq + 1.0);
+        eng.clock().advance ({ true, ppq, 72.0, 4, 4 });
+        eng.processTimeRange (ppq, next, true);
+        eng.drainPending();
+        ppq = next;
+    }
+    return eng;
+}
+
+static void testStage4EnsembleDefaultUnchanged()
+{
+    // Default ENSEMBLE must match explicit Ensemble and Stage 3-style runMidi
+    auto a = runMidi (2002, 0.50f, 0.35f, 72.0, 32, 256, 48000.0);
+    auto b = runMidiRole (OutputRole::Ensemble, 2002, 0.50f, 0.35f, 72.0, 32, 256, 48000.0);
+    EXPECT (midiEqual (a, b));
+}
+
+static void testStage4ProjectionUnion()
+{
+    constexpr int bars = 128; // enough for Accent
+    auto ens = runMidiRole (OutputRole::Ensemble, 2002, 0.50f, 0.35f, 72.0, bars, 256, 48000.0);
+    auto f = runMidiRole (OutputRole::Foundation, 2002, 0.50f, 0.35f, 72.0, bars, 256, 48000.0);
+    auto p = runMidiRole (OutputRole::Pulse, 2002, 0.50f, 0.35f, 72.0, bars, 256, 48000.0);
+    auto w = runMidiRole (OutputRole::Wanderer, 2002, 0.50f, 0.35f, 72.0, bars, 256, 48000.0);
+    auto a = runMidiRole (OutputRole::Accent, 2002, 0.50f, 0.35f, 72.0, bars, 256, 48000.0);
+
+    for (const auto& e : f)
+        EXPECT (e.voice == 0);
+    for (const auto& e : p)
+        EXPECT (e.voice == 1);
+    for (const auto& e : w)
+        EXPECT (e.voice == 2);
+    for (const auto& e : a)
+        EXPECT (e.voice == 3);
+
+    std::vector<MidiTraceEvent> merged;
+    merged.reserve (f.size() + p.size() + w.size() + a.size());
+    merged.insert (merged.end(), f.begin(), f.end());
+    merged.insert (merged.end(), p.begin(), p.end());
+    merged.insert (merged.end(), w.begin(), w.end());
+    merged.insert (merged.end(), a.begin(), a.end());
+    std::sort (merged.begin(), merged.end(), [] (const MidiTraceEvent& x, const MidiTraceEvent& y) {
+        if (std::abs (x.ppq - y.ppq) > 1.0e-9)
+            return x.ppq < y.ppq;
+        if (x.kind != y.kind)
+            return static_cast<int> (x.kind) < static_cast<int> (y.kind);
+        if (x.voice != y.voice)
+            return x.voice < y.voice;
+        return x.note < y.note;
+    });
+    auto ensSorted = ens;
+    std::sort (ensSorted.begin(), ensSorted.end(), [] (const MidiTraceEvent& x, const MidiTraceEvent& y) {
+        if (std::abs (x.ppq - y.ppq) > 1.0e-9)
+            return x.ppq < y.ppq;
+        if (x.kind != y.kind)
+            return static_cast<int> (x.kind) < static_cast<int> (y.kind);
+        if (x.voice != y.voice)
+            return x.voice < y.voice;
+        return x.note < y.note;
+    });
+    EXPECT (midiEqual (ensSorted, merged));
+}
+
+static void testStage4InternalEnsembleIdentical()
+{
+    auto e0 = runEngineRole (OutputRole::Ensemble, 3003, 0.55f, 0.40f, 48);
+    auto e1 = runEngineRole (OutputRole::Foundation, 3003, 0.55f, 0.40f, 48);
+    auto e2 = runEngineRole (OutputRole::Pulse, 3003, 0.55f, 0.40f, 48);
+    auto e3 = runEngineRole (OutputRole::Wanderer, 3003, 0.55f, 0.40f, 48);
+    auto e4 = runEngineRole (OutputRole::Accent, 3003, 0.55f, 0.40f, 48);
+    EXPECT (midiEqual (e0.capturedEnsemble(), e1.capturedEnsemble()));
+    EXPECT (midiEqual (e0.capturedEnsemble(), e2.capturedEnsemble()));
+    EXPECT (midiEqual (e0.capturedEnsemble(), e3.capturedEnsemble()));
+    EXPECT (midiEqual (e0.capturedEnsemble(), e4.capturedEnsemble()));
+    EXPECT (e0.foundationPitchDraws() == e1.foundationPitchDraws());
+    EXPECT (e0.foundationPitchDraws() == e4.foundationPitchDraws());
+}
+
+static void testStage4AutomationUnion()
+{
+    auto runAuto = [] (OutputRole role) {
+        ConductorEngine eng;
+        eng.setOutputRole (role);
+        eng.setCapture (true);
+        eng.setParams ({ 0.20f, 0.10f });
+        eng.reseed (2002);
+        double ppq = 0.0;
+        const double end = 128.0;
+        while (ppq < end)
+        {
+            const int bar = static_cast<int> (std::floor (ppq / 4.0));
+            if (bar == 8)
+                eng.setParams ({ 0.75f, 0.10f });
+            if (bar == 16)
+                eng.setParams ({ 0.75f, 0.90f });
+            if (bar == 24)
+                eng.setParams ({ 0.40f, 0.50f });
+            const double next = std::min (end, ppq + 1.0);
+            eng.clock().advance ({ true, ppq, 72.0, 4, 4 });
+            eng.processTimeRange (ppq, next, true);
+            eng.drainPending();
+            ppq = next;
+        }
+        return eng;
+    };
+    auto ens = runAuto (OutputRole::Ensemble);
+    auto f = runAuto (OutputRole::Foundation);
+    auto p = runAuto (OutputRole::Pulse);
+    auto w = runAuto (OutputRole::Wanderer);
+    auto a = runAuto (OutputRole::Accent);
+    EXPECT (midiEqual (ens.capturedEnsemble(), f.capturedEnsemble()));
+    EXPECT (midiEqual (ens.capturedEnsemble(), a.capturedEnsemble()));
+
+    std::vector<MidiTraceEvent> merged = f.captured();
+    merged.insert (merged.end(), p.captured().begin(), p.captured().end());
+    merged.insert (merged.end(), w.captured().begin(), w.captured().end());
+    merged.insert (merged.end(), a.captured().begin(), a.captured().end());
+    auto sortEv = [] (std::vector<MidiTraceEvent>& v) {
+        std::sort (v.begin(), v.end(), [] (const MidiTraceEvent& x, const MidiTraceEvent& y) {
+            if (std::abs (x.ppq - y.ppq) > 1.0e-9)
+                return x.ppq < y.ppq;
+            if (x.kind != y.kind)
+                return static_cast<int> (x.kind) < static_cast<int> (y.kind);
+            if (x.voice != y.voice)
+                return x.voice < y.voice;
+            return x.note < y.note;
+        });
+    };
+    auto ensC = ens.captured();
+    sortEv (ensC);
+    sortEv (merged);
+    EXPECT (midiEqual (ensC, merged));
+}
+
+static void testStage4RoleSwitchNoHang()
+{
+    ConductorEngine eng;
+    eng.setOutputRole (OutputRole::Ensemble);
+    eng.setCapture (true);
+    eng.setParams ({ 0.70f, 0.35f });
+    eng.reseed (2002);
+    eng.clock().advance ({ true, 0.0, 72.0, 4, 4 });
+    eng.processTimeRange (0.0, 16.0, true);
+    eng.drainPending();
+    eng.setOutputRole (OutputRole::Pulse); // flushes emitted
+    eng.processTimeRange (16.0, 32.0, true);
+    eng.panic (32.0);
+    EXPECT (eng.tracker().activeCount() == 0);
+    assertPaired (eng.captured(), true);
+}
+
+static void testStage4ProjectionBuffers()
+{
+    auto ref = runMidiRole (OutputRole::Pulse, 777, 0.50f, 0.35f, 93.0, 24, 256, 48000.0);
+    for (int b : { 64, 127, 128, 255, 511, 512, 1024 })
+        EXPECT (midiEqual (ref, runMidiRole (OutputRole::Pulse, 777, 0.50f, 0.35f, 93.0, 24, b, 48000.0)));
+}
+
 int main()
 {
     testAlgorithmVersion();
@@ -866,6 +1065,12 @@ int main()
     testStage3RngIsolation();
     testStage3DensityRoles();
     testStage3LongRunHour();
+    testStage4EnsembleDefaultUnchanged();
+    testStage4ProjectionUnion();
+    testStage4InternalEnsembleIdentical();
+    testStage4AutomationUnion();
+    testStage4RoleSwitchNoHang();
+    testStage4ProjectionBuffers();
 
     if (gFails == 0)
     {

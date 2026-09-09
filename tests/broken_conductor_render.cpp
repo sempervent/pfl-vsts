@@ -3,6 +3,7 @@
 #include "generative/Scale.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -358,14 +359,15 @@ struct RunResult
     ConductorEngine engine;
 };
 
-static RunResult runFull (uint64_t seed, float density, float mutation, int bars)
+static RunResult runFull (uint64_t seed, float density, float mutation, int bars,
+                          pfl::generative::OutputRole role = pfl::generative::OutputRole::Ensemble)
 {
     RunResult r;
+    r.engine.setOutputRole (role);
     r.engine.setCapture (true);
     r.engine.setParams ({ density, mutation });
     r.engine.reseed (seed);
     r.engine.rhythm().setTraceEnabled (true);
-    // Traces only capture future mutations; birth already happened — OK for metrics.
 
     const double bpm = 72.0;
     const double endPpq = static_cast<double> (bars) * 4.0;
@@ -385,67 +387,83 @@ static RunResult runFull (uint64_t seed, float density, float mutation, int bars
 int main (int argc, char** argv)
 {
     const fs::path outDir = (argc > 1) ? fs::path (argv[1])
-                                       : fs::path ("renders/broken-conductor/stage3");
+                                       : fs::path ("renders/broken-conductor/stage4");
     fs::create_directories (outDir);
 
-    std::ofstream metrics (outDir / "stage3-metrics.txt");
-    metrics << "Broken Conductor Stage 3 metrics (72 BPM, algorithm v"
+    std::ofstream metrics (outDir / "stage4-metrics.txt");
+    metrics << "Broken Conductor Stage 4 role projection (72 BPM, algorithm v"
             << ConductorEngine::kAlgorithmVersion << ")\n\n";
 
-    struct Case
+    using pfl::generative::OutputRole;
+    struct Proj
     {
         const char* label;
-        uint64_t seed;
-        float density;
-        float mutation;
-        int bars;
+        OutputRole role;
+    };
+    const Proj projs[] = {
+        { "stage4-ensemble", OutputRole::Ensemble },
+        { "stage4-foundation", OutputRole::Foundation },
+        { "stage4-pulse", OutputRole::Pulse },
+        { "stage4-wanderer", OutputRole::Wanderer },
+        { "stage4-accent", OutputRole::Accent },
     };
 
-    const Case cases[] = {
-        { "seed-1001", 1001, 0.50f, 0.35f, 96 },
-        { "seed-2002", 2002, 0.50f, 0.35f, 96 },
-        { "seed-3003", 3003, 0.50f, 0.35f, 96 },
-        { "density-0", 2002, 0.0f, 0.35f, 64 },
-        { "density-1", 2002, 1.0f, 0.35f, 64 },
-        { "mutation-0", 2002, 0.50f, 0.0f, 64 },
-        { "mutation-1", 2002, 0.50f, 1.0f, 64 },
-    };
-
-    for (const auto& c : cases)
+    constexpr int kBars = 128;
+    for (const auto& p : projs)
     {
-        auto result = runFull (c.seed, c.density, c.mutation, c.bars);
-        writeTrace (outDir / (std::string (c.label) + ".txt"), result.events, result.engine);
-        writeSmf (outDir / (std::string (c.label) + ".mid"), result.events, 72.0);
-        if (std::string (c.label) == "seed-2002")
-            writeSmfRoles (outDir / "seed-2002-roles.mid", result.events, 72.0);
-
-        int roleOns[4] = {};
-        double rolePitchSum[4] = {};
-        for (const auto& e : result.events)
-        {
-            if (e.kind != MidiMsgKind::NoteOn)
-                continue;
-            const int v = std::clamp (e.voice, 0, 3);
-            ++roleOns[v];
-            rolePitchSum[v] += e.note;
-        }
-        metrics << c.label << " dens=" << c.density << " mut=" << c.mutation
-                << " notes/bar=" << (static_cast<double> (roleOns[0] + roleOns[1] + roleOns[2] + roleOns[3])
-                                     / static_cast<double> (c.bars));
-        for (int r = 0; r < 4; ++r)
-        {
-            metrics << " " << pfl::generative::voiceRoleName (static_cast<pfl::generative::VoiceRole> (r))
-                    << "=" << roleOns[r];
-            if (roleOns[r] > 0)
-                metrics << "(meanPitch=" << (rolePitchSum[r] / roleOns[r]) << ")";
-        }
-        metrics << " collisions_attempted=" << result.engine.collisionStats().attemptedSamePitch
-                << " shifted=" << result.engine.collisionStats().shifted
-                << " suppressed=" << result.engine.collisionStats().suppressed
-                << "\n";
-        std::cout << "Wrote " << c.label << " (" << result.events.size() << " events)\n";
+        auto result = runFull (2002, 0.50f, 0.35f, kBars, p.role);
+        writeTrace (outDir / (std::string (p.label) + ".txt"), result.events, result.engine);
+        writeSmf (outDir / (std::string (p.label) + ".mid"), result.events, 72.0);
+        metrics << p.label << " events=" << result.events.size()
+                << " noteOns=" << computeMetrics (result.events, kBars, 0).noteOns
+                << " ensembleEvents=" << result.engine.capturedEnsemble().size() << "\n";
+        std::cout << "Wrote " << p.label << "\n";
     }
 
-    std::cout << "Metrics: " << (outDir / "stage3-metrics.txt") << "\n";
+    // Automation projection check artifact (ensemble only + metrics note)
+    {
+        ConductorEngine eng;
+        eng.setCapture (true);
+        eng.setParams ({ 0.20f, 0.10f });
+        eng.reseed (2002);
+        double ppq = 0.0;
+        while (ppq < 128.0)
+        {
+            const int bar = static_cast<int> (std::floor (ppq / 4.0));
+            if (bar == 8)
+                eng.setParams ({ 0.75f, 0.10f });
+            if (bar == 16)
+                eng.setParams ({ 0.75f, 0.90f });
+            if (bar == 24)
+                eng.setParams ({ 0.40f, 0.50f });
+            const double next = std::min (128.0, ppq + 1.0);
+            eng.clock().advance ({ true, ppq, 72.0, 4, 4 });
+            eng.processTimeRange (ppq, next, true);
+            eng.drainPending();
+            ppq = next;
+        }
+        writeTrace (outDir / "stage4-automation-ensemble.txt", eng.captured(), eng);
+        writeSmf (outDir / "stage4-automation-ensemble.mid", eng.captured(), 72.0);
+        metrics << "automation-ensemble events=" << eng.captured().size() << "\n";
+    }
+
+    // Rough CPU: one ensemble vs four projections (same work ×4 by design)
+    {
+        using clock = std::chrono::steady_clock;
+        auto once = [] (OutputRole role) {
+            auto t0 = clock::now();
+            (void) runFull (2002, 0.50f, 0.35f, 256, role);
+            return std::chrono::duration<double, std::milli> (clock::now() - t0).count();
+        };
+        const double one = once (OutputRole::Ensemble);
+        const double four = once (OutputRole::Foundation) + once (OutputRole::Pulse)
+                            + once (OutputRole::Wanderer) + once (OutputRole::Accent);
+        metrics << "cpu_ms_one_ensemble_256bars=" << one
+                << " cpu_ms_four_projections_256bars=" << four
+                << " ratio=" << (one > 0.0 ? four / one : 0.0) << "\n";
+        std::cout << "CPU one=" << one << "ms four=" << four << "ms\n";
+    }
+
+    std::cout << "Metrics: " << (outDir / "stage4-metrics.txt") << "\n";
     return 0;
 }

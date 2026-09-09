@@ -1,0 +1,9 @@
+Broken Conductor Stage 4 role projection (72 BPM, algorithm v4)
+
+stage4-ensemble events=171 noteOns=86 ensembleEvents=171
+stage4-foundation events=76 noteOns=38 ensembleEvents=171
+stage4-pulse events=47 noteOns=24 ensembleEvents=171
+stage4-wanderer events=46 noteOns=23 ensembleEvents=171
+stage4-accent events=2 noteOns=1 ensembleEvents=171
+automation-ensemble events=78
+cpu_ms_one_ensemble_256bars=0.389792 cpu_ms_four_projections_256bars=1.46746 ratio=3.76472

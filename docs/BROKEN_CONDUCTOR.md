@@ -199,5 +199,5 @@ compile
 
 ## Future stages
 
-**Stage 3 (proposed):** Foundation + Pulse + Wanderer + Accent on one MIDI channel, listening to each other — **not** per-channel routing yet.  
+**Stage 4:** Deterministic role projection via OUTPUT ROLE (ENSEMBLE / FOUNDATION / PULSE / WANDERER / ACCENT). Every instance still computes the full ensemble; filter is post-arbitration. See `docs/ABLETON_ROLE_PROJECTION.md`. Per-role MIDI channels remain rejected for Live 11.
 Do not start without an explicit task.

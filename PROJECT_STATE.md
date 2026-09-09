@@ -10,7 +10,7 @@ Stage 3 Ableton acceptance: **PASS** (creative director). Tag: `broken-conductor
 ## Branch / tags
 
 - Stage 4 working: `pr/broken-conductor-stage4-role-projection`
-- Stage 3 complete: `broken-conductor-stage3-complete` @ `08df096` (main after PR #5 merge)
+- Stage 3 complete: `broken-conductor-stage3-complete` @ `dc68bb7` (main after PR #5 + acceptance docs)
 - Stage 2 complete: `broken-conductor-stage2-complete` @ `0f42d56`
 - Stage 2B branch tip: `pr/broken-conductor-stage2b`
 - Stage 2 rhythm: `broken-conductor-stage2-rhythm` @ `5d33a32`

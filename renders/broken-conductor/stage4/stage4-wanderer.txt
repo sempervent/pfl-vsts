@@ -1,0 +1,50 @@
+# Broken Conductor Stage 3 ensemble trace
+# algorithm=4 seed=2002 density=0.5 mutation=0.35
+# foundationRhythmDNA gen=8 bars=2 DNA:X__.............................
+# format: bar.beat.slot ROLE EVENT ... [REASON]
+8.3.0 WANDERER note 65 vel 93 GAP_FILL
+8.3.1 WANDERER off  65 dur 0.25
+12.3.0 WANDERER note 60 vel 96 GAP_FILL
+12.3.1 WANDERER off  60 dur 0.25
+30.3.1 WANDERER note 62 vel 81 GAP_FILL
+30.3.2 WANDERER off  62 dur 0.25
+47.2.1 WANDERER note 69 vel 79 NORMAL
+47.2.3 WANDERER off  69 dur 0.5
+51.2.1 WANDERER note 69 vel 80 GAP_FILL
+51.2.3 WANDERER off  69 dur 0.5
+52.3.1 WANDERER note 69 vel 81 GAP_FILL
+52.3.2 WANDERER off  69 dur 0.25
+63.2.1 WANDERER note 74 vel 80 GAP_FILL
+63.2.3 WANDERER off  74 dur 0.5
+66.3.1 WANDERER note 74 vel 81 GAP_FILL
+66.3.2 WANDERER off  74 dur 0.25
+68.3.1 WANDERER note 74 vel 78 GAP_FILL
+68.3.2 WANDERER off  74 dur 0.25
+71.2.1 WANDERER note 67 vel 80 GAP_FILL
+71.2.3 WANDERER off  67 dur 0.5
+73.2.1 WANDERER note 67 vel 80 GAP_FILL
+73.2.3 WANDERER off  67 dur 0.5
+75.2.1 WANDERER note 69 vel 79 CALL_RESPONSE
+75.2.3 WANDERER off  69 dur 0.5
+78.3.1 WANDERER note 69 vel 80 GAP_FILL
+78.3.2 WANDERER off  69 dur 0.25
+82.3.1 WANDERER note 62 vel 81 GAP_FILL
+82.3.2 WANDERER off  62 dur 0.25
+85.2.0 WANDERER note 69 vel 92 NORMAL
+85.2.2 WANDERER off  69 dur 0.5
+86.3.1 WANDERER note 65 vel 82 GAP_FILL
+86.3.2 WANDERER off  65 dur 0.25
+93.2.0 WANDERER note 50 vel 94 GAP_FILL
+93.2.2 WANDERER off  50 dur 0.5
+94.3.1 WANDERER note 50 vel 80 GAP_FILL
+94.3.2 WANDERER off  50 dur 0.25
+100.3.1 WANDERER note 53 vel 78 GAP_FILL
+100.3.2 WANDERER off  53 dur 0.25
+104.3.1 WANDERER note 57 vel 81 GAP_FILL
+104.3.2 WANDERER off  57 dur 0.25
+109.2.0 WANDERER note 53 vel 93 GAP_FILL
+109.2.2 WANDERER off  53 dur 0.5
+119.2.0 WANDERER note 50 vel 92 NORMAL
+119.2.2 WANDERER off  50 dur 0.5
+125.2.0 WANDERER note 50 vel 94 NORMAL
+125.2.2 WANDERER off  50 dur 0.5

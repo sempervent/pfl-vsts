@@ -53,7 +53,27 @@ public:
 
     void setCapture (bool enabled) noexcept { capture_ = enabled; }
     const std::vector<MidiTraceEvent>& captured() const noexcept { return captured_; }
-    void clearCaptured() noexcept { captured_.clear(); }
+    /** Full pre-filter ensemble stream (for Stage 4 identity proofs). */
+    const std::vector<MidiTraceEvent>& capturedEnsemble() const noexcept { return ensembleCaptured_; }
+    void clearCaptured() noexcept
+    {
+        captured_.clear();
+        ensembleCaptured_.clear();
+    }
+
+    OutputRole outputRole() const noexcept { return outputRole_; }
+
+    /**
+     * Configuration only — does not reseed or alter generative params.
+     * Flushes currently emitted (projected) notes so the host never hangs.
+     */
+    void setOutputRole (OutputRole role) noexcept
+    {
+        if (role == outputRole_)
+            return;
+        flushEmittedNotes (lastProcessedPpq_);
+        outputRole_ = role;
+    }
 
     const CollisionStats& collisionStats() const noexcept { return collisionStats_; }
     void clearCollisionStats() noexcept { collisionStats_ = {}; }
@@ -72,6 +92,9 @@ public:
         lastProcessedPpq_ = 0.0;
         clock_.reset (0.0);
         pending_.clear();
+        ensembleCaptured_.clear();
+        emittedTracker_.clear();
+        // outputRole_ preserved across reseed (configuration)
         recentOnsets_.fill (0);
         recentOnsetCursor_ = 0;
         onsetsThisBar_ = 0;
@@ -214,6 +237,8 @@ public:
         {
             if (! v.sounding)
                 continue;
+            if (! outputRolePasses (outputRole_, v.role))
+                continue;
             if (n >= maxOut)
                 break;
             out[n].note = v.soundingNote;
@@ -224,14 +249,22 @@ public:
         return n;
     }
 
+    /** After host seek re-articulation, register projected notes as emitted. */
+    void markProjectedSoundingAsEmitted (double ppq) noexcept
+    {
+        for (const auto& v : voices_)
+        {
+            if (! v.sounding || ! outputRolePasses (outputRole_, v.role))
+                continue;
+            emittedTracker_.noteOn (kMidiChannel, v.soundingNote, static_cast<int> (v.role),
+                                    ppq, v.noteOffPpq);
+        }
+    }
+
     void panic (double ppq) noexcept
     {
-        std::vector<MidiTraceEvent> panicEv;
-        tracker_.panicTo (panicEv, ppq, 0);
-        if (capture_)
-            captured_.insert (captured_.end(), panicEv.begin(), panicEv.end());
-        if (emitOutput_)
-            pending_.insert (pending_.end(), panicEv.begin(), panicEv.end());
+        // Host-facing offs only for notes this instance actually emitted
+        flushEmittedNotes (ppq);
         tracker_.clear();
         for (auto& v : voices_)
         {
@@ -853,20 +886,34 @@ private:
         recordRecentOnset (onsetsThisBar_ > onsetsBefore ? 1 : 0);
     }
 
+    void flushEmittedNotes (double ppq) noexcept
+    {
+        std::vector<MidiTraceEvent> offs;
+        emittedTracker_.panicTo (offs, ppq, 0);
+        if (! emitOutput_)
+            return;
+        for (auto& e : offs)
+        {
+            if (capture_)
+                captured_.push_back (e);
+            pending_.push_back (e);
+        }
+    }
+
     void emitOn (double ppq, int note, int velocity, VoiceRole role, InteractionReason reason, double endPpq) noexcept
     {
         const int voice = static_cast<int> (role);
-        if (! emitOutput_)
-        {
-            if (tracker_.isActive (kMidiChannel, note))
-                tracker_.noteOff (kMidiChannel, note);
-            tracker_.noteOn (kMidiChannel, note, voice, ppq, endPpq);
-            return;
-        }
+        // Composition ownership always advances (full ensemble)
         if (tracker_.isActive (kMidiChannel, note))
-            emitOff (ppq, note, static_cast<VoiceRole> (tracker_.ownerRole (kMidiChannel, note)),
-                     InteractionReason::CollisionShift);
+        {
+            const int owner = tracker_.ownerRole (kMidiChannel, note);
+            if (owner >= 0)
+                emitOff (ppq, note, static_cast<VoiceRole> (owner), InteractionReason::CollisionShift);
+            else
+                tracker_.noteOff (kMidiChannel, note);
+        }
         tracker_.noteOn (kMidiChannel, note, voice, ppq, endPpq);
+
         MidiTraceEvent e;
         e.ppq = ppq;
         e.channel = kMidiChannel;
@@ -875,6 +922,17 @@ private:
         e.voice = voice;
         e.reason = static_cast<int> (reason);
         e.kind = MidiMsgKind::NoteOn;
+
+        if (capture_)
+            ensembleCaptured_.push_back (e);
+
+        if (! emitOutput_)
+            return;
+
+        if (! outputRolePasses (outputRole_, role))
+            return;
+
+        emittedTracker_.noteOn (kMidiChannel, note, voice, ppq, endPpq);
         if (capture_)
             captured_.push_back (e);
         pending_.push_back (e);
@@ -885,7 +943,6 @@ private:
         const int voice = static_cast<int> (role);
         if (! tracker_.noteOffIfOwner (kMidiChannel, note, voice))
         {
-            // If ownership unknown/legacy, still clear if active and role matches or unknown
             if (tracker_.isActive (kMidiChannel, note))
             {
                 const int owner = tracker_.ownerRole (kMidiChannel, note);
@@ -894,10 +951,11 @@ private:
                 tracker_.noteOff (kMidiChannel, note);
             }
             else
-                return;
+            {
+                // Still may need to clear emitted if stale
+            }
         }
-        if (! emitOutput_)
-            return;
+
         MidiTraceEvent e;
         e.ppq = ppq;
         e.channel = kMidiChannel;
@@ -906,6 +964,25 @@ private:
         e.voice = voice;
         e.reason = static_cast<int> (reason);
         e.kind = MidiMsgKind::NoteOff;
+
+        if (capture_)
+            ensembleCaptured_.push_back (e);
+
+        const bool wasEmitted = [&]() noexcept {
+            if (! emittedTracker_.isActive (kMidiChannel, note))
+                return false;
+            const int er = emittedTracker_.ownerRole (kMidiChannel, note);
+            if (er >= 0 && er != voice)
+                return false;
+            emittedTracker_.noteOff (kMidiChannel, note);
+            return true;
+        }();
+
+        if (! emitOutput_)
+            return;
+        if (! wasEmitted)
+            return;
+
         if (capture_)
             captured_.push_back (e);
         pending_.push_back (e);
@@ -918,7 +995,9 @@ private:
     std::array<VoiceState, kNumVoices> voices_{};
     DeterministicRNG arbiterRng_{};
     MidiNoteTracker tracker_{};
+    MidiNoteTracker emittedTracker_{};
     CollisionStats collisionStats_{};
+    OutputRole outputRole_ = OutputRole::Ensemble;
 
     std::array<uint8_t, 16> recentOnsets_ {};
     int recentOnsetCursor_ = 0;
@@ -935,6 +1014,7 @@ private:
     bool capture_ = false;
     bool emitOutput_ = true;
     std::vector<MidiTraceEvent> captured_;
+    std::vector<MidiTraceEvent> ensembleCaptured_;
     std::vector<MidiTraceEvent> pending_;
 };
 

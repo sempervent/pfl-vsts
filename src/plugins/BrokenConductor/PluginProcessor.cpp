@@ -31,6 +31,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout BrokenConductorProcessor::cr
         juce::ParameterID { "mutation", 1 }, "Mutation",
         juce::NormalisableRange<float> { 0.0f, 1.0f, 0.001f }, 0.35f));
 
+    // Configuration / routing — not a continuous performance control.
+    // Prefer leave at ENSEMBLE unless projecting a single role to a Live track.
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "outputRole", 1 }, "Output Role",
+        juce::StringArray { "ENSEMBLE", "FOUNDATION", "PULSE", "WANDERER", "ACCENT" },
+        0));
+
     return { params.begin(), params.end() };
 }
 
@@ -94,6 +101,11 @@ void BrokenConductorProcessor::syncEngineFromParams() noexcept
     cp.density = apvts_.getRawParameterValue ("density")->load();
     cp.mutation = apvts_.getRawParameterValue ("mutation")->load();
     engine_.setParams (cp);
+
+    const int roleChoice = static_cast<int> (apvts_.getRawParameterValue ("outputRole")->load());
+    const auto role = static_cast<pfl::generative::OutputRole> (
+        std::clamp (roleChoice, 0, 4));
+    engine_.setOutputRole (role);
 
     const int seed = static_cast<int> (apvts_.getRawParameterValue ("seed")->load());
     if (lastSeedParam_ < 0)
@@ -263,6 +275,7 @@ void BrokenConductorProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                                        (juce::uint8) std::clamp (notes[i].velocity, 1, 127)),
                                    0);
                 }
+                engine_.markProjectedSoundingAsEmitted (ppqStart);
             }
         }
     }

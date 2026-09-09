@@ -1,0 +1,6 @@
+# Broken Conductor Stage 3 ensemble trace
+# algorithm=4 seed=2002 density=0.5 mutation=0.35
+# foundationRhythmDNA gen=8 bars=2 DNA:X__.............................
+# format: bar.beat.slot ROLE EVENT ... [REASON]
+3.2.0 ACCENT note 74 vel 96 GAP_FILL
+3.2.1 ACCENT off  74 dur 0.25

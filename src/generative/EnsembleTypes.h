@@ -144,6 +144,39 @@ inline float roleEffectiveMutation (VoiceRole r, float mutation01) noexcept
 }
 
 /**
+ * Stage 4 routing/configuration — which role(s) leave this instance as MIDI.
+ * Does not affect composition. Default Ensemble preserves Stage 3 behavior.
+ */
+enum class OutputRole : uint8_t
+{
+    Ensemble = 0,
+    Foundation = 1,
+    Pulse = 2,
+    Wanderer = 3,
+    Accent = 4
+};
+
+inline const char* outputRoleName (OutputRole r) noexcept
+{
+    switch (r)
+    {
+        case OutputRole::Ensemble: return "ENSEMBLE";
+        case OutputRole::Foundation: return "FOUNDATION";
+        case OutputRole::Pulse: return "PULSE";
+        case OutputRole::Wanderer: return "WANDERER";
+        case OutputRole::Accent: return "ACCENT";
+        default: return "UNKNOWN";
+    }
+}
+
+inline bool outputRolePasses (OutputRole filter, VoiceRole role) noexcept
+{
+    if (filter == OutputRole::Ensemble)
+        return true;
+    return static_cast<uint8_t> (filter) == static_cast<uint8_t> (role) + 1;
+}
+
+/**
  * Global onset budget per bar (approximate). dens=1 still leaves space.
  * Not exposed as a parameter.
  */
