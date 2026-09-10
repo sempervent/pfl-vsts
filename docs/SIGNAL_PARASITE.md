@@ -14,16 +14,27 @@ conversation or backs off accordingly.
 
 ## Status
 
-**Stage 2 — WAITING FOR CREATIVE-DIRECTOR ACCEPTANCE.**
-Stage 1 COMPLETE — Ableton **PASS**. Tag: `signal-parasite-stage1-complete` (PR #21).
+**Stage 2 COMPLETE — CREATIVE-DIRECTOR ABLETON ACCEPTANCE: PASS.**
+Tags: `signal-parasite-stage2-complete` (PR #22), `signal-parasite-stage1-complete` (PR #21).
+
+## CREATIVE-DIRECTOR ABLETON ACCEPTANCE: PASS (Stage 2)
+
+Confirmed by human Ableton testing:
+
+- Stage 2 behavioral relationship model works as engineered
+- LURKING / ATTACHED / ANSWERING / WITHDRAWN behavior is accepted
+- SENSITIVITY, HUNGER, and MUTATION remain meaningfully distinct
+- dense-source restraint works; sparse-source engagement works
+- changing sustained material works
+- editor-sizing defect is fixed; normal plugin editor use no longer requires scrolling
+- footer/mojibake defects are fixed; shared editor change is accepted
+
+**Product decision:** SIGNAL PARASITE STAGE 2 RELATIONSHIP MODEL IS ACCEPTED.
 
 ## CREATIVE-DIRECTOR ABLETON ACCEPTANCE: PASS (Stage 1)
 
 Confirmed by human Ableton testing: the audio/reactive implementation behaves
 successfully. Listening, stimulus detection, and generated responses are accepted.
-
-Stage 2 has **not** been accepted. Renders and metrics exist; the musical call
-belongs to the creative director.
 
 ## The idea
 
@@ -230,6 +241,8 @@ SEED change starts a new personality with no history, so it goes back to
 LURKING. Controls and SEED are saved with the project; the history and the
 state are not, so a reload starts LURKING too.
 
-## Stage 3 (not started)
+## Stage 3
 
-Not scoped. Requires explicit creative-director direction.
+Performance intervention (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE) —
+authorized after Stage 2 Ableton PASS. Intended final planned software stage;
+park Signal Parasite if accepted rather than auto-continuing into tonal listening.

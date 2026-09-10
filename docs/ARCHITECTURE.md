@@ -108,7 +108,7 @@ See `docs/PULSE_COLONY.md`.
 
 COLLAPSE: SWARM → STARVE → FRACTURE → RESIDUE (24 beats). FREEZE ≠ MUTATION=0; SILENCE ≠ MIX=0.
 
-## Signal Parasite (Stage 2 — awaiting acceptance)
+## Signal Parasite (Stage 2 COMPLETE — Ableton PASS)
 
 ```text
 Host audio in (mono or stereo)          Host tempo / transport / PPQ
@@ -151,15 +151,16 @@ Host audio in (mono or stereo)          Host tempo / transport / PPQ
                         OUTPUT -> clamp -> audio out
 ```
 
-Ableton PASS Stage 1. Tag `signal-parasite-stage1-complete`. Deferred editor
-scrolling/footer encoding → Stage 2. See `docs/SIGNAL_PARASITE.md`.
+Ableton PASS Stages 1–2. Tags `signal-parasite-stage1-complete`,
+`signal-parasite-stage2-complete`. Shared editor sizing via
+`PflGenericEditorSizing.h` accepted. See `docs/SIGNAL_PARASITE.md`.
 
 The wet path is **generated**, never the input reprocessed. Analysis reads the
 original input only, so the parasite cannot trigger on its own output. No FFT,
-no pitch tracking, no performance verbs. SENSITIVITY owns detection, HUNGER owns
-response density, MUTATION owns grammar drift only. Response onsets are
-scheduled in absolute samples, so the event stream is independent of the host
-buffer size.
+no pitch tracking. Performance verbs arrive in Stage 3. SENSITIVITY owns
+detection, HUNGER owns response density, MUTATION owns grammar drift only.
+Response onsets are scheduled in absolute samples, so the event stream is
+independent of the host buffer size.
 
 ## Audio engine (shared DSP)
 

@@ -4,16 +4,18 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**PFL Signal Parasite Stage 2 — WAITING FOR CREATIVE-DIRECTOR ACCEPTANCE**
-(source relationship model + shared editor layout fix). Software and tests
-complete on `pr/signal-parasite-stage2-relationship`; the musical call is open.
-Signal Parasite Stage 1 COMPLETE (Ableton PASS). Pulse Colony **PARKED** at Stage 3.
+**PFL Signal Parasite Stage 2 COMPLETE (Ableton PASS).** Relationship model and
+shared editor layout fix accepted. Closing Stage 2 / beginning Stage 3
+(performance intervention) from updated `main`.
+
+Signal Parasite Stage 1 COMPLETE. Pulse Colony **PARKED** at Stage 3.
 Memory Eater **PARKED** at Stage 4. Ruin Engine PARKED at Stage 4.
 
 Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 ## Branch / tags
 
+- Stage 2 complete: `signal-parasite-stage2-complete` (PR #22)
 - Stage 1 complete: `signal-parasite-stage1-complete` (PR #21)
 - Stage 3 complete: `pulse-colony-stage3-complete` (PR #20)
 - Stage 2 complete: `pulse-colony-stage2-complete` (PR #19)
@@ -94,13 +96,14 @@ Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 2 awaiting acceptance**; Stage 1 COMPLETE (Ableton PASS) |
+| Status | **Stage 2 COMPLETE** (Ableton PASS); Stage 1 COMPLETE |
 | Engine | algorithm **v2** (`src/dsp/SignalParasiteEngine.h`), saved state v2 |
 | Formats | AU VST3 (`Fx`) · `Sig1` · `com.pfl.signalparasite` |
 | Params | MIX 0.50, SENSITIVITY 0.50, HUNGER 0.35, MUTATION 0.25, OUTPUT 0.85, SEED 2002 |
 | Job | Listen → ATTACK/SHIFT stimuli → relationship state → DNA + HUNGER → ONE generated ParasiteVoice |
 | Relationship | LURKING / ATTACHED / ANSWERING / WITHDRAWN over a 16-slot stimulus-descriptor history (no audio memory) |
 | Wet | Generated audio only (noise → resonant LP chirp); analysis taps original input |
-| Tag | `signal-parasite-stage1-complete` (PR #21) |
-| Deferred UI | **Fixed in Stage 2** — `src/plugins/PflGenericEditorSizing.h` sizes every PFL generic editor from its automatable parameter count and supplies an ASCII-safe footer label. Signal Parasite is 420x284. |
-| Next | Creative-director Ableton listening on Stage 2. Stage 3 is not scoped. |
+| Tag | `signal-parasite-stage2-complete` (PR #22); also `signal-parasite-stage1-complete` (PR #21) |
+| Product decision | **SIGNAL PARASITE STAGE 2 RELATIONSHIP MODEL IS ACCEPTED.** |
+| Editor | Deferred Stage 1 UI **resolved**: height from param count via `PflGenericEditorSizing.h`; normal desktop opens without scrolling; ASCII footer; shared editor accepted across suite. Signal Parasite Stage 2 size 420×284. |
+| Next | Stage 3 — performance intervention (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE). |

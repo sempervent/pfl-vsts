@@ -1720,3 +1720,34 @@ beats into the busy section), back to ATTACHED at 138 and ANSWERING at 144.
 Audio memory of any kind; new public parameters; a second voice; performance
 verbs; FFT or pitch tracking; MIDI; persisting the history across a reload;
 letting the state drive detection or the DNA.
+
+---
+
+## 2026-09-10 — Signal Parasite Stage 2 Ableton PASS
+
+### Acceptance
+
+CREATIVE-DIRECTOR ABLETON ACCEPTANCE: **PASS**.
+Tag: `signal-parasite-stage2-complete`. PR #22 merged.
+
+Stage 2 relationship model accepted in Ableton: LURKING / ATTACHED / ANSWERING /
+WITHDRAWN behavior; SENSITIVITY / HUNGER / MUTATION remain distinct; dense-source
+restraint and sparse-source engagement; changing sustained material.
+
+### Deferred Stage 1 UI — resolved
+
+- Editor height calculated from automatable parameter count (`PflGenericEditorSizing.h`)
+- Normal desktop operation does not require scrolling
+- Performance-heavy plugin editors (Pulse Colony, Memory Eater, Ruin Engine) fit normally
+- Footer encoding corrected (ASCII-safe `Product - Stage N`)
+- Shared editor behavior accepted across the suite
+
+### Product decision
+
+**SIGNAL PARASITE STAGE 2 RELATIONSHIP MODEL IS ACCEPTED.**
+
+### Next
+
+Signal Parasite Stage 3 — performance intervention (FREEZE / MUTATE / COLLAPSE /
+RESEED / SILENCE). Intended final planned software stage; park after PASS rather
+than auto-starting tonal listening.
