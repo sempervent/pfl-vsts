@@ -159,9 +159,11 @@ void SignalParasiteProcessor::processBlockBypassed (juce::AudioBuffer<float>& bu
 
 void SignalParasiteProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    // Controls only — never analysis buffers or generated voice audio.
+    // Controls only — never analysis buffers, generated voice audio, or the
+    // Stage 2 stimulus history. A reloaded project starts LURKING, because the
+    // parasite has not heard this source yet in this session.
     juce::ValueTree root ("PFLSignalParasiteState");
-    root.setProperty ("stateVersion", 1, nullptr);
+    root.setProperty ("stateVersion", 2, nullptr);
     root.setProperty ("algorithmVersion", pfl::dsp::SignalParasiteEngine::kAlgorithmVersion,
                       nullptr);
     root.appendChild (apvts_.copyState(), nullptr);
