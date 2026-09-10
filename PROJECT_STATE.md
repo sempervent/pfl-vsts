@@ -4,11 +4,12 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**Broken Conductor Stage 6 — COMPLETE** (Ableton-accepted).  
-PR #9 merged to `main`.
+**Ruin Engine Stage 1 — IN PROGRESS** (safe generative audio vertical slice).  
+Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 ## Branch / tags
 
+- Active: `pr/ruin-engine-stage1`
 - Stage 6 complete: `broken-conductor-stage6-complete`
 - Stage 6 PR: #9 `pr/broken-conductor-stage6-harmonic-form` (merged)
 - Stage 5 complete: `broken-conductor-stage5-complete` (PR #8 merged)
