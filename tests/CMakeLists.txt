@@ -146,3 +146,24 @@ target_link_libraries(pfl_performance_render
         juce::juce_core
         juce::juce_events
 )
+
+add_executable(pfl_signal_parasite_tests
+    signal_parasite_tests.cpp
+)
+target_include_directories(pfl_signal_parasite_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_features(pfl_signal_parasite_tests PRIVATE cxx_std_20)
+add_test(NAME signal_parasite_tests COMMAND pfl_signal_parasite_tests)
+
+add_executable(pfl_signal_parasite_render
+    signal_parasite_render.cpp
+)
+target_include_directories(pfl_signal_parasite_render PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_features(pfl_signal_parasite_render PRIVATE cxx_std_20)
+target_compile_definitions(pfl_signal_parasite_render PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+target_link_libraries(pfl_signal_parasite_render
+    PRIVATE
+        juce::juce_audio_formats
+        juce::juce_audio_basics
+        juce::juce_core
+        juce::juce_events
+)
