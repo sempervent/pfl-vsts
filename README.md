@@ -34,9 +34,9 @@ Generative **audio-memory** effect: short-term ring + six-slot ecology + generat
 
 Deterministic generative **rhythmic gate** (AU/VST3): three PulseCells (ANCHOR / SKITTER / GHOST) propose into one ColonyArbiter → one gate/motion stream. Controls: MIX, DENSITY, MUTATION, MOTION, OUTPUT, SEED + performance FREEZE / SILENCE / MUTATE / COLLAPSE / RESEED. Algorithm v3 + performance-engine v1. Ableton-accepted through Stage 3; parked as shippable. See `docs/PULSE_COLONY.md`.
 
-### PFL Signal Parasite (Stage 1 NEXT)
+### PFL Signal Parasite (Stage 1)
 
-Audio-reactive generative collaborator: analyze input → StimulusEvents → one generated ParasiteVoice. Planned controls: MIX, SENSITIVITY, HUNGER, MUTATION, OUTPUT, SEED. See `PROJECT_STATE.md`.
+Audio-reactive generative **collaborator** (AU/VST3): analyses the incoming audio, decides for itself what is worth answering, and answers with its own generated voice. The wet path is generated (noise → resonant LP chirp → AR → saturator → pan), never the input reprocessed, and analysis taps the original input only so it cannot hear itself. ATTACK and SHIFT detection paths; one voice; deterministic and buffer-size independent. Controls: MIX, SENSITIVITY, HUNGER, MUTATION, OUTPUT, SEED. Algorithm v1. No MIDI, no FFT, no performance verbs. See `docs/SIGNAL_PARASITE.md`.
 
 ## Roadmap
 
@@ -47,7 +47,7 @@ Development order (planned unless the creative director changes priority):
 3. **PFL Ruin Engine** — PARKED at Stage 4 (shippable). Generative transformation of incoming audio.
 4. **PFL Memory Eater** — **PARKED** at v4 (Ableton PASS). Send-first Return + performance verbs.
 5. **PFL Pulse Colony** — **PARKED** at v3 (Ableton PASS). Colony + performance verbs.
-6. **PFL Signal Parasite** — Stage 1 NEXT: audio-reactive generative collaborator (deterministic analysis, not ML-by-default).
+6. **PFL Signal Parasite** — Stage 1 implemented: audio-reactive generative collaborator (deterministic analysis, not ML-by-default).
 
 ## Shared Architecture
 

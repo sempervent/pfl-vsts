@@ -108,6 +108,47 @@ See `docs/PULSE_COLONY.md`.
 
 COLLAPSE: SWARM → STARVE → FRACTURE → RESIDUE (24 beats). FREEZE ≠ MUTATION=0; SILENCE ≠ MIX=0.
 
+## Signal Parasite (Stage 1)
+
+```text
+Host audio in (mono or stereo)          Host tempo / transport / PPQ
+        |                                        |
+        +--- ORIGINAL input tap (before mix) ----+
+        |                                        v
+        v                              ParasiteFeatureExtractor
+       dry                               energy · attack · brightness
+        |                                change · balance · fill01
+        |                                        |
+        |                                        v
+        |                              ParasiteStimulusDetector
+        |                                ATTACK | SHIFT, queue cap 8
+        |                                        |
+        |                                        v
+        |                              ParasiteBehavior
+        |                                DNA (birth/mutate) + HUNGER gate
+        |                                -> absolute-sample schedule
+        |                                        |
+        |                                        v
+        |                              ONE ParasiteVoice (generated)
+        |                                noise -> resonant LP chirp -> AR
+        |                                -> saturator -> constant-power pan
+        |                                        |
+        |                                        v
+        |                                   DC -> limiter
+        |                                        |
+        +----------------> MIX -----------------+
+                            |
+                            v
+                        OUTPUT -> clamp -> audio out
+```
+
+The wet path is **generated**, never the input reprocessed. Analysis reads the
+original input only, so the parasite cannot trigger on its own output. No FFT,
+no pitch tracking, no performance verbs. SENSITIVITY owns detection, HUNGER owns
+response density, MUTATION owns grammar drift only. Response onsets are
+scheduled in absolute samples, so the event stream is independent of the host
+buffer size. See `docs/SIGNAL_PARASITE.md`.
+
 ## Audio engine (shared DSP)
 
-Filter, saturator, dirt bus, feedback delay, DC blocker, safety limiter, RuinEngine core — used by Drone Organism and Ruin Engine. Memory Eater / Pulse Colony reuse DC/limiter/smoother.
+Filter, saturator, dirt bus, feedback delay, DC blocker, safety limiter, RuinEngine core — used by Drone Organism and Ruin Engine. Memory Eater / Pulse Colony / Signal Parasite reuse DC/limiter/smoother.

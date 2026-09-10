@@ -2,10 +2,25 @@
 
 ## Unreleased
 
-### Signal Parasite — Stage 1 NEXT
+### Signal Parasite — Stage 1
 
-- Audio-reactive generative collaborator (listen → StimulusEvents → one ParasiteVoice)
-- Branch planned: `pr/signal-parasite-stage1-reactive`
+- New plugin: audio-reactive generative collaborator, algorithm **v1**
+  (`SignalParasite` / `Sig1` / `com.pfl.signalparasite`, AU + VST3 Fx)
+- Listen → `ParasiteFeatureExtractor` → `ParasiteStimulusDetector` → DNA + HUNGER
+  gate → one `ParasiteVoice` → wet
+- Wet is **generated** audio (noise → resonant LP chirp → AR → saturator → pan),
+  never the input reprocessed; analysis taps the original input only, so it
+  cannot hear itself
+- ATTACK and SHIFT detection paths, both edge-triggered with envelope-anchored
+  re-arm: drums fixture reads 62 attacks / 1 shift, pad fixture 1 attack /
+  29 shifts
+- Macro orthogonality: SENSITIVITY 0.2/0.5/0.9 → 32/63/94 stimuli; HUNGER
+  0/0.35/0.7/1.0 → 0/7/15/21 answers at fixed stimuli; MUTATION 0/0.25/1.0 →
+  DNA generation 0/1/3 at fixed answers
+- Deterministic and buffer-size independent (identical fingerprints across
+  64…1024, including odd sizes); no FFT, no pitch tracking, no performance verbs
+- Renders: `renders/signal-parasite/stage1/`
+- Branch: `pr/signal-parasite-stage1-reactive`
 
 ### Pulse Colony — Stage 3 COMPLETE (PARKED)
 

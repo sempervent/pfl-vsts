@@ -1435,3 +1435,129 @@ dnaEdited mark) remain documented and non-blocking.
 
 **PFL Signal Parasite Stage 1** — audio-reactive generative collaborator.
 Do not begin Pulse Colony Stage 4.
+
+---
+
+## 2026-09-10 — Signal Parasite Stage 1 (algorithm v1)
+
+Reconciles recon reports `analysis/sp1-recon-A.md` … `H.md`. Where a recon
+proposal conflicted with a hard product constraint, the constraint wins and the
+departure is recorded below.
+
+### Product shape
+
+Listen → `ParasiteFeatureExtractor` → `ParasiteStimulusDetector` →
+`ParasiteBehavior` (DNA + HUNGER gate) → **one** `ParasiteVoice` → wet.
+
+The wet path is **generated** audio (noise → resonant LP chirp → AR → saturator →
+pan), never the input reprocessed. Analysis taps the **original input only**,
+read before the mix, so the parasite cannot hear itself. No FFT, no pitch
+tracking, no performance verbs.
+
+### Macro semantics (the orthogonality contract)
+
+| Macro | Owns | Must not affect |
+|-------|------|-----------------|
+| SENSITIVITY | detection thresholds and cooldowns — *how much of the source it hears* | whether an answer fires |
+| HUNGER | minimum musical gap + accept probability — *how often it answers* | how much it hears |
+| MUTATION | DNA lifespan and one bounded MutOp per generation — *how its grammar drifts* | response density |
+| MIX / OUTPUT | wet/dry blend and final trim | anything structural |
+
+Verified on the drums fixture (64 beats, seed 2002): SENSITIVITY 0.2/0.5/0.9 →
+32/63/94 stimuli; HUNGER 0/0.35/0.7/1.0 → 0/7/15/21 responses with the stimulus
+count pinned at 63; MUTATION 0/0.25/1.0 → DNA generation 0/1/3 with the response
+count pinned at 24.
+
+### Reconciliations and departures from recon
+
+**Brightness split at 800 Hz (recon B).** One-pole LP at 800 Hz, HP taken as the
+residual, brightness = `HP / (HP + LP)` power ratio. Chosen over a higher split
+so that a bass-and-mid pad still registers timbre movement rather than reading as
+uniformly dark.
+
+**Dropped recon C's "max 2 events per `processBlock`" rate cap.** A per-block cap
+makes the event stream a function of the host's buffer size, which directly
+contradicts the buffer-size independence requirement. Rate is instead bounded
+purely in the sample domain: refractory floors (25 ms ATTACK, 80 ms SHIFT), the
+debounce windows, and the `kMinStrength = 0.12` enqueue gate.
+
+**Detection is edge-triggered, not level-triggered.** Recon C specified
+threshold + refractory only. That is not sufficient: the tail of a hit holds the
+attack ratio high while the 200 ms baseline climbs to meet it, so a single kick
+fired seven events at 35 ms spacing. Both paths now re-arm explicitly:
+
+- ATTACK re-arms when the hit it fired on has decayed by ~4 dB
+  (`energy < armEnergy * 0.6`) or a louder one arrives (`> 1.4×` while rising).
+- SHIFT re-arms when the excursion it fired on has halved or grown by half
+  again — a plateau is not a new shift, a deepening excursion is.
+
+Both references are **absolute envelope values, not multiples of the
+threshold**. An earlier threshold-relative form (`attack < attOn * 0.5`) made
+high SENSITIVITY gate *harder* than low, because a smaller threshold demands a
+deeper decay, which flattened and then inverted the sensitivity sweep.
+
+**Fast envelope is two cascaded poles.** A single pole at 8 ms still passes
+enough ripple from a 100–200 Hz fundamental for the fast/slow ratio to read an
+onset on every cycle — a sustained 180 Hz tone produced 130 stimuli in 4 s.
+Cascading two stages (8 ms rise / 30 ms fall each) removes it while keeping
+transient response; the same tone now produces none.
+
+**Sensitivity anchors are extrapolated, not clamped.** `lerp3` interpolates
+through the recon C anchor table at 0.2 / 0.5 / 0.9 and extrapolates outside it,
+with hard floors on every derived quantity. This keeps the knob monotone across
+its full travel instead of flattening at the ends.
+
+**HUNGER curve retuned to hit recon D's stated density band.** Recon D asks for
+~2–8 accepted responses per 16 beats at HUNGER 0.50 on drums. The originally
+proposed exponents delivered 1.5. Now `minGap = 6 + (0.75 - 6) · h^0.45`,
+`base = min(0.62, 0.04 + 0.55 · h^0.95)`, and the post-gap recovery ramp spans
+4 beats rather than 8. Drums at HUNGER 0.50 land at 2.75 per 16 beats.
+
+**SOURCE_BUSY probe replaced.** Recon D's gate-fill probe suppressed responses on
+both drums and pads. Replaced with `fill01`, a slow peak-follower ratio: sparse
+material spends most of its time far below its own slow peak, a continuous bed
+sits right at it. The threshold is deliberately high
+(`lerp(1.05, 0.82, gapPreference)`) so it only engages against a genuine wall of
+sound.
+
+**`gapPreference` drift is bounded to birth ± 0.20.** Unbounded `TiltGap` drift
+would let MUTATION act as a density control, which PL-11 forbids.
+
+**Response onsets are scheduled in absolute samples**, computed from the
+stimulus sample index plus `delayBeats × samplesPerBeat`, so an answer lands on
+the same sample whatever the block partition. Pending capacity is 1, matching
+the single voice; a pending answer that collides with a busy voice slides once
+and is then dropped as SOURCE_BUSY rather than queued indefinitely.
+
+**Analysis and detection consume no RNG.** All randomness lives in the response
+brain, on isolated derived streams (`parasite/dna/birth`, `…/mutate`,
+`…/response/delay`, `…/duration`, `…/accept`, `…/spatial`, `…/voice/noise`), so
+changing detection settings cannot shift the response draw sequence.
+
+**Priming and settle windows.** The first sample after a reset primes every
+baseline, so a mid-insert can never look like a transient. Beyond that, `attack`
+is published as 0 for 600 ms and `change` for 2500 ms after a reset — roughly
+3× the 200 ms and 800 ms baseline time constants. Without this, a seek into
+already-flowing audio fabricates an onset, because at the end of the 50 ms
+warm-up the slow baseline is only ~22 % converged and the ratio reads ~4.5.
+Audio that *arrives* after a reset still lands a real onset, since the baselines
+converge on the preceding silence.
+
+**Mono is analysed as the mid sum.** On a mono bus the processor duplicates the
+channel, runs the stereo engine, and sums the two outputs at 0.5 so the
+constant-power pan does not change perceived level.
+
+### Host handling
+
+Transport stop clears pending answers and pauses DNA evolution. A seek (detected
+as `jump < -0.01` or forward beyond `(maxBlock/sr) · (bpm/60) · 2.5 + 0.05`)
+clears queued stimuli and scheduled answers, stops the voice through a short
+safe release, resets analysis baselines, re-arms the warm-up, and rebirths DNA
+with bounded evolution replay to the current bar. A seek is never itself a
+stimulus. Seed changes regenerate DNA at the next bar boundary.
+
+### Rejected for Stage 1
+
+MIDI and controllers; performance verbs; FFT and pitch tracking; more than one
+voice; any wet path that processes the input; self-listening; per-block event
+caps.
