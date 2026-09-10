@@ -4,29 +4,35 @@ Deterministic generative **rhythmic audio gate** — evolving PulseCell organism
 
 ## Status
 
-**Stage 2 IN PROGRESS** (draft PR) — multi-cell colony (algorithm **v2**).
+**Stage 2 COMPLETE** — Ableton **PASS**. Tag: `pulse-colony-stage2-complete`.
 
 Stage 1 COMPLETE — Ableton **PASS**. Tag: `pulse-colony-stage1-complete`.
 
-## CREATIVE-DIRECTOR ABLETON ACCEPTANCE: PASS (Stage 1)
+## CREATIVE-DIRECTOR ABLETON ACCEPTANCE: PASS (Stage 2)
 
 Confirmed by human Ableton testing:
 
-- Pulse Colony operates as engineered
-- the single PulseCell rhythmic model works
-- DENSITY and MUTATION behave as intended
-- the plugin is safe and usable in Ableton
-- the Stage 1 rhythmic foundation is accepted
+- the three-cell colony works musically
+- ANCHOR / SKITTER / GHOST interaction is accepted
+- the ColonyArbiter architecture is accepted
+- global DENSITY remains useful
+- MUTATION remains distinct from DENSITY
+- MOTION remains useful
+- the multi-cell implementation adds value beyond Stage 1
 
 Accepted findings:
 
-- one PulseCell can establish a recognizable rhythmic organism
-- negative space is musically useful
-- DENSITY controls activity
-- MUTATION controls evolution
-- MOTION provides bounded stereo behavior
-- Stage 1 does not need audio memory, feedback, or multiband processing
-- the concept warrants development into an actual multi-cell colony
+- Pulse Colony is now genuinely multi-cell
+- ANCHOR establishes rhythmic structure
+- SKITTER contributes propulsion/syncopation
+- GHOST provides sparse gap-oriented punctuation
+- proposals feed one ColonyArbiter
+- there is still one final audio gate/motion path
+- global DENSITY prevents threefold activity inflation
+- interaction adds value beyond independent patterns
+- Stage 2 is accepted despite known minor musical limitations such as
+  occasional high-density slicer character
+- accepted Stage 2 musical tuning should NOT be silently retuned during Stage 3
 
 ## Musical job (Stage 2)
 
@@ -35,7 +41,7 @@ Accepted findings:
 > another, leave intentional gaps, and evolve independently — a colony,
 > not three stacked slicers.
 
-## Controls (unchanged)
+## Controls
 
 | Param | Default | Meaning |
 |-------|---------|---------|
@@ -46,7 +52,7 @@ Accepted findings:
 | OUTPUT | 0.85 | post-mix level |
 | SEED | 2002 | deterministic personality |
 
-## Signal path (Stage 2)
+## Signal path
 
 ```text
 in ─► dry ──────────────────────────────────────────┐
@@ -70,3 +76,5 @@ in ─► dry ──────────────────────
 ## Explicitly out of scope (Stage 2)
 
 Multiband · performance FREEZE/MUTATE/COLLAPSE · MIDI · audio memory · feedback · parallel cell audio sum · public role knobs · studio/controllers
+
+Next: Stage 3 performance intervention (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE), then park.

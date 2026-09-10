@@ -83,7 +83,7 @@ recall voice → DC → limiter → MIX → OUTPUT → silenceGain → audio out
 
 Real AU/VST3 audio effect (`Fx`). Send-first Return workflow (MIX=1.0). Never writes wet into the ring. See `docs/MEMORY_EATER.md`.
 
-## Pulse Colony (Stage 2)
+## Pulse Colony (Stage 2 COMPLETE)
 
 ```text
 Host audio in (mono or stereo)
@@ -100,8 +100,9 @@ PulseColonyEngine (algorithm v2)
 dry ‖ wet → MIX → OUTPUT
 ```
 
-Stage 1 COMPLETE (Ableton PASS, tag `pulse-colony-stage1-complete`).
-See `docs/PULSE_COLONY.md`.
+Ableton PASS. Tag `pulse-colony-stage2-complete`. See `docs/PULSE_COLONY.md`.
+
+Stage 3 adds FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE without retuning Stage 2 autonomous colony behavior.
 
 ## Audio engine (shared DSP)
 

@@ -1308,3 +1308,34 @@ or constant-sixteenth spam.
 
 Performance intervention vs ecology deepening after Stage 2 listening. Default lean:
 performance verbs, then park. Multiband only if earned.
+
+---
+
+## 2026-09-10 — Pulse Colony Stage 2 Ableton PASS
+
+### Acceptance
+
+CREATIVE-DIRECTOR ABLETON ACCEPTANCE: **PASS**.
+Tag: `pulse-colony-stage2-complete`. PR #19 merged.
+
+Confirmed: three-cell colony works musically; ANCHOR / SKITTER / GHOST interaction
+accepted; ColonyArbiter architecture accepted; global DENSITY remains useful;
+MUTATION remains distinct from DENSITY; MOTION remains useful; multi-cell adds
+value beyond Stage 1.
+
+### Accepted findings
+
+- Pulse Colony is now genuinely multi-cell
+- ANCHOR establishes rhythmic structure
+- SKITTER contributes propulsion/syncopation
+- GHOST provides sparse gap-oriented punctuation
+- Proposals feed one ColonyArbiter; one final audio gate/motion path
+- Global DENSITY prevents threefold activity inflation
+- Interaction adds value beyond independent patterns
+- Accepted despite known minor musical limitations (occasional high-density slicer character)
+- **Accepted Stage 2 musical tuning must NOT be silently retuned during Stage 3**
+
+### Next
+
+Stage 3: performance intervention (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE),
+then park. Branch from updated `main` after merge.
