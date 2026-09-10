@@ -55,13 +55,40 @@ public:
         mix_.setTarget (std::pow (space01, 0.7f));
     }
 
+    /**
+     * Independent targets for Ruin Engine / wet-only paths.
+     * Feedback is hard-capped. Does not change Drone Organism setSpace semantics.
+     */
+    void setDelaySeconds (float secL, float secR) noexcept
+    {
+        const float maxSec = static_cast<float> (maxSamples_ - 2) / static_cast<float> (sampleRate_);
+        secL = std::clamp (secL, 0.001f, maxSec);
+        secR = std::clamp (secR, 0.001f, maxSec);
+        delaySamplesL_.setTarget (secL * static_cast<float> (sampleRate_));
+        delaySamplesR_.setTarget (secR * static_cast<float> (sampleRate_));
+    }
+
+    void setFeedbackAmount (float fb01) noexcept
+    {
+        feedback_.setTarget (std::clamp (fb01, 0.0f, 0.82f));
+    }
+
+    void setInternalWet (float wet01) noexcept
+    {
+        mix_.setTarget (std::clamp (wet01, 0.0f, 1.0f));
+    }
+
+    /** When true, dry = 1 - wet (Ruin wet-only). Default false preserves Drone Organism space blend. */
+    void setFullWetMode (bool on) noexcept { fullWetMode_ = on; }
+
     void processSample (float inL, float inR, float& outL, float& outR) noexcept
     {
         const float dL = std::clamp (delaySamplesL_.getNext(), 1.0f, static_cast<float> (maxSamples_ - 2));
         const float dR = std::clamp (delaySamplesR_.getNext(), 1.0f, static_cast<float> (maxSamples_ - 2));
         const float fb = feedback_.getNext();
         const float wet = mix_.getNext();
-        const float dry = 1.0f - wet * 0.85f;
+        // Drone Organism space macro keeps a little dry; Ruin full-wet mode is dry = 1 - wet.
+        const float dry = fullWetMode_ ? (1.0f - wet) : (1.0f - wet * 0.85f);
 
         const float delayedL = readHermite (bufferL_, dL);
         const float delayedR = readHermite (bufferR_, dR);
@@ -120,6 +147,7 @@ private:
     ParamSmoother delaySamplesR_;
     ParamSmoother feedback_;
     ParamSmoother mix_;
+    bool fullWetMode_ = false;
 };
 
 } // namespace pfl::dsp

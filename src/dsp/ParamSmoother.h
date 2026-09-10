@@ -36,6 +36,7 @@ public:
     }
 
     float current() const noexcept { return current_; }
+    float target() const noexcept { return target_; }
 
 private:
     double sampleRate_ = 44100.0;

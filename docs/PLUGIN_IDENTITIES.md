@@ -6,6 +6,7 @@ Authoritative unique IDs for PFL plugins. Assign new codes deliberately before a
 |------------|--------------|-------------|--------------|-----------|---------|
 | PFL Drone Organism | `DroneOrganism` | `Dro1` | `PflG` | `com.pfl.droneorganism` | AU VST3 Standalone |
 | PFL Broken Conductor | `BrokenConductor` | `Brk1` | `PflG` | `com.pfl.brokenconductor` | AU VST3 |
+| PFL Ruin Engine | `RuinEngine` | `Rui1` | `PflG` | `com.pfl.ruinengine` | AU VST3 |
 
 ## VST3 CIDs (from installed `moduleinfo.json`)
 

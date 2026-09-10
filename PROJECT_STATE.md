@@ -4,12 +4,12 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**Ruin Engine Stage 1 — IN PROGRESS** (safe generative audio vertical slice).  
+**Ruin Engine Stage 1 — AWAITING ABLETON ACCEPTANCE** (draft PR #10).  
 Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 ## Branch / tags
 
-- Active: `pr/ruin-engine-stage1`
+- Active: `pr/ruin-engine-stage1` (PR #10 draft)
 - Stage 6 complete: `broken-conductor-stage6-complete`
 - Stage 6 PR: #9 `pr/broken-conductor-stage6-harmonic-form` (merged)
 - Stage 5 complete: `broken-conductor-stage5-complete` (PR #8 merged)
@@ -23,7 +23,7 @@ Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 ./scripts/configure.sh
 ./scripts/build.sh
 ./scripts/test.sh
-./build/tests/pfl_broken_conductor_render --stage6
+./build/tests/pfl_ruin_engine_render
 ```
 
 ## Drone Organism
@@ -38,10 +38,15 @@ Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 6 COMPLETE** (Ableton PASS) |
-| Engine | algorithm **v6** (HarmonicField + HarmonicJourney) + performance-engine **v1** |
-| Host shell | Stage 1C stereo in (ignored) + silent stereo out |
-| Continuous params | DENSITY, MUTATION |
-| Config | OUTPUT ROLE |
-| Performance | FREEZE, SILENCE; MUTATE, COLLAPSE, RESEED |
-| Harmony | HOME / SHADOW / LIFT / HAZE / WIDE / DRIFT |
+| Status | **Stage 6 COMPLETE** (Ableton PASS); software paused |
+| Engine | algorithm **v6** + performance-engine **v1** |
+
+## Ruin Engine
+
+| Field | Value |
+|-------|--------|
+| Status | **Stage 1** awaiting Ableton acceptance |
+| Engine | algorithm **v1** |
+| Formats | AU VST3 (`Fx`) |
+| Params | MIX, AGE, INSTABILITY, OUTPUT, SEED |
+| Buses | mono↔mono, stereo↔stereo |

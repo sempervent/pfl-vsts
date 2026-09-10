@@ -40,6 +40,7 @@ struct PluginId
 static const PluginId kPlugins[] = {
     { "PFL Drone Organism", "com.pfl.droneorganism", "Dro1", "PflG" },
     { "PFL Broken Conductor", "com.pfl.brokenconductor", "Brk1", "PflG" },
+    { "PFL Ruin Engine", "com.pfl.ruinengine", "Rui1", "PflG" },
 };
 
 int main()
