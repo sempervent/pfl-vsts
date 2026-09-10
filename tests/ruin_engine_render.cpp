@@ -45,6 +45,17 @@ static void fillSource (std::vector<float>& L, std::vector<float>& R, double sr)
     }
 }
 
+static void writeWearLine (std::ofstream& tr, double beat, const pfl::dsp::RuinEngine& eng)
+{
+    const auto w = eng.wearState();
+    tr << "beat " << beat
+       << " state " << pfl::dsp::ruinStateName (eng.processingState())
+       << " wear spectral " << w.spectral
+       << " nonlinear " << w.nonlinear
+       << " temporal " << w.temporal
+       << " mean " << w.mean() << "\n";
+}
+
 static void renderJourney (const fs::path& wav, const fs::path& trace,
                            uint64_t seed, float mix, float age, float inst, float output,
                            double sr, double seconds, double bpm)
@@ -64,7 +75,7 @@ static void renderJourney (const fs::path& wav, const fs::path& trace,
 
     std::ofstream tr (trace);
     auto prev = eng.processingState();
-    tr << "beat 0\nSTATE " << pfl::dsp::ruinStateName (prev) << "\n";
+    writeWearLine (tr, 0.0, eng);
 
     const int block = 256;
     const double beatsPerSample = (bpm / 60.0) / sr;
@@ -76,11 +87,13 @@ static void renderJourney (const fs::path& wav, const fs::path& trace,
         const auto st = eng.processingState();
         if (st != prev)
         {
-            tr << "\nbeat " << ppq << "\nTRANSITION " << pfl::dsp::ruinStateName (prev)
+            writeWearLine (tr, ppq, eng);
+            tr << "TRANSITION " << pfl::dsp::ruinStateName (prev)
                << " → " << pfl::dsp::ruinStateName (st) << "\n";
             prev = st;
         }
     }
+    writeWearLine (tr, static_cast<double> (n) * beatsPerSample, eng);
     writeWav (wav, L, R, sr);
 }
 
@@ -110,48 +123,176 @@ static void renderForced (const fs::path& out, pfl::dsp::RuinProcessingState sta
     writeWav (out, L, R, sr);
 }
 
+static void renderStage3 (const fs::path& dir, double sr, double bpm)
+{
+    fs::create_directories (dir);
+    using S = pfl::dsp::RuinProcessingState;
+
+    auto renderPair = [&] (const char* freshName, const char* agedName, S state)
+    {
+        // Fresh
+        {
+            const int n = static_cast<int> (sr * 16.0);
+            std::vector<float> L (static_cast<size_t> (n)), R (static_cast<size_t> (n));
+            fillSource (L, R, sr);
+            pfl::dsp::RuinEngine eng;
+            eng.prepare (sr);
+            eng.setSeed (2002);
+            eng.setMix (0.70f);
+            eng.setAge (0.45f);
+            eng.setInstability (0.35f);
+            eng.setOutput (0.90f);
+            eng.snapMacros();
+            eng.forceProcessingState (true, state);
+            eng.resetWearFresh();
+            const int block = 256;
+            const double bps = (bpm / 60.0) / sr;
+            for (int done = 0; done < n; done += block)
+            {
+                const int m = std::min (block, n - done);
+                eng.process (L.data() + done, R.data() + done, m, true, done * bps, bpm);
+            }
+            writeWav (dir / freshName, L, R, sr);
+            std::cout << "  " << freshName << " wear=" << eng.wearState().mean() << "\n";
+        }
+        // Aged: abuse then settle into same state/macros
+        {
+            const double bps = (bpm / 60.0) / sr;
+            const int abuseN = static_cast<int> (192.0 / bps);
+            const int listenN = static_cast<int> (sr * 16.0);
+            const int n = abuseN + listenN;
+            std::vector<float> L (static_cast<size_t> (n)), R (static_cast<size_t> (n));
+            fillSource (L, R, sr);
+            pfl::dsp::RuinEngine eng;
+            eng.prepare (sr);
+            eng.setSeed (2002);
+            eng.setMix (0.70f);
+            eng.setAge (0.95f);
+            eng.setInstability (0.55f);
+            eng.setOutput (0.90f);
+            eng.snapMacros();
+            eng.forceProcessingState (true, S::Ruined);
+            const int block = 256;
+            int done = 0;
+            for (; done < abuseN; done += block)
+            {
+                const int m = std::min (block, abuseN - done);
+                eng.process (L.data() + done, R.data() + done, m, true, done * bps, bpm);
+            }
+            eng.setAge (0.45f);
+            eng.setInstability (0.35f);
+            eng.snapMacros();
+            eng.forceProcessingState (true, state);
+            for (; done < n; done += block)
+            {
+                const int m = std::min (block, n - done);
+                eng.process (L.data() + done, R.data() + done, m, true, done * bps, bpm);
+            }
+            // Export only the listen segment (matched length to fresh)
+            std::vector<float> oL (L.begin() + abuseN, L.end());
+            std::vector<float> oR (R.begin() + abuseN, R.end());
+            writeWav (dir / agedName, oL, oR, sr);
+            std::cout << "  " << agedName << " wear=" << eng.wearState().mean() << "\n";
+        }
+    };
+
+    renderPair ("fresh-intact.wav", "scarred-intact.wav", S::Intact);
+    renderPair ("fresh-weathered.wav", "aged-weathered.wav", S::Weathered);
+    renderPair ("fresh-ruined.wav", "aged-ruined.wav", S::Ruined);
+
+    // Recovery journey + aging journey
+    {
+        const double bps = (bpm / 60.0) / sr;
+        const int n = static_cast<int> (512.0 / bps);
+        std::vector<float> L (static_cast<size_t> (n)), R (static_cast<size_t> (n));
+        fillSource (L, R, sr);
+        pfl::dsp::RuinEngine eng;
+        eng.prepare (sr);
+        eng.setSeed (2002);
+        eng.setMix (0.70f);
+        eng.setOutput (0.90f);
+        std::ofstream tr (dir / "stage3-wear-trace.txt");
+        tr << "stage3 wear trace\n";
+        writeWearLine (tr, 0.0, eng);
+
+        const int block = 256;
+        double lastLogged = -1.0e9;
+        for (int done = 0; done < n; done += block)
+        {
+            const double beat = static_cast<double> (done) * bps;
+            float age = 0.20f, inst = 0.35f;
+            if (beat < 64.0)
+            {
+                age = 0.20f;
+                inst = 0.35f;
+            }
+            else if (beat < 256.0)
+            {
+                age = 0.85f;
+                inst = 0.60f;
+            }
+            else
+            {
+                age = 0.15f;
+                inst = 0.25f;
+            }
+            eng.setAge (age);
+            eng.setInstability (inst);
+            const int m = std::min (block, n - done);
+            eng.process (L.data() + done, R.data() + done, m, true, beat, bpm);
+
+            if (beat - lastLogged >= 32.0 || done + block >= n)
+            {
+                writeWearLine (tr, beat, eng);
+                lastLogged = beat;
+            }
+        }
+        writeWearLine (tr, 512.0, eng);
+        writeWav (dir / "stage3-aging-journey.wav", L, R, sr);
+        writeWav (dir / "recovery-journey.wav", L, R, sr);
+        std::cout << "wrote aging/recovery journey wear_final=" << eng.wearState().mean() << "\n";
+    }
+
+    // Metrics summary
+    {
+        std::ofstream m (dir / "stage3-metrics.txt");
+        m << "Ruin Engine Stage 3 metrics (offline)\n";
+        m << "Wear dimensions: spectralWear, nonlinearWear, temporalWear\n";
+        m << "See stage3-wear-trace.txt for beat timeline.\n";
+        m << "Fresh vs aged WAVs share macros/state after scarring segment.\n";
+    }
+}
+
 int main (int argc, char** argv)
 {
-    const bool stage2 = (argc > 1 && std::string (argv[1]) == "--stage2");
+    const std::string arg = argc > 1 ? argv[1] : "";
     const double sr = 48000.0;
     const double bpm = 72.0;
 
-    if (! stage2)
+    if (arg == "--stage3")
     {
-        const fs::path dir = "renders/ruin-engine/stage1";
-        fs::create_directories (dir);
-        renderJourney (dir / "stage1-evolution.wav", dir / "stage1-trace.txt",
-                       2002, 0.65f, 0.45f, 0.45f, 0.9f, sr, 60.0, bpm);
+        renderStage3 ("renders/ruin-engine/stage3", sr, bpm);
         return 0;
     }
 
-    const fs::path dir = "renders/ruin-engine/stage2";
+    if (arg == "--stage2")
+    {
+        const fs::path dir = "renders/ruin-engine/stage2";
+        fs::create_directories (dir);
+        using S = pfl::dsp::RuinProcessingState;
+        renderForced (dir / "state-intact.wav", S::Intact, sr, 12.0, bpm);
+        renderForced (dir / "state-weathered.wav", S::Weathered, sr, 12.0, bpm);
+        renderForced (dir / "state-fractured.wav", S::Fractured, sr, 12.0, bpm);
+        renderForced (dir / "state-ruined.wav", S::Ruined, sr, 12.0, bpm);
+        renderForced (dir / "state-recovering.wav", S::Recovering, sr, 12.0, bpm);
+        renderJourney (dir / "journey-seed-2002.wav", dir / "journey-seed-2002-trace.txt",
+                       2002, 0.70f, 0.50f, 0.50f, 0.9f, sr, 180.0, bpm);
+        return 0;
+    }
+
+    const fs::path dir = "renders/ruin-engine/stage1";
     fs::create_directories (dir);
-
-    using S = pfl::dsp::RuinProcessingState;
-    renderForced (dir / "state-intact.wav", S::Intact, sr, 12.0, bpm);
-    renderForced (dir / "state-weathered.wav", S::Weathered, sr, 12.0, bpm);
-    renderForced (dir / "state-fractured.wav", S::Fractured, sr, 12.0, bpm);
-    renderForced (dir / "state-ruined.wav", S::Ruined, sr, 12.0, bpm);
-    renderForced (dir / "state-recovering.wav", S::Recovering, sr, 12.0, bpm);
-
-    renderJourney (dir / "journey-seed-1001.wav", dir / "journey-seed-1001-trace.txt",
-                   1001, 0.70f, 0.50f, 0.50f, 0.9f, sr, 180.0, bpm);
-    renderJourney (dir / "journey-seed-2002.wav", dir / "journey-seed-2002-trace.txt",
-                   2002, 0.70f, 0.50f, 0.50f, 0.9f, sr, 180.0, bpm);
-    renderJourney (dir / "journey-seed-3003.wav", dir / "journey-seed-3003-trace.txt",
-                   3003, 0.70f, 0.50f, 0.50f, 0.9f, sr, 180.0, bpm);
-
-    renderJourney (dir / "age-020-instability-050.wav", dir / "age-020-instability-050-trace.txt",
-                   2002, 0.70f, 0.20f, 0.50f, 0.9f, sr, 90.0, bpm);
-    renderJourney (dir / "age-050-instability-050.wav", dir / "age-050-instability-050-trace.txt",
-                   2002, 0.70f, 0.50f, 0.50f, 0.9f, sr, 90.0, bpm);
-    renderJourney (dir / "age-100-instability-050.wav", dir / "age-100-instability-050-trace.txt",
-                   2002, 0.70f, 1.00f, 0.50f, 0.9f, sr, 90.0, bpm);
-    renderJourney (dir / "age-050-instability-010.wav", dir / "age-050-instability-010-trace.txt",
-                   2002, 0.70f, 0.50f, 0.10f, 0.9f, sr, 90.0, bpm);
-    renderJourney (dir / "age-050-instability-100.wav", dir / "age-050-instability-100-trace.txt",
-                   2002, 0.70f, 0.50f, 1.00f, 0.9f, sr, 90.0, bpm);
-
+    renderJourney (dir / "stage1-evolution.wav", dir / "stage1-trace.txt",
+                   2002, 0.65f, 0.45f, 0.45f, 0.9f, sr, 60.0, bpm);
     return 0;
 }

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Ruin Engine — Stage 3 (IN PROGRESS)
+
+- Accumulated **processing** wear (`WearState`: spectral / nonlinear / temporal) — not audio memory
+- Algorithm **v3**; Stage 2 states remain authoritative; wear modulates profiles
+- Seek preserves wear (no fabricated exposure); stop/bypass pause; silence ≈ no aging
+- Wear persists in private plugin state; SEED preserves wear; MIX=0 still dry
+- Draft PR #12 — waiting for creative-director Ableton acceptance
+
 ### Ruin Engine — Stage 2 COMPLETE
 
 - Creative-director Ableton acceptance **PASS** (explicit processing states)

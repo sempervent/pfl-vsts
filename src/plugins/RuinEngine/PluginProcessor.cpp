@@ -155,7 +155,23 @@ void RuinEngineProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer
 
 void RuinEngineProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    if (auto xml = apvts_.copyState().createXml())
+    juce::ValueTree root ("PFLRuinEngineState");
+    root.setProperty ("stateVersion", 3, nullptr);
+    root.setProperty ("algorithmVersion", pfl::dsp::RuinEngine::kAlgorithmVersion, nullptr);
+    root.appendChild (apvts_.copyState(), nullptr);
+
+    const auto w = engine_.wearState();
+    const auto f = engine_.scarFloor();
+    juce::ValueTree wear ("WearState");
+    wear.setProperty ("spectral", w.spectral, nullptr);
+    wear.setProperty ("nonlinear", w.nonlinear, nullptr);
+    wear.setProperty ("temporal", w.temporal, nullptr);
+    wear.setProperty ("scarSpectral", f.spectral, nullptr);
+    wear.setProperty ("scarNonlinear", f.nonlinear, nullptr);
+    wear.setProperty ("scarTemporal", f.temporal, nullptr);
+    root.appendChild (wear, nullptr);
+
+    if (auto xml = root.createXml())
         copyXmlToBinary (*xml, destData);
 }
 
@@ -163,10 +179,35 @@ void RuinEngineProcessor::setStateInformation (const void* data, int sizeInBytes
 {
     if (auto xml = getXmlFromBinary (data, sizeInBytes))
     {
-        if (xml->hasTagName (apvts_.state.getType()))
+        auto tree = juce::ValueTree::fromXml (*xml);
+
+        // Legacy Stage 1/2: APVTS root only → fresh wear.
+        if (tree.hasType (apvts_.state.getType()))
         {
-            apvts_.replaceState (juce::ValueTree::fromXml (*xml));
+            apvts_.replaceState (tree);
+            engine_.resetWearFresh();
             syncEngineFromParams();
+            engine_.snapMacros();
+            return;
+        }
+
+        if (tree.hasType ("PFLRuinEngineState"))
+        {
+            if (auto params = tree.getChildWithName (apvts_.state.getType()); params.isValid())
+                apvts_.replaceState (params);
+
+            pfl::dsp::WearState w {}, floor {};
+            if (auto wear = tree.getChildWithName ("WearState"); wear.isValid())
+            {
+                w.spectral = (float) wear.getProperty ("spectral", 0.0f);
+                w.nonlinear = (float) wear.getProperty ("nonlinear", 0.0f);
+                w.temporal = (float) wear.getProperty ("temporal", 0.0f);
+                floor.spectral = (float) wear.getProperty ("scarSpectral", 0.0f);
+                floor.nonlinear = (float) wear.getProperty ("scarNonlinear", 0.0f);
+                floor.temporal = (float) wear.getProperty ("scarTemporal", 0.0f);
+            }
+            syncEngineFromParams();
+            engine_.setWearState (w, floor);
             engine_.snapMacros();
         }
     }

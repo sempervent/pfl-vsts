@@ -49,10 +49,12 @@ Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 2 COMPLETE** (Ableton PASS) |
-| Engine | algorithm **v2** (processing states) |
+| Status | **Stage 3 IN PROGRESS** (draft PR #12) |
+| Engine | algorithm **v3** (WearState processing memory) |
 | Formats | AU VST3 (`Fx`) |
 | Params | MIX, AGE, INSTABILITY, OUTPUT, SEED |
 | States | INTACT / WEATHERED / FRACTURED / RUINED / RECOVERING |
+| Wear | spectral / nonlinear / temporal (internal, persisted) |
+| Stage 2 | `ruin-engine-stage2-complete` (PR #11 merged) |
 | Stage 1 | `ruin-engine-stage1-complete` (PR #10 merged) |
-| Next | Stage 3 — accumulated processing wear (not audio memory) |
+| Next | Creative-director Ableton acceptance for Stage 3 |

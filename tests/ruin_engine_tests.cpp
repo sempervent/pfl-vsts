@@ -119,7 +119,7 @@ bool nearlyEqual (const RenderResult& a, const RenderResult& b, float tol = 1.0e
 
 static void testAlgorithmVersion()
 {
-    EXPECT (pfl::dsp::RuinEngine::kAlgorithmVersion == 2);
+    EXPECT (pfl::dsp::RuinEngine::kAlgorithmVersion == 3);
 }
 
 static void testAgeZeroTransparent()
@@ -495,6 +495,364 @@ static void testStage2ForcedStatesFinite()
     }
 }
 
+static void runBeats (pfl::dsp::RuinEngine& eng, const std::vector<float>& src,
+                      double sr, double bpm, double startBeat, double numBeats,
+                      bool playing, int block = 256)
+{
+    const double beatsPerSample = (bpm / 60.0) / sr;
+    const int n = std::max (1, static_cast<int> (numBeats / beatsPerSample));
+    auto L = src, R = src;
+    if (static_cast<int> (L.size()) < n)
+    {
+        L.resize (static_cast<size_t> (n), 0.0f);
+        R.resize (static_cast<size_t> (n), 0.0f);
+        for (int i = 0; i < n; ++i)
+        {
+            const double t = static_cast<double> (i) / sr;
+            L[static_cast<size_t> (i)] = 0.4f * std::sin (2.0 * 3.141592653589793 * 110.0 * t);
+            R[static_cast<size_t> (i)] = L[static_cast<size_t> (i)] * 0.97f;
+        }
+    }
+    int done = 0;
+    while (done < n)
+    {
+        const int m = std::min (block, n - done);
+        eng.process (L.data() + done, R.data() + done, m, playing,
+                     startBeat + static_cast<double> (done) * beatsPerSample, bpm);
+        done += m;
+    }
+}
+
+static void testStage3WearAccumulatesAndBounds()
+{
+    const double sr = 48000.0;
+    const double bpm = 72.0;
+    pfl::dsp::RuinEngine eng;
+    eng.prepare (sr);
+    eng.setSeed (2002);
+    eng.setMix (0.7f);
+    eng.setAge (0.9f);
+    eng.setInstability (0.5f);
+    eng.setOutput (0.9f);
+    eng.snapMacros();
+    eng.forceProcessingState (true, pfl::dsp::RuinProcessingState::Ruined);
+    EXPECT (eng.wearState().mean() < 0.01f);
+    runBeats (eng, {}, sr, bpm, 0.0, 256.0, true);
+    const auto w = eng.wearState();
+    EXPECT (w.spectral > 0.15f);
+    EXPECT (w.nonlinear > 0.15f);
+    EXPECT (w.temporal > 0.15f);
+    EXPECT (w.spectral <= 1.0f && w.nonlinear <= 1.0f && w.temporal <= 1.0f);
+}
+
+static void testStage3SilenceDoesNotAge()
+{
+    const double sr = 48000.0;
+    const double bpm = 72.0;
+    pfl::dsp::RuinEngine eng;
+    eng.prepare (sr);
+    eng.setSeed (2002);
+    eng.setMix (0.7f);
+    eng.setAge (1.0f);
+    eng.setInstability (0.6f);
+    eng.setOutput (0.9f);
+    eng.snapMacros();
+    eng.forceProcessingState (true, pfl::dsp::RuinProcessingState::Ruined);
+
+    const int n = static_cast<int> (256.0 / ((bpm / 60.0) / sr));
+    std::vector<float> z (static_cast<size_t> (n), 0.0f);
+    const double beatsPerSample = (bpm / 60.0) / sr;
+    int done = 0;
+    while (done < n)
+    {
+        const int m = std::min (256, n - done);
+        eng.process (z.data() + done, z.data() + done, m, true,
+                     static_cast<double> (done) * beatsPerSample, bpm);
+        done += m;
+    }
+    EXPECT (eng.wearState().mean() < 0.02f);
+}
+
+static void testStage3SeekPreservesWear()
+{
+    const double sr = 48000.0;
+    const double bpm = 72.0;
+    pfl::dsp::RuinEngine eng;
+    eng.prepare (sr);
+    eng.setSeed (2002);
+    eng.setMix (0.7f);
+    eng.setAge (0.85f);
+    eng.setInstability (0.55f);
+    eng.setOutput (0.9f);
+    eng.snapMacros();
+    eng.forceProcessingState (true, pfl::dsp::RuinProcessingState::Ruined);
+    runBeats (eng, {}, sr, bpm, 0.0, 64.0, true);
+    const auto before = eng.wearState();
+    EXPECT (before.mean() > 0.05f);
+
+    // Seek forward — must not fabricate exposure
+    {
+        std::vector<float> z (64, 0.0f);
+        eng.process (z.data(), z.data(), 64, true, 400.0, bpm);
+    }
+    const auto afterFwd = eng.wearState();
+    EXPECT (std::abs (afterFwd.spectral - before.spectral) < 1.0e-5f);
+    EXPECT (std::abs (afterFwd.nonlinear - before.nonlinear) < 1.0e-5f);
+    EXPECT (std::abs (afterFwd.temporal - before.temporal) < 1.0e-5f);
+
+    // Seek backward — must not reverse wear
+    {
+        std::vector<float> z (64, 0.0f);
+        eng.process (z.data(), z.data(), 64, true, 16.0, bpm);
+    }
+    const auto afterBack = eng.wearState();
+    EXPECT (std::abs (afterBack.spectral - before.spectral) < 1.0e-5f);
+}
+
+static void testStage3StopAndBypassPauseWear()
+{
+    const double sr = 48000.0;
+    const double bpm = 72.0;
+    pfl::dsp::RuinEngine eng;
+    eng.prepare (sr);
+    eng.setSeed (2002);
+    eng.setMix (0.7f);
+    eng.setAge (0.9f);
+    eng.setInstability (0.5f);
+    eng.setOutput (0.9f);
+    eng.snapMacros();
+    eng.forceProcessingState (true, pfl::dsp::RuinProcessingState::Fractured);
+    runBeats (eng, {}, sr, bpm, 0.0, 64.0, true);
+    const auto w0 = eng.wearState();
+
+    runBeats (eng, {}, sr, bpm, 64.0, 64.0, false); // stopped
+    EXPECT (std::abs (eng.wearState().mean() - w0.mean()) < 1.0e-5f);
+
+    eng.setBypassed (true);
+    runBeats (eng, {}, sr, bpm, 128.0, 64.0, true);
+    EXPECT (std::abs (eng.wearState().mean() - w0.mean()) < 1.0e-5f);
+}
+
+static void testStage3SeedPreservesWear()
+{
+    const double sr = 48000.0;
+    const double bpm = 72.0;
+    pfl::dsp::RuinEngine eng;
+    eng.prepare (sr);
+    eng.setSeed (2002);
+    eng.setMix (0.7f);
+    eng.setAge (0.9f);
+    eng.setInstability (0.5f);
+    eng.setOutput (0.9f);
+    eng.snapMacros();
+    eng.forceProcessingState (true, pfl::dsp::RuinProcessingState::Ruined);
+    runBeats (eng, {}, sr, bpm, 0.0, 96.0, true);
+    const auto w = eng.wearState();
+    eng.setSeed (3003);
+    EXPECT (std::abs (eng.wearState().spectral - w.spectral) < 1.0e-5f);
+    EXPECT (std::abs (eng.wearState().nonlinear - w.nonlinear) < 1.0e-5f);
+    EXPECT (std::abs (eng.wearState().temporal - w.temporal) < 1.0e-5f);
+}
+
+static void testStage3RecoveryGradual()
+{
+    const double sr = 48000.0;
+    const double bpm = 72.0;
+    pfl::dsp::RuinEngine eng;
+    eng.prepare (sr);
+    eng.setSeed (2002);
+    eng.setMix (0.7f);
+    eng.setAge (0.95f);
+    eng.setInstability (0.4f);
+    eng.setOutput (0.9f);
+    eng.snapMacros();
+    eng.forceProcessingState (true, pfl::dsp::RuinProcessingState::Ruined);
+    runBeats (eng, {}, sr, bpm, 0.0, 192.0, true);
+    const auto damaged = eng.wearState();
+    EXPECT (damaged.mean() > 0.2f);
+
+    eng.setAge (0.10f);
+    eng.setInstability (0.20f);
+    eng.snapMacros();
+    eng.forceProcessingState (true, pfl::dsp::RuinProcessingState::Recovering);
+    runBeats (eng, {}, sr, bpm, 192.0, 32.0, true);
+    const auto w32 = eng.wearState();
+    runBeats (eng, {}, sr, bpm, 224.0, 96.0, true);
+    const auto w128 = eng.wearState();
+    EXPECT (w32.mean() < damaged.mean());
+    EXPECT (w128.mean() < w32.mean());
+    EXPECT (w128.mean() > 0.02f); // residual / scar remains
+}
+
+static void testStage3HistoryAB()
+{
+    const double sr = 48000.0;
+    const double bpm = 72.0;
+
+    pfl::dsp::RuinEngine a;
+    a.prepare (sr);
+    a.setSeed (2002);
+    a.setMix (0.7f);
+    a.setAge (0.55f);
+    a.setInstability (0.45f);
+    a.setOutput (0.9f);
+    a.snapMacros();
+    a.forceProcessingState (true, pfl::dsp::RuinProcessingState::Weathered);
+    runBeats (a, {}, sr, bpm, 0.0, 256.0, true);
+
+    pfl::dsp::RuinEngine b;
+    b.prepare (sr);
+    b.setSeed (2002);
+    b.setMix (0.7f);
+    b.setAge (0.95f);
+    b.setInstability (0.55f);
+    b.setOutput (0.9f);
+    b.snapMacros();
+    b.forceProcessingState (true, pfl::dsp::RuinProcessingState::Ruined);
+    runBeats (b, {}, sr, bpm, 0.0, 64.0, true);
+    b.setAge (0.35f);
+    b.setInstability (0.35f);
+    b.snapMacros();
+    b.forceProcessingState (true, pfl::dsp::RuinProcessingState::Weathered);
+    runBeats (b, {}, sr, bpm, 64.0, 192.0, true);
+
+    // Same current forced state + macros
+    a.setAge (0.5f);
+    a.setInstability (0.5f);
+    a.snapMacros();
+    a.forceProcessingState (true, pfl::dsp::RuinProcessingState::Weathered);
+    b.setAge (0.5f);
+    b.setInstability (0.5f);
+    b.snapMacros();
+    b.forceProcessingState (true, pfl::dsp::RuinProcessingState::Weathered);
+
+    const auto wa = a.wearState();
+    const auto wb = b.wearState();
+    const float d = std::abs (wa.spectral - wb.spectral)
+                  + std::abs (wa.nonlinear - wb.nonlinear)
+                  + std::abs (wa.temporal - wb.temporal);
+    EXPECT (d > 0.05f);
+}
+
+static void testStage3WearSampleRateIndependent()
+{
+    auto wearAt = [] (double sr)
+    {
+        const double bpm = 72.0;
+        pfl::dsp::RuinEngine eng;
+        eng.prepare (sr);
+        eng.setSeed (2002);
+        eng.setMix (0.7f);
+        eng.setAge (0.9f);
+        eng.setInstability (0.5f);
+        eng.setOutput (0.9f);
+        eng.snapMacros();
+        eng.forceProcessingState (true, pfl::dsp::RuinProcessingState::Ruined);
+        runBeats (eng, {}, sr, bpm, 0.0, 128.0, true);
+        return eng.wearState();
+    };
+    const auto a = wearAt (44100.0);
+    const auto b = wearAt (48000.0);
+    const auto c = wearAt (96000.0);
+    EXPECT (std::abs (a.mean() - b.mean()) < 0.02f);
+    EXPECT (std::abs (a.mean() - c.mean()) < 0.02f);
+}
+
+static void testStage3WearBufferIndependent()
+{
+    const double sr = 48000.0;
+    const double bpm = 72.0;
+    auto wearAt = [&] (int block)
+    {
+        pfl::dsp::RuinEngine eng;
+        eng.prepare (sr);
+        eng.setSeed (2002);
+        eng.setMix (0.7f);
+        eng.setAge (0.85f);
+        eng.setInstability (0.5f);
+        eng.setOutput (0.9f);
+        eng.snapMacros();
+        eng.forceProcessingState (true, pfl::dsp::RuinProcessingState::Fractured);
+        runBeats (eng, {}, sr, bpm, 0.0, 128.0, true, block);
+        return eng.wearState();
+    };
+    const auto ref = wearAt (256);
+    for (int bs : { 64, 127, 128, 255, 511, 512, 1024 })
+    {
+        const auto w = wearAt (bs);
+        EXPECT (std::abs (w.spectral - ref.spectral) < 1.0e-4f);
+        EXPECT (std::abs (w.nonlinear - ref.nonlinear) < 1.0e-4f);
+        EXPECT (std::abs (w.temporal - ref.temporal) < 1.0e-4f);
+    }
+}
+
+static void testStage3MaxWearSafety()
+{
+    const double sr = 48000.0;
+    const int n = static_cast<int> (sr * 2);
+    auto impulses = makeImpulse (n, 80, 0.95f);
+    pfl::dsp::RuinEngine eng;
+    eng.prepare (sr);
+    eng.setSeed (2002);
+    eng.setMix (1.0f);
+    eng.setAge (1.0f);
+    eng.setInstability (1.0f);
+    eng.setOutput (1.0f);
+    eng.snapMacros();
+    eng.forceProcessingState (true, pfl::dsp::RuinProcessingState::Ruined);
+    eng.setWearMaxDiagnostic();
+    auto L = impulses, R = impulses;
+    eng.process (L.data(), R.data(), n, true, 0.0, 72.0);
+    float peak = 0.0f;
+    bool finite = true;
+    for (int i = 0; i < n; ++i)
+    {
+        peak = std::max (peak, std::max (std::abs (L[static_cast<size_t> (i)]),
+                                         std::abs (R[static_cast<size_t> (i)])));
+        if (! std::isfinite (L[static_cast<size_t> (i)]) || ! std::isfinite (R[static_cast<size_t> (i)]))
+            finite = false;
+    }
+    EXPECT (finite);
+    EXPECT (peak <= 0.995f);
+    EXPECT (eng.wearState().spectral <= 1.0f);
+}
+
+static void testStage3PreparePreservesWear()
+{
+    const double sr = 48000.0;
+    pfl::dsp::RuinEngine eng;
+    eng.prepare (sr);
+    eng.setWearMaxDiagnostic();
+    EXPECT (eng.wearState().spectral > 0.99f);
+    eng.prepare (sr); // host re-prepare must not erase scars
+    EXPECT (eng.wearState().spectral > 0.99f);
+    EXPECT (eng.wearState().nonlinear > 0.99f);
+    EXPECT (eng.wearState().temporal > 0.99f);
+}
+
+static void testStage3MixZeroStillDry()
+{
+    const double sr = 48000.0;
+    const int n = 24000;
+    auto in = makeSine (n, sr, 330.0, 0.5f);
+    pfl::dsp::RuinEngine eng;
+    eng.prepare (sr);
+    eng.setSeed (2002);
+    eng.setMix (0.0f);
+    eng.setAge (1.0f);
+    eng.setInstability (1.0f);
+    eng.setOutput (1.0f);
+    eng.snapMacros();
+    eng.forceProcessingState (true, pfl::dsp::RuinProcessingState::Ruined);
+    eng.setWearMaxDiagnostic();
+    auto L = in, R = in;
+    eng.process (L.data(), R.data(), n, true, 0.0, 72.0);
+    float maxDiff = 0.0f;
+    for (int i = 2000; i < n; ++i)
+        maxDiff = std::max (maxDiff, std::abs (L[static_cast<size_t> (i)] - in[static_cast<size_t> (i)]));
+    EXPECT (maxDiff < 0.005f);
+}
+
 int main()
 {
     testAlgorithmVersion();
@@ -514,6 +872,18 @@ int main()
     testStage2GraphAndCrossMatrix();
     testStage2StateBufferIndependence();
     testStage2ForcedStatesFinite();
+    testStage3WearAccumulatesAndBounds();
+    testStage3SilenceDoesNotAge();
+    testStage3SeekPreservesWear();
+    testStage3StopAndBypassPauseWear();
+    testStage3SeedPreservesWear();
+    testStage3RecoveryGradual();
+    testStage3HistoryAB();
+    testStage3WearSampleRateIndependent();
+    testStage3WearBufferIndependent();
+    testStage3MaxWearSafety();
+    testStage3PreparePreservesWear();
+    testStage3MixZeroStillDry();
 
     if (gFails == 0)
     {
