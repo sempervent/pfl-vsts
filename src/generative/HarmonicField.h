@@ -171,7 +171,14 @@ public:
     }
 
     void setLocked (bool locked) noexcept { locked_ = locked; }
-    void setPressurePaused (bool paused) noexcept { pressurePaused_ = paused; }
+    void setPressurePaused (bool paused) noexcept
+    {
+        if (paused && ! pressurePaused_)
+            awayFrozen_ = beatsAway();
+        if (! paused && pressurePaused_ && awayStartPpq_ >= 0.0)
+            awayStartPpq_ = lastAdvancePpq_ - awayFrozen_;
+        pressurePaused_ = paused;
+    }
     void setCollapseSuspend (bool s) noexcept { collapseSuspend_ = s; }
 
     const HarmonicField& field() const noexcept { return field_; }
@@ -181,6 +188,8 @@ public:
     {
         if (awayStartPpq_ < 0.0)
             return 0.0;
+        if (pressurePaused_)
+            return awayFrozen_;
         return std::max (0.0, lastAdvancePpq_ - awayStartPpq_);
     }
     double beatsInState() const noexcept
@@ -204,7 +213,12 @@ public:
         // Integer eval indices avoid float near-miss skips (e.g. 31.99999999999752/16 == 2.0).
         const std::int64_t toIndex = static_cast<std::int64_t> (
             std::floor (toPpq / kEvalBeats + 1.0e-9));
-        if (! locked_ && ! collapseSuspend_)
+        if (locked_ || collapseSuspend_)
+        {
+            // Discard missed evals — no catch-up hop storm on unlock
+            lastEvalIndex_ = std::max (lastEvalIndex_, toIndex);
+        }
+        else
         {
             while (lastEvalIndex_ < toIndex)
             {
@@ -327,7 +341,9 @@ private:
                 add (HarmonicFieldId::Lift, allowFar);
                 add (HarmonicFieldId::Haze, allowFar);
                 add (HarmonicFieldId::Drift, allowFar);
-                add (HarmonicFieldId::Home, allowFar);
+                // HOME only as homeward option (Returning path), not explore shortcut
+                if (homeward)
+                    add (HarmonicFieldId::Home, allowFar);
                 break;
             case HarmonicFieldId::Drift:
                 add (HarmonicFieldId::Wide, allowFar);
@@ -397,10 +413,11 @@ private:
 
         if (state_ == JourneyState::Settled)
         {
-            float leave = 0.04f + 0.16f * mut;
-            leave *= (0.92f + 0.16f * std::clamp (density, 0.0f, 1.0f));
-            if (dwell < 48.0 + 40.0 * (1.0 - mut))
-                leave *= 0.55f;
+            // Adventurousness via dwell gate + mild leave rate (not key-change rate)
+            float leave = 0.035f + 0.055f * mut;
+            leave *= (0.94f + 0.10f * std::clamp (density, 0.0f, 1.0f));
+            if (dwell < 48.0 + 48.0 * (1.0 - mut))
+                leave *= 0.45f;
             if (transitionRng_.nextFloat() >= leave)
                 return;
 
@@ -438,9 +455,9 @@ private:
 
         if (state_ == JourneyState::Exploring)
         {
-            float hop = 0.10f + 0.18f * mut;
-            if (dwell < 32.0)
-                hop *= 0.5f;
+            float hop = 0.07f + 0.07f * mut;
+            if (dwell < 32.0 + 24.0 * (1.0 - mut))
+                hop *= 0.45f;
             if (transitionRng_.nextFloat() >= hop)
                 return;
 
@@ -462,11 +479,8 @@ private:
             HarmonicFieldId cands[8];
             int n = 0;
             collectNeighbors (fieldId_, true, mut, cands, n);
-            bool hasHome = false;
-            for (int i = 0; i < n; ++i)
-                if (cands[i] == HarmonicFieldId::Home)
-                    hasHome = true;
-            if (! hasHome && fieldId_ != HarmonicFieldId::Home && n < 8)
+            // Prefer gradual return: only add HOME if no closer-or-equal neighbor exists
+            if (n <= 0 && fieldId_ != HarmonicFieldId::Home)
                 cands[n++] = HarmonicFieldId::Home;
             if (n <= 0)
             {
@@ -474,6 +488,19 @@ private:
                 return;
             }
             int bestD = 99;
+            for (int i = 0; i < n; ++i)
+                bestD = std::min (bestD, fieldById (cands[i]).distanceFromHome);
+            // Soft pull to HOME when pressure is high and we are far
+            if (field_.distanceFromHome >= 2 && away > 48.0 && n < 8)
+            {
+                bool hasHome = false;
+                for (int i = 0; i < n; ++i)
+                    if (cands[i] == HarmonicFieldId::Home)
+                        hasHome = true;
+                if (! hasHome && returnRng_.nextFloat() < 0.35f)
+                    cands[n++] = HarmonicFieldId::Home;
+            }
+            bestD = 99;
             for (int i = 0; i < n; ++i)
                 bestD = std::min (bestD, fieldById (cands[i]).distanceFromHome);
             int ties[8];
@@ -496,6 +523,7 @@ private:
     double stateStartPpq_ = 0.0;
     double awayStartPpq_ = -1.0;
     double lastAdvancePpq_ = 0.0;
+    double awayFrozen_ = 0.0;
     std::int64_t lastEvalIndex_ = 0;
     float mutationHint_ = 0.35f;
     bool locked_ = false;
