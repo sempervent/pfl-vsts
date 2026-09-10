@@ -155,6 +155,32 @@ public:
         syncEngine (engine);
     }
 
+    /** Restore stable collapsed/frozen residue after plugin state load (no mid-collapse). */
+    void restoreStableMode (int residueRole, bool freezeLatched,
+                            pfl::dsp::PulseColonyEngine& engine) noexcept
+    {
+        state_.freezeLatched = freezeLatched;
+        state_.residueRole = residueRole;
+        if (residueRole >= 0)
+        {
+            state_.mode = freezeLatched ? Mode::Frozen : Mode::Collapsed;
+            state_.collapsePhase = CollapsePhase::Residue;
+            state_.collapseElapsedBeats = kCollapseBeats;
+            engine.setSoloRole (residueRole);
+            engine.setEvolutionPaused (true);
+            engine.clearCollapseParticipation();
+            engine.setSwarmPressure (false);
+            dnaEdited_ = true;
+        }
+        else if (freezeLatched)
+        {
+            state_.mode = Mode::Frozen;
+            engine.setEvolutionPaused (true);
+        }
+        engine.snapEvolutionBaselines();
+        syncEngine (engine);
+    }
+
 private:
     void push (double ppq, Command c, const char* detail) noexcept
     {
@@ -552,32 +578,6 @@ private:
         state_.frozenBeforeSilence = false;
         state_.collapsingBeforeSilence = false;
         collapsedBeforeSilence_ = false;
-        syncEngine (engine);
-    }
-
-    /** Restore stable collapsed/frozen residue after plugin state load (no mid-collapse). */
-    void restoreStableMode (int residueRole, bool freezeLatched,
-                            pfl::dsp::PulseColonyEngine& engine) noexcept
-    {
-        state_.freezeLatched = freezeLatched;
-        state_.residueRole = residueRole;
-        if (residueRole >= 0)
-        {
-            state_.mode = freezeLatched ? Mode::Frozen : Mode::Collapsed;
-            state_.collapsePhase = CollapsePhase::Residue;
-            state_.collapseElapsedBeats = kCollapseBeats;
-            engine.setSoloRole (residueRole);
-            engine.setEvolutionPaused (true);
-            engine.clearCollapseParticipation();
-            engine.setSwarmPressure (false);
-            dnaEdited_ = true;
-        }
-        else if (freezeLatched)
-        {
-            state_.mode = Mode::Frozen;
-            engine.setEvolutionPaused (true);
-        }
-        engine.snapEvolutionBaselines();
         syncEngine (engine);
     }
 
