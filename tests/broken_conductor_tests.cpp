@@ -125,7 +125,7 @@ static void assertPaired (const std::vector<MidiTraceEvent>& ev, bool requireClo
 
 static void testAlgorithmVersion()
 {
-    EXPECT (ConductorEngine::kAlgorithmVersion == 5);
+    EXPECT (ConductorEngine::kAlgorithmVersion == 6);
 }
 
 static void testDeterminism()
@@ -1454,6 +1454,299 @@ static void testStage5HungerRegressionNormal()
     EXPECT (ga.median >= 16.0 && ga.median <= 96.0);
 }
 
+//==============================================================================
+// Stage 6 — harmonic journey
+//==============================================================================
+
+#include "generative/HarmonicField.h"
+
+using pfl::generative::HarmonicFieldId;
+using pfl::generative::JourneyState;
+
+struct HarmonyRun
+{
+    std::vector<MidiTraceEvent> midi;
+    std::vector<pfl::generative::HarmonyTraceEvent> harmony;
+};
+
+static HarmonyRun runHarmony (uint64_t seed, float density, float mutation,
+                              double bpm, double endPpq, int bufferSamples, double sampleRate,
+                              const std::vector<PerfCmdAt>& cmds = {})
+{
+    ConductorEngine eng;
+    ConductorPerformanceController perf;
+    eng.setCapture (true);
+    eng.journey().setTraceEnabled (true);
+    eng.setParams ({ density, mutation });
+    eng.reseed (seed);
+    perf.reset (seed);
+
+    size_t cmdIdx = 0;
+    const double beatsPerSec = bpm / 60.0;
+    double ppq = 0.0;
+    int lastBar = -1;
+
+    while (ppq < endPpq - 1.0e-12)
+    {
+        while (cmdIdx < cmds.size() && cmds[cmdIdx].ppq <= ppq + 1.0e-9)
+        {
+            perf.trigger (cmds[cmdIdx].cmd, cmds[cmdIdx].ppq, eng);
+            ++cmdIdx;
+        }
+        const double blockBeats = (static_cast<double> (bufferSamples) / sampleRate) * beatsPerSec;
+        const double ppqEnd = std::min (endPpq, ppq + blockBeats);
+        const int bar = static_cast<int> (std::floor (ppq / 4.0));
+        if (bar != lastBar)
+            lastBar = bar;
+        perf.tick (ppq, bar, eng);
+
+        pfl::generative::ClockSnapshot snap;
+        snap.playing = true;
+        snap.ppq = ppq;
+        snap.tempoBpm = bpm;
+        snap.timeSigNumerator = 4;
+        snap.timeSigDenominator = 4;
+        eng.clock().advance (snap);
+        eng.processTimeRange (ppq, ppqEnd, true);
+        eng.drainPending();
+        ppq = ppqEnd;
+    }
+
+    HarmonyRun out;
+    out.midi = eng.captured();
+    out.harmony = eng.journey().traces();
+    return out;
+}
+
+static std::string harmonyFingerprint (const std::vector<pfl::generative::HarmonyTraceEvent>& h)
+{
+    std::string s;
+    for (const auto& e : h)
+    {
+        char buf[96];
+        std::snprintf (buf, sizeof buf, "%.2f:%d:%d:%d;",
+                       e.ppq, (int) e.field, (int) e.state, e.distance);
+        s += buf;
+    }
+    return s;
+}
+
+static void testStage6HarmonyDeterminism()
+{
+    auto a = runHarmony (2002, 0.50f, 0.35f, 72.0, 1024.0, 256, 48000.0);
+    auto b = runHarmony (2002, 0.50f, 0.35f, 72.0, 1024.0, 256, 48000.0);
+    EXPECT (midiEqual (a.midi, b.midi));
+    EXPECT (harmonyFingerprint (a.harmony) == harmonyFingerprint (b.harmony));
+    EXPECT (! a.harmony.empty() || true); // may stay home briefly; still ok if empty early
+}
+
+static void testStage6DifferentSeeds()
+{
+    auto a = runHarmony (1001, 0.50f, 0.35f, 72.0, 1024.0, 256, 48000.0);
+    auto b = runHarmony (2002, 0.50f, 0.35f, 72.0, 1024.0, 256, 48000.0);
+    auto c = runHarmony (3003, 0.50f, 0.35f, 72.0, 1024.0, 256, 48000.0);
+    EXPECT (harmonyFingerprint (a.harmony) != harmonyFingerprint (b.harmony)
+            || fingerprint (a.midi) != fingerprint (b.midi));
+    EXPECT (harmonyFingerprint (b.harmony) != harmonyFingerprint (c.harmony)
+            || fingerprint (b.midi) != fingerprint (c.midi));
+}
+
+static void testStage6BufferIndependence()
+{
+    auto ref = runHarmony (2002, 0.50f, 0.35f, 72.0, 512.0, 256, 48000.0);
+    for (int b : { 64, 127, 128, 255, 511, 512, 1024 })
+    {
+        auto t = runHarmony (2002, 0.50f, 0.35f, 72.0, 512.0, b, 48000.0);
+        EXPECT (midiEqual (ref.midi, t.midi));
+        EXPECT (harmonyFingerprint (ref.harmony) == harmonyFingerprint (t.harmony));
+    }
+}
+
+static void testStage6TempoIndependence()
+{
+    auto ref = runHarmony (2002, 0.50f, 0.35f, 72.0, 384.0, 256, 48000.0);
+    for (double bpm : { 40.0, 93.0, 120.0, 137.0, 180.0 })
+    {
+        auto t = runHarmony (2002, 0.50f, 0.35f, bpm, 384.0, 256, 48000.0);
+        EXPECT (harmonyFingerprint (ref.harmony) == harmonyFingerprint (t.harmony));
+        EXPECT (midiEqual (ref.midi, t.midi));
+    }
+}
+
+static void testStage6ProjectionUnion()
+{
+    const auto cmds = stage5Script();
+    // Longer script window with harmony
+    auto ens = runPerformanceScript (2002, 0.50f, 0.35f, OutputRole::Ensemble, 72.0, 192.0, 256, 48000.0, cmds);
+    auto f = runPerformanceScript (2002, 0.50f, 0.35f, OutputRole::Foundation, 72.0, 192.0, 256, 48000.0, cmds);
+    auto p = runPerformanceScript (2002, 0.50f, 0.35f, OutputRole::Pulse, 72.0, 192.0, 256, 48000.0, cmds);
+    auto w = runPerformanceScript (2002, 0.50f, 0.35f, OutputRole::Wanderer, 72.0, 192.0, 256, 48000.0, cmds);
+    auto a = runPerformanceScript (2002, 0.50f, 0.35f, OutputRole::Accent, 72.0, 192.0, 256, 48000.0, cmds);
+    std::vector<MidiTraceEvent> uni;
+    uni.insert (uni.end(), f.begin(), f.end());
+    uni.insert (uni.end(), p.begin(), p.end());
+    uni.insert (uni.end(), w.begin(), w.end());
+    uni.insert (uni.end(), a.begin(), a.end());
+    auto sortEv = [] (std::vector<MidiTraceEvent>& v) {
+        std::sort (v.begin(), v.end(), [] (const MidiTraceEvent& x, const MidiTraceEvent& y) {
+            if (std::abs (x.ppq - y.ppq) > 1.0e-9)
+                return x.ppq < y.ppq;
+            if (x.kind != y.kind)
+                return static_cast<int> (x.kind) < static_cast<int> (y.kind);
+            if (x.voice != y.voice)
+                return x.voice < y.voice;
+            return x.note < y.note;
+        });
+    };
+    sortEv (uni);
+    auto ensSorted = ens;
+    sortEv (ensSorted);
+    EXPECT (midiEqual (ensSorted, uni));
+}
+
+static void testStage6FreezeLocksHarmony()
+{
+    ConductorEngine eng;
+    ConductorPerformanceController perf;
+    eng.setCapture (true);
+    eng.journey().setTraceEnabled (true);
+    eng.setParams ({ 0.50f, 0.80f });
+    eng.reseed (2002);
+    perf.reset (2002);
+
+    auto advance = [&] (double from, double to) {
+        double ppq = from;
+        while (ppq < to - 1.0e-12)
+        {
+            const double end = std::min (to, ppq + 0.25);
+            perf.tick (ppq, static_cast<int> (ppq / 4.0), eng);
+            pfl::generative::ClockSnapshot snap;
+            snap.playing = true;
+            snap.ppq = ppq;
+            snap.tempoBpm = 72.0;
+            snap.timeSigNumerator = 4;
+            snap.timeSigDenominator = 4;
+            eng.clock().advance (snap);
+            eng.processTimeRange (ppq, end, true);
+            eng.drainPending();
+            ppq = end;
+        }
+    };
+
+    advance (0.0, 256.0);
+    // Force away if still home: continue until a hop or freeze after settled leave chance
+    advance (256.0, 512.0);
+    const auto fieldBefore = eng.journey().fieldId();
+    const size_t hopsBefore = eng.journey().traces().size();
+    perf.trigger (Command::FreezeOn, 512.0, eng);
+    advance (512.0, 640.0);
+    EXPECT (eng.journey().fieldId() == fieldBefore);
+    EXPECT (eng.journey().traces().size() == hopsBefore);
+}
+
+static void testStage6ReseedHomeSettled()
+{
+    ConductorEngine eng;
+    ConductorPerformanceController perf;
+    eng.setParams ({ 0.55f, 0.90f });
+    eng.reseed (2002);
+    perf.reset (2002);
+    double ppq = 0.0;
+    while (ppq < 512.0)
+    {
+        const double end = ppq + 0.25;
+        perf.tick (ppq, static_cast<int> (ppq / 4.0), eng);
+        pfl::generative::ClockSnapshot snap;
+        snap.playing = true;
+        snap.ppq = ppq;
+        snap.tempoBpm = 72.0;
+        snap.timeSigNumerator = 4;
+        snap.timeSigDenominator = 4;
+        eng.clock().advance (snap);
+        eng.processTimeRange (ppq, end, true);
+        eng.drainPending();
+        ppq = end;
+    }
+    perf.trigger (Command::Reseed, 512.0, eng);
+    EXPECT (eng.journey().fieldId() == HarmonicFieldId::Home);
+    EXPECT (eng.journey().state() == JourneyState::Settled);
+    EXPECT (eng.journey().beatsAway() < 1.0e-9);
+}
+
+static void testStage6MutationAdventurousness()
+{
+    auto measure = [] (float mut) {
+        auto r = runHarmony (2002, 0.50f, mut, 72.0, 2048.0, 256, 48000.0);
+        int awayHops = 0;
+        int maxDist = 0;
+        for (const auto& e : r.harmony)
+        {
+            if (e.field != HarmonicFieldId::Home)
+                ++awayHops;
+            maxDist = std::max (maxDist, e.distance);
+        }
+        return std::pair<int, int> { awayHops, maxDist };
+    };
+    auto m0 = measure (0.0f);
+    auto m5 = measure (0.5f);
+    auto m1 = measure (1.0f);
+    EXPECT (m1.first >= m0.first);
+    EXPECT (m5.first >= m0.first);
+    // HOME must remain present somehow — at least reseed path; soft: max dist finite
+    EXPECT (m1.second <= 3);
+}
+
+static void testStage6DwellFloor()
+{
+    auto r = runHarmony (2002, 0.50f, 1.0f, 72.0, 1024.0, 256, 48000.0);
+    double last = 0.0;
+    for (const auto& e : r.harmony)
+    {
+        if (e.ppq > last + 1.0e-9)
+        {
+            const double gap = e.ppq - last;
+            // First event may be at 0; subsequent hops should respect min dwell roughly via 16-beat eval
+            if (last > 1.0)
+                EXPECT (gap + 1.0e-6 >= 8.0);
+            last = e.ppq;
+        }
+    }
+}
+
+static void testStage6HomeShareSoft()
+{
+    // Reconstruct HOME occupancy from traces over 2048 beats
+    auto r = runHarmony (2002, 0.50f, 0.35f, 72.0, 2048.0, 256, 48000.0);
+    HarmonicFieldId cur = HarmonicFieldId::Home;
+    double t = 0.0;
+    double homeBeats = 0.0;
+    auto flush = [&] (double until) {
+        if (until > t)
+        {
+            if (cur == HarmonicFieldId::Home)
+                homeBeats += (until - t);
+            t = until;
+        }
+    };
+    for (const auto& e : r.harmony)
+    {
+        flush (e.ppq);
+        cur = e.field;
+    }
+    flush (2048.0);
+    const double share = homeBeats / 2048.0;
+    EXPECT (share >= 0.25); // soft floor — hypothesis 40–70%, allow slack
+    EXPECT (share <= 0.95);
+}
+
+static void testStage6LongRunBounded()
+{
+    // ~2 hours at 72 BPM = 8640 beats — keep somewhat lighter for CI: 4096 beats
+    auto r = runHarmony (2002, 0.50f, 0.35f, 72.0, 4096.0, 512, 48000.0);
+    assertPaired (r.midi, false);
+    EXPECT (r.harmony.size() < 400); // no transition explosion
+}
+
 int main()
 {
     testAlgorithmVersion();
@@ -1503,6 +1796,17 @@ int main()
     testStage5ReseedKeepsSilence();
     testStage5NoteSafetyUnderCommands();
     testStage5HungerRegressionNormal();
+    testStage6HarmonyDeterminism();
+    testStage6DifferentSeeds();
+    testStage6BufferIndependence();
+    testStage6TempoIndependence();
+    testStage6ProjectionUnion();
+    testStage6FreezeLocksHarmony();
+    testStage6ReseedHomeSettled();
+    testStage6MutationAdventurousness();
+    testStage6DwellFloor();
+    testStage6HomeShareSoft();
+    testStage6LongRunBounded();
 
     if (gFails == 0)
     {

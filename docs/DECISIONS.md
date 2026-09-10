@@ -499,3 +499,59 @@ Creative director accepted Stage 5 in Ableton: FREEZE / MUTATE / COLLAPSE / RESE
 2. Mark PR #8 ready for review; creative director merges (agent does not merge).
 3. Do not begin Stage 6 without an explicit task.
 
+---
+
+## 2026-09-09 — Broken Conductor Stage 6 harmonic journey
+
+### Problem
+
+Stage 5 is locally rich (roles, hunger, performance) but tonally static — long runs stay in one D-minor-pentatonic room.
+
+### Musical objective
+
+Deterministic home → departure → exploration → return without becoming a chord-progression engine or adding harmony UI.
+
+### Tonal representation
+
+BC-owned `HarmonicField` / `HarmonicJourney` (`src/generative/HarmonicField.h`). Shared DO `Scale.h` remains static D-min-pent for Composer. Pitch mapping in `ConductorEngine` remaps degree → MIDI through the active field. PhraseDNA relative degrees survive transitions (reinterpret, not rebuild). Algorithm version **6**.
+
+### Harmonic-field ecology (6)
+
+| ID | Name | Collection | Dist |
+|----|------|------------|------|
+| HOME | D F G A C | D-min-pent | 0 |
+| SHADOW | A C D E G | A-min-pent-ish | 1 |
+| LIFT | G Bb C D F | G-centered | 1 |
+| HAZE | D F G Ab C | same root, ♭5 | 1 |
+| WIDE | C Eb F G Bb | farther | 2 |
+| DRIFT | F Ab Bb C Eb | edge | 3 |
+
+Neighbor-graph transitions only; no HOME↔DRIFT teleport.
+
+### Distance / journey
+
+Distance = graph distance from HOME. States: SETTLED / DEPARTING / EXPLORING / RETURNING. Eval every **16 beats**. Min dwells: Settled 32, Departing 16, Exploring 24, Returning 16.
+
+### Return pressure
+
+`time away + distance + mutation` → stochastic push to RETURNING (not a fixed timer). FREEZE locks; SILENCE pauses away-clock.
+
+### Role responses
+
+- Foundation: slower pitch change when away; prefers field root/fifth
+- Pulse: rhythmic identity; soft lock via current-field root/fifth
+- Wanderer: stronger explorer when away; may keep transitional chromatics
+- Accent: unchanged rarity (hunger)
+
+### DENSITY / MUTATION
+
+DENSITY ≈ activity (tiny leave-rate nudge only). MUTATION ≈ adventurousness (leave/explore/dwell), never key-change rate. Soft target ~40–70% HOME at mut 0.35; HOME must not → 0 at mut 1.
+
+### Performance
+
+FREEZE/SILENCE lock/pause journey. COLLAPSE suspends journey. RESEED → HOME/SETTLED. Manual MUTATE may rarely hop nearby field (~12%).
+
+### Rejected
+
+Chord/Roman UI; shared Scale mutation (breaks DO); per-onset modulation; MOTION as density; geological dwells; I–IV–V graphs.
+
