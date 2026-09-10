@@ -4,9 +4,12 @@ Deterministic generative audio-transformation effect.
 
 ## Status
 
-**Stage 1 — awaiting creative-director Ableton acceptance** (draft PR #10).
+**Stage 1 COMPLETE** — creative-director Ableton acceptance **PASS**.  
+Tag: `ruin-engine-stage1-complete` · PR #10 ready for merge.
 
-Broken Conductor software development is paused (Stage 7 = physical-rig integration).
+Broken Conductor software development remains paused (Stage 7 = physical-rig integration).
+
+Next musical direction (not started until PR #10 merges): **Stage 2 — explicit generative processing states**.
 
 ## Purpose
 
@@ -95,10 +98,15 @@ Dry is taken before any ruin processing. DC/limiter apply to the wet path only; 
 
 ## Ableton acceptance (Stage 1)
 
-1. Insert **PFL Ruin Engine** after a stock Ableton instrument (or on an audio track).
-2. MIX 0 ≈ dry.
-3. Raise AGE → stronger transformation.
-4. Raise INSTABILITY → more evolution over time.
-5. Automate AGE while playing.
-6. AGE/INSTABILITY high → output remains controlled.
-7. Stop/restart transport; save/reopen Set → parameters restore.
+**PASS** (2026-09-09) — creative director confirmed Stage 1 behaves as engineered in Ableton Live.
+
+Accepted capabilities:
+
+- real AU/VST3 audio-effect insert
+- MIX 0 ≈ dry
+- AGE / INSTABILITY / OUTPUT / SEED
+- deterministic evolving wet path with safety bounds
+
+### Stage 1 listening notes → Stage 2 direction
+
+Explicit generative processing states are desired next. Do not redesign the Stage 1 DSP foundation; organize existing processing into recognizable deterministic musical states and longer structural arcs.

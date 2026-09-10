@@ -34,7 +34,7 @@ PFL Drone Organism          ← implemented (reference)
         ↓
 PFL Broken Conductor        ← Stage 6 complete; Stage 7 = physical rig (paused)
         ↓
-PFL Ruin Engine             ← Stage 1 in progress
+PFL Ruin Engine             ← Stage 1 complete; Stage 2 waits for PR #10 merge
         ↓
 PFL Memory Eater            ← planned
         ↓
@@ -60,7 +60,7 @@ Why this order compounds shared architecture:
 
 2. **PFL Broken Conductor** — Stage 6 complete (algorithm v6, Ableton-accepted harmonic journey). Software paused; Stage 7 is physical PFL rig integration.
 
-3. **PFL Ruin Engine** — Stage 1 in progress. Generative audio transformation of incoming material (MIX / AGE / INSTABILITY / OUTPUT / SEED). See `docs/RUIN_ENGINE.md`.
+3. **PFL Ruin Engine** — Stage 1 complete (Ableton PASS). Next: Stage 2 generative processing states after PR #10 merge. See `docs/RUIN_ENGINE.md`.
 
 4. **PFL Memory Eater** — Planned generative capture / microloop / resampling. Circular memory with capture → remember → repeat → mutate → decay → forget. Complements samplers / KAOSS Replay rather than duplicating them. Possible signature: **GHOSTS**.
 

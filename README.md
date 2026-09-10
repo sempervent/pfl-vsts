@@ -22,9 +22,9 @@ Self-composing AU/VST3 dirty-drone instrument (no MIDI required to play). Host-s
 
 Deterministic generative MIDI **Instrument** (AU/VST3) for Ableton: stereo in (ignored) + silent stereo out + MIDI out. Four-role ensemble, harmonic journey (algorithm v6), performance commands. Software paused — Stage 7 is physical-rig integration. See `docs/BROKEN_CONDUCTOR.md`.
 
-### PFL Ruin Engine (Stage 1 in progress)
+### PFL Ruin Engine (Stage 1 complete)
 
-Deterministic generative **audio effect** (AU/VST3): incoming audio through an evolving degradation chain (filter → saturation → delay/smear → mix → safety). Controls: MIX, AGE, INSTABILITY, OUTPUT, SEED. See `docs/RUIN_ENGINE.md`.
+Deterministic generative **audio effect** (AU/VST3): incoming audio through an evolving degradation chain (filter → saturation → delay/smear → mix → safety). Controls: MIX, AGE, INSTABILITY, OUTPUT, SEED. Ableton-accepted Stage 1. See `docs/RUIN_ENGINE.md`.
 
 ## Roadmap
 

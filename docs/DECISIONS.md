@@ -662,3 +662,20 @@ Performance commands; true content AGE/DECAY; DirtBus wholesale; Drift-as-pitch-
 
 MIX=0 dry; AGE progression audible; INSTABILITY adds evolution with stability periods; extreme settings safe; Ableton audio-track insert works; existing DO/BC tests green; pluginval passes.
 
+
+---
+
+## 2026-09-09 — Ruin Engine Stage 1 complete (Ableton acceptance)
+
+### Context
+
+Creative director accepted Ruin Engine Stage 1 in Ableton: real AU/VST3 audio-effect insert, parallel dry path, AGE/INSTABILITY evolution, safety bounds, human musical review PASS.
+
+Listening also established the next musical direction: **explicit generative processing states** (Stage 2), without redesigning the Stage 1 DSP foundation.
+
+### Decisions
+
+1. Tag `ruin-engine-stage1-complete` at the accepted Stage 1 tip.
+2. Mark PR #10 ready for review; merge to `main` by creative director (do not auto-merge).
+3. Do not begin Stage 2 implementation on a stacked PR until PR #10 is merged to `main`.
+
