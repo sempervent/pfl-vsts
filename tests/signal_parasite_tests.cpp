@@ -1,4 +1,6 @@
 #include "dsp/SignalParasiteEngine.h"
+#include "dsp/ParamSmoother.h"
+#include "performance/SignalParasitePerformanceController.h"
 
 #include <algorithm>
 #include <cmath>
@@ -48,6 +50,9 @@ namespace
 using Engine = pfl::dsp::SignalParasiteEngine;
 using Reason = pfl::dsp::ParasiteSuppressReason;
 using Rel = pfl::dsp::ParasiteRelationship;
+using Perf = pfl::parasite_perf::SignalParasitePerformanceController;
+using Cmd = pfl::parasite_perf::Command;
+using Mode = pfl::parasite_perf::Mode;
 
 constexpr double kPi = 3.14159265358979323846;
 
@@ -311,13 +316,61 @@ int beatsToSamples (double beats, double sr, double bpm)
 {
     return static_cast<int> (beats * sr * 60.0 / bpm);
 }
+
+/** Drive engine + performance controller over a contiguous beat window. */
+RunOut processWithPerf (Engine& eng, Perf& perf, const std::vector<float>& inL,
+                        const std::vector<float>& inR, double sr, double bpm, double startBeat,
+                        double numBeats, bool playing, int block = 256,
+                        pfl::dsp::ParamSmoother* silenceSm = nullptr)
+{
+    const double bps = (bpm / 60.0) / sr;
+    const int n = static_cast<int> (numBeats / bps);
+    const int offset = static_cast<int> (startBeat / bps);
+    RunOut out;
+    out.L.assign (static_cast<size_t> (n), 0.0f);
+    out.R.assign (static_cast<size_t> (n), 0.0f);
+    int done = 0;
+    while (done < n)
+    {
+        const int m = std::min (block, n - done);
+        const int idx = offset + done;
+        if (idx + m > static_cast<int> (inL.size()))
+            break;
+        const double ppq = startBeat + static_cast<double> (done) * bps;
+        perf.tick (ppq, playing, eng);
+        eng.process (inL.data() + idx, inR.data() + idx, out.L.data() + done, out.R.data() + done,
+                     m, ppq, bpm, playing);
+        if (silenceSm != nullptr)
+        {
+            const bool silenced = perf.mode() == Mode::Silenced;
+            silenceSm->setTarget (silenced ? 0.0f : 1.0f);
+            for (int i = 0; i < m; ++i)
+            {
+                const float g = silenceSm->getNext();
+                out.L[static_cast<size_t> (done + i)] *= g;
+                out.R[static_cast<size_t> (done + i)] *= g;
+            }
+        }
+        done += m;
+    }
+    for (int i = 0; i < done; ++i)
+    {
+        const float a = out.L[static_cast<size_t> (i)];
+        const float b = out.R[static_cast<size_t> (i)];
+        if (! std::isfinite (a) || ! std::isfinite (b))
+            out.allFinite = false;
+        out.peak = std::max (out.peak, std::max (std::abs (a), std::abs (b)));
+    }
+    return out;
+}
 } // namespace
 
 // ---------------------------------------------------------------------------
 
 static void testAlgorithmVersion()
 {
-    EXPECT (Engine::kAlgorithmVersion == 2);
+    EXPECT (Engine::kAlgorithmVersion == 3);
+    EXPECT (pfl::parasite_perf::kPerformanceEngineVersion == 1);
     EXPECT (pfl::dsp::ParasiteStimulusDetector::kQueueCap == 8);
     EXPECT (pfl::dsp::ParasiteVoice::kMaxResonance <= 0.72f);
     EXPECT (pfl::dsp::ParasiteVoice::kMaxPan <= 0.85f);
@@ -1469,6 +1522,428 @@ static void testHistoryIsBoundedAndProcessDoesNotAllocate()
     EXPECT (eng.historySize() <= pfl::dsp::RecentStimulusHistory::kCapacity);
 }
 
+// ---------------------------------------------------------------------------
+// Stage 3 — performance intervention
+// ---------------------------------------------------------------------------
+
+static void testStage3FreezeHoldsDnaAndRelationship()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    auto src = makeSparse (static_cast<int> (96.0 * sr * 60.0 / bpm), sr, bpm);
+    Engine eng;
+    Setup s;
+    s.hunger = 0.7f;
+    s.mutation = 1.0f;
+    setupEngine (eng, s);
+    Perf perf;
+    perf.reset (s.seed);
+
+    auto warm = processWithPerf (eng, perf, src, src, sr, bpm, 0.0, 32.0, true);
+    EXPECT (warm.allFinite);
+    const auto stateAtFreeze = eng.relationshipState();
+    const auto dnaAtFreeze = eng.dnaFingerprint();
+    const auto genAtFreeze = eng.dnaGeneration();
+    const auto respAtFreeze = eng.responseCount();
+
+    perf.trigger (Cmd::FreezeOn, 32.0, eng);
+    EXPECT (perf.mode() == Mode::Frozen);
+    processWithPerf (eng, perf, src, src, sr, bpm, 32.0, 64.0, true);
+
+    EXPECT (eng.relationshipState() == stateAtFreeze);
+    EXPECT (eng.dnaFingerprint() == dnaAtFreeze);
+    EXPECT (eng.dnaGeneration() == genAtFreeze);
+    EXPECT (eng.responseCount() > respAtFreeze); // still answers while frozen
+    EXPECT (eng.stimulusCount() > 0u);
+}
+
+static void testStage3FreezeNotMutationZero()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    auto src = makeJourney (32.0, sr, bpm);
+    Engine engMut0;
+    Setup s0;
+    s0.mutation = 0.0f;
+    s0.hunger = 0.7f;
+    setupEngine (engMut0, s0);
+    processRun (engMut0, src, src, sr, bpm, 0.0, true, 256);
+    const auto mut0States = engMut0.stateTransitions();
+
+    Engine engFreeze;
+    Setup sF;
+    sF.mutation = 1.0f;
+    sF.hunger = 0.7f;
+    setupEngine (engFreeze, sF);
+    Perf perf;
+    perf.reset (sF.seed);
+    processWithPerf (engFreeze, perf, src, src, sr, bpm, 0.0, 24.0, true);
+    const auto held = engFreeze.relationshipState();
+    const auto dna = engFreeze.dnaFingerprint();
+    perf.trigger (Cmd::FreezeOn, 24.0, engFreeze);
+    processWithPerf (engFreeze, perf, src, src, sr, bpm, 24.0, 72.0, true);
+    EXPECT (engFreeze.relationshipState() == held);
+    EXPECT (engFreeze.dnaFingerprint() == dna);
+    // MUTATION=0 alone still allows relationship transitions over the journey.
+    EXPECT (mut0States > 0u);
+}
+
+static void testStage3MutateWhileFrozen()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    auto src = makeSparse (static_cast<int> (48.0 * sr * 60.0 / bpm), sr, bpm);
+    Engine eng;
+    Setup s;
+    setupEngine (eng, s);
+    Perf perf;
+    perf.reset (s.seed);
+    processWithPerf (eng, perf, src, src, sr, bpm, 0.0, 16.0, true);
+    perf.trigger (Cmd::FreezeOn, 16.0, eng);
+    const auto dnaBefore = eng.dnaFingerprint();
+    const auto genBefore = eng.dnaGeneration();
+    const auto stateBefore = eng.relationshipState();
+
+    perf.trigger (Cmd::Mutate, 16.0, eng);
+    // A performer asked for a change, so the command stream never draws STAY.
+    EXPECT (eng.dnaFingerprint() != dnaBefore);
+    EXPECT (eng.dnaGeneration() == genBefore + 1u);
+    EXPECT (perf.state().lastMutateOp > 0);
+    // …and it changes nothing else: not the hold, not the mood.
+    EXPECT (perf.mode() == Mode::Frozen);
+    EXPECT (eng.relationshipState() == stateBefore);
+
+    // Ignored while muted.
+    perf.trigger (Cmd::SilenceOn, 16.0, eng);
+    const auto dnaSilenced = eng.dnaFingerprint();
+    perf.trigger (Cmd::Mutate, 16.0, eng);
+    EXPECT (eng.dnaFingerprint() == dnaSilenced);
+    perf.trigger (Cmd::SilenceOff, 16.0, eng);
+
+    // Ignored mid-collapse: the arc owns the parasite until it ends.
+    perf.trigger (Cmd::Collapse, 16.0, eng);
+    processWithPerf (eng, perf, src, src, sr, bpm, 16.0, 8.0, true);
+    const auto dnaCollapsing = eng.dnaFingerprint();
+    EXPECT (perf.mode() == Mode::Collapsing);
+    perf.trigger (Cmd::Mutate, 24.0, eng);
+    EXPECT (eng.dnaFingerprint() == dnaCollapsing);
+}
+
+static void testStage3CollapseToDormant()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    auto src = makeSparse (static_cast<int> (80.0 * sr * 60.0 / bpm), sr, bpm);
+    Engine eng;
+    Setup s;
+    s.hunger = 0.7f;
+    setupEngine (eng, s);
+    Perf perf;
+    perf.reset (s.seed);
+    processWithPerf (eng, perf, src, src, sr, bpm, 0.0, 16.0, true);
+    perf.trigger (Cmd::Collapse, 16.0, eng);
+    EXPECT (perf.mode() == Mode::Collapsing);
+    processWithPerf (eng, perf, src, src, sr, bpm, 16.0, 28.0, true);
+    EXPECT (perf.dormant());
+    EXPECT (perf.mode() == Mode::Collapsed || perf.mode() == Mode::Frozen);
+    const auto respAtDormant = eng.responseCount();
+    processWithPerf (eng, perf, src, src, sr, bpm, 44.0, 32.0, true);
+    EXPECT (eng.responseCount() == respAtDormant); // no new answers in dormant
+    EXPECT (eng.stimulusCount() > 0u); // still listening
+}
+
+static void testStage3CollapseSilentSourceNoAudio()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    auto src = makeSilence (static_cast<int> (48.0 * sr * 60.0 / bpm));
+    Engine eng;
+    Setup s;
+    s.mix = 1.0f;
+    setupEngine (eng, s);
+    Perf perf;
+    perf.reset (s.seed);
+    perf.trigger (Cmd::Collapse, 0.0, eng);
+    auto out = processWithPerf (eng, perf, src, src, sr, bpm, 0.0, 28.0, true);
+    EXPECT (out.peak < 0.02f);
+    EXPECT (eng.responseCount() == 0u);
+    EXPECT (perf.dormant());
+}
+
+static void testStage3CollapseVsHungerRamp()
+{
+    // A collapse is an arc with a shape and an ending. A HUNGER fade is a
+    // dimmer. They must not be the same gesture on the same source.
+    const double sr = 48000.0, bpm = 120.0;
+    const int n = static_cast<int> (72.0 * sr * 60.0 / bpm);
+    auto src = makeSparse (n, sr, bpm);
+
+    Engine engC;
+    Setup sC;
+    sC.hunger = 0.7f;
+    sC.mutation = 0.0f;
+    setupEngine (engC, sC);
+    Perf perf;
+    perf.reset (sC.seed);
+    perf.setTraceEnabled (true);
+    processWithPerf (engC, perf, src, src, sr, bpm, 0.0, 16.0, true);
+    perf.trigger (Cmd::Collapse, 16.0, engC);
+    processWithPerf (engC, perf, src, src, sr, bpm, 16.0, 28.0, true);
+    const auto respAfterArc = engC.responseCount();
+    processWithPerf (engC, perf, src, src, sr, bpm, 44.0, 24.0, true);
+
+    // The arc visited every phase in order, and it ended somewhere it stays.
+    int seen = 0;
+    for (const auto& e : perf.events())
+    {
+        if (e.detail.find ("CLING") != std::string::npos && seen == 0) seen = 1;
+        else if (e.detail.find ("FEVER") != std::string::npos && seen == 1) seen = 2;
+        else if (e.detail.find ("WITHDRAW") != std::string::npos && seen == 2) seen = 3;
+        else if (e.detail.find ("DORMANT") != std::string::npos && seen == 3) seen = 4;
+    }
+    EXPECT (seen == 4);
+    EXPECT (perf.dormant());
+    EXPECT (engC.responseCount() == respAfterArc); // dormancy holds
+
+    // The same source with HUNGER faded away instead: quieter, but never
+    // dormant, and it comes straight back when the appetite does.
+    Engine engH;
+    Setup sH;
+    sH.hunger = 0.7f;
+    sH.mutation = 0.0f;
+    setupEngine (engH, sH);
+    processRun (engH, src, src, sr, bpm, 0.0, true, 256);
+    const auto fadedKey = engH.responseFingerprint();
+    EXPECT (engC.responseFingerprint() != fadedKey);
+
+    engH.setHunger (0.0f);
+    engH.snapMacros();
+    const int quarter = n / 4;
+    std::vector<float> tail (src.begin() + quarter, src.end());
+    processRun (engH, tail, tail, sr, bpm, 18.0, true, 256);
+    const auto respDuringFade = engH.responseCount();
+    engH.setHunger (0.7f);
+    engH.snapMacros();
+    processRun (engH, tail, tail, sr, bpm, 72.0, true, 256);
+    EXPECT (engH.responseCount() > respDuringFade); // appetite returns, dormancy does not
+}
+
+static void testStage3ReseedExitsDormant()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    auto src = makeSparse (static_cast<int> (80.0 * sr * 60.0 / bpm), sr, bpm);
+    Engine eng;
+    Setup s;
+    s.hunger = 0.7f;
+    setupEngine (eng, s);
+    Perf perf;
+    perf.reset (s.seed);
+    processWithPerf (eng, perf, src, src, sr, bpm, 0.0, 8.0, true);
+    perf.trigger (Cmd::Collapse, 8.0, eng);
+    processWithPerf (eng, perf, src, src, sr, bpm, 8.0, 28.0, true);
+    EXPECT (perf.dormant());
+    const auto oldSeed = eng.seed();
+    const auto oldDna = eng.dnaFingerprint();
+    perf.trigger (Cmd::Reseed, 36.0, eng);
+    EXPECT (! perf.dormant());
+    EXPECT (eng.relationshipState() == Rel::Lurking);
+    EXPECT (eng.seed() != oldSeed);
+    EXPECT (eng.dnaFingerprint() != oldDna);
+    processWithPerf (eng, perf, src, src, sr, bpm, 36.0, 32.0, true);
+    EXPECT (eng.responseCount() > 0u || eng.stimulusCount() > 0u);
+}
+
+static void testStage3SilenceListenNoBacklog()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    auto src = makeBusy (static_cast<int> (64.0 * sr * 60.0 / bpm), sr, bpm);
+    Engine eng;
+    Setup s;
+    s.mix = 0.5f;
+    s.hunger = 0.7f;
+    setupEngine (eng, s);
+    Perf perf;
+    perf.reset (s.seed);
+    pfl::dsp::ParamSmoother silenceSm;
+    silenceSm.prepare (sr, 0.004f);
+    silenceSm.setCurrentAndTarget (1.0f);
+
+    processWithPerf (eng, perf, src, src, sr, bpm, 0.0, 8.0, true, 256, &silenceSm);
+    const auto stimBefore = eng.stimulusCount();
+    const auto respBefore = eng.responseCount();
+    perf.trigger (Cmd::SilenceOn, 8.0, eng);
+    auto silent = processWithPerf (eng, perf, src, src, sr, bpm, 8.0, 16.0, true, 256, &silenceSm);
+    // Allow the ~4 ms mute ramp; assert the settled tail is effectively silent.
+    float tailPeak = 0.0f;
+    const int tailFrom = static_cast<int> (silent.L.size() / 4);
+    for (int i = tailFrom; i < static_cast<int> (silent.L.size()); ++i)
+    {
+        tailPeak = std::max (tailPeak,
+                             std::max (std::abs (silent.L[static_cast<size_t> (i)]),
+                                       std::abs (silent.R[static_cast<size_t> (i)])));
+    }
+    EXPECT (tailPeak < 0.02f);
+    EXPECT (eng.stimulusCount() > stimBefore);
+    EXPECT (eng.responseCount() == respBefore);
+    const auto respAtUnsilence = eng.responseCount();
+    perf.trigger (Cmd::SilenceOff, 24.0, eng);
+    processWithPerf (eng, perf, src, src, sr, bpm, 24.0, 4.0, true, 256, &silenceSm);
+    // No backlog burst: responses may resume gradually, not dump a cluster.
+    EXPECT (eng.responseCount() <= respAtUnsilence + 3u);
+}
+
+static void testStage3IdleCommandsAreStageTwo()
+{
+    // A controller that is never played must be inaudible in every sense:
+    // the Stage 2 schedule has to survive it bit for bit.
+    const double sr = 48000.0, bpm = 120.0;
+    const int n = beatsToSamples (96.0, sr, bpm);
+    auto drums = makeDrums (n, sr, bpm);
+
+    Engine plain;
+    Setup s;
+    s.hunger = 0.6f;
+    setupEngine (plain, s);
+    processRun (plain, drums, drums, sr, bpm, 0.0, true, 256);
+
+    Engine driven;
+    setupEngine (driven, s);
+    Perf perf;
+    perf.reset (s.seed);
+    processWithPerf (driven, perf, drums, drums, sr, bpm, 0.0, 96.0, true);
+
+    EXPECT (perf.mode() == Mode::Normal);
+    EXPECT (structuralKey (driven) == structuralKey (plain));
+}
+
+static void testStage3ReseedKeepsFreezeAndMacros()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    auto src = makeSparse (static_cast<int> (96.0 * sr * 60.0 / bpm), sr, bpm);
+    Engine eng;
+    Setup s;
+    s.hunger = 0.7f;
+    setupEngine (eng, s);
+    Perf perf;
+    perf.reset (s.seed);
+    processWithPerf (eng, perf, src, src, sr, bpm, 0.0, 32.0, true);
+
+    perf.trigger (Cmd::FreezeOn, 32.0, eng);
+    const auto respBefore = eng.responseCount();
+    perf.trigger (Cmd::Reseed, 32.0, eng);
+
+    // A new parasite, born holding the switch the performer is holding.
+    EXPECT (perf.mode() == Mode::Frozen);
+    EXPECT (perf.state().freezeLatched);
+    EXPECT (eng.relationshipFrozen());
+    EXPECT (eng.relationshipState() == Rel::Lurking);
+    EXPECT (eng.historySize() == 0);
+    EXPECT (eng.dnaGeneration() == 0u);
+
+    // HUNGER survived the rebirth, so it still answers this source.
+    processWithPerf (eng, perf, src, src, sr, bpm, 32.0, 48.0, true);
+    EXPECT (eng.responseCount() > respBefore);
+}
+
+static void testStage3FreezeUnderSilencePreservesState()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    auto src = makeSparse (static_cast<int> (64.0 * sr * 60.0 / bpm), sr, bpm);
+    Engine eng;
+    Setup s;
+    s.hunger = 0.7f;
+    setupEngine (eng, s);
+    Perf perf;
+    perf.reset (s.seed);
+    processWithPerf (eng, perf, src, src, sr, bpm, 0.0, 24.0, true);
+    const auto held = eng.relationshipState();
+    perf.trigger (Cmd::FreezeOn, 24.0, eng);
+    perf.trigger (Cmd::SilenceOn, 24.0, eng);
+    processWithPerf (eng, perf, src, src, sr, bpm, 24.0, 16.0, true);
+    perf.trigger (Cmd::SilenceOff, 40.0, eng);
+    EXPECT (perf.mode() == Mode::Frozen);
+    EXPECT (eng.relationshipState() == held);
+}
+
+static void testStage3CommandScriptDeterminism()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    auto src = makeSparse (static_cast<int> (160.0 * sr * 60.0 / bpm), sr, bpm);
+
+    auto run = [&]() {
+        Engine eng;
+        Setup s;
+        s.hunger = 0.65f;
+        s.mutation = 0.5f;
+        setupEngine (eng, s);
+        Perf perf;
+        perf.reset (s.seed);
+        processWithPerf (eng, perf, src, src, sr, bpm, 0.0, 32.0, true);
+        perf.trigger (Cmd::FreezeOn, 32.0, eng);
+        processWithPerf (eng, perf, src, src, sr, bpm, 32.0, 8.0, true);
+        perf.trigger (Cmd::Mutate, 40.0, eng);
+        processWithPerf (eng, perf, src, src, sr, bpm, 40.0, 8.0, true);
+        perf.trigger (Cmd::FreezeOff, 48.0, eng);
+        processWithPerf (eng, perf, src, src, sr, bpm, 48.0, 16.0, true);
+        perf.trigger (Cmd::Collapse, 64.0, eng);
+        processWithPerf (eng, perf, src, src, sr, bpm, 64.0, 28.0, true);
+        perf.trigger (Cmd::Reseed, 96.0, eng);
+        processWithPerf (eng, perf, src, src, sr, bpm, 96.0, 32.0, true);
+        std::ostringstream os;
+        os << eng.seed() << "|" << eng.dnaFingerprint() << "|" << eng.stateFingerprint() << "|"
+           << eng.responseFingerprint() << "|" << eng.stimulusFingerprint() << "|"
+           << static_cast<int> (perf.mode()) << "|" << (perf.dormant() ? 1 : 0);
+        return os.str();
+    };
+    EXPECT (run() == run());
+}
+
+static void testStage3PerfBufferMatrix()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    auto src = makeSparse (static_cast<int> (48.0 * sr * 60.0 / bpm), sr, bpm);
+    std::string ref;
+    for (int block : { 64, 127, 128, 255, 256, 511, 512, 1024 })
+    {
+        Engine eng;
+        Setup s;
+        s.block = block;
+        s.hunger = 0.65f;
+        setupEngine (eng, s);
+        Perf perf;
+        perf.reset (s.seed);
+        processWithPerf (eng, perf, src, src, sr, bpm, 0.0, 16.0, true, block);
+        perf.trigger (Cmd::FreezeOn, 16.0, eng);
+        processWithPerf (eng, perf, src, src, sr, bpm, 16.0, 8.0, true, block);
+        perf.trigger (Cmd::Mutate, 24.0, eng);
+        processWithPerf (eng, perf, src, src, sr, bpm, 24.0, 16.0, true, block);
+        std::ostringstream os;
+        os << eng.stimulusFingerprint() << "|" << eng.responseFingerprint() << "|"
+           << eng.stateFingerprint() << "|" << eng.dnaFingerprint();
+        if (ref.empty())
+            ref = os.str();
+        else
+            EXPECT (os.str() == ref);
+    }
+}
+
+static void testStage3NoSourceCommandsSilent()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    auto src = makeSilence (static_cast<int> (48.0 * sr * 60.0 / bpm));
+    Engine eng;
+    Setup s;
+    s.mix = 1.0f;
+    setupEngine (eng, s);
+    Perf perf;
+    perf.reset (s.seed);
+    perf.trigger (Cmd::FreezeOn, 0.0, eng);
+    perf.trigger (Cmd::Mutate, 0.0, eng);
+    perf.trigger (Cmd::Collapse, 0.0, eng);
+    auto out = processWithPerf (eng, perf, src, src, sr, bpm, 0.0, 28.0, true);
+    EXPECT (out.peak < 0.02f);
+    EXPECT (eng.responseCount() == 0u);
+    perf.trigger (Cmd::Reseed, 28.0, eng);
+    out = processWithPerf (eng, perf, src, src, sr, bpm, 28.0, 8.0, true);
+    EXPECT (out.peak < 0.02f);
+    EXPECT (eng.responseCount() == 0u);
+}
+
 int main()
 {
     testAlgorithmVersion();
@@ -1514,6 +1989,22 @@ int main()
     testStateBiasesAnswersWithinStageOneVocabulary();
     testJourneyOccupancyAndReturn();
     testHistoryIsBoundedAndProcessDoesNotAllocate();
+
+    // Stage 3 — performance
+    testStage3FreezeHoldsDnaAndRelationship();
+    testStage3FreezeNotMutationZero();
+    testStage3MutateWhileFrozen();
+    testStage3CollapseToDormant();
+    testStage3CollapseSilentSourceNoAudio();
+    testStage3CollapseVsHungerRamp();
+    testStage3IdleCommandsAreStageTwo();
+    testStage3ReseedKeepsFreezeAndMacros();
+    testStage3ReseedExitsDormant();
+    testStage3SilenceListenNoBacklog();
+    testStage3FreezeUnderSilencePreservesState();
+    testStage3CommandScriptDeterminism();
+    testStage3PerfBufferMatrix();
+    testStage3NoSourceCommandsSilent();
 
     if (gFails == 0)
     {

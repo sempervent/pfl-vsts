@@ -1751,3 +1751,119 @@ restraint and sparse-source engagement; changing sustained material.
 Signal Parasite Stage 3 — performance intervention (FREEZE / MUTATE / COLLAPSE /
 RESEED / SILENCE). Intended final planned software stage; park after PASS rather
 than auto-starting tonal listening.
+
+---
+
+## 2026-09-10 — Signal Parasite Stage 3 (performance intervention)
+
+**PFL Signal Parasite Stage 3** — make the accepted relationship playable via the
+suite vocabulary FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE without exposing
+detector or relationship internals. Intended final planned software stage;
+after Ableton PASS, park rather than auto-start tonal listening.
+
+Algorithm version → **3**. Performance-engine → **v1**. Continuous controls
+unchanged: MIX, SENSITIVITY, HUNGER, MUTATION, OUTPUT, SEED.
+
+### Why Stage 3 is performance intervention
+
+Stage 2 proved phrase-scale relationship behavior. Stage 3 lets the performer
+hold, nudge, break, renew, or mute that relationship without adding continuous
+knobs or redesigning the Stage 1/2 voice.
+
+### Why tonal listening remains deferred
+
+The accepted non-tonal parasite identity remains. Pitch/key/interval awareness
+is a future optional extension only if listening later identifies a concrete
+limitation. Default bias after Stage 3 PASS: park.
+
+### Shared suite command contract
+
+| Param | Type | Semantics |
+|-------|------|-----------|
+| FREEZE | Bool toggle | Latch |
+| SILENCE | Bool toggle | Latch |
+| MUTATE / COLLAPSE / RESEED | Float 0–1 edge | Fire once on 0→1; hold does not retrigger |
+
+Priority: **SILENCE > COLLAPSE > FREEZE > MUTATE**. Continuous MUTATION ≠ command MUTATE.
+
+### FREEZE
+
+Hold ParasiteDNA (pause autonomous evolveAtBar) **and** RelationshipState
+(pause transitions / pressure-driven state changes). Analyzer and detector stay
+live. Valid responses continue under the held state + HUNGER. Short-term
+`beatsSinceResponse_` anti-spam stays live; long-term relationship pressures
+do not advance state. Continuous MUTATION may change but does not evolve DNA
+until unfreeze. Unfreeze: no catch-up mutations or missed state transitions.
+
+FREEZE ≠ MUTATION=0 (that only freezes DNA; FREEZE also locks mood).
+
+### MUTATE
+
+One bounded ParasiteMutOp via isolated `parasite/performance/mutate` RNG.
+Does not change RelationshipState, detector, or HUNGER. Works while Frozen /
+Dormant; ignored while Collapsing or Silenced. Active voice keeps launch
+params; new DNA applies to future responses. Does not unfreeze.
+
+### COLLAPSE
+
+24 musical beats, four phases × 6: **CLING → FEVER → WITHDRAW → DORMANT**.
+Not HUNGER→0, not RelationshipState=WITHDRAWN, not SILENCE. No stimulus → no
+new response in every phase. Overrides FREEZE. Ignore MUTATE mid-arc. Pause
+autonomous DNA mutation. Retrigger ignored. HUNGER 0: structural progress only,
+no audible answers. Ends in stable DORMANT until RESEED. Mid-collapse
+save/seek → settle DORMANT (or freeze-latched dormant). Temporary manner
+overlays only; FEVER timbre is note-on overlay, not permanent DNA wild-mutate.
+
+### DORMANT
+
+Analyzer/detector may run; no ParasiteVoice launches; DNA stored; relationship
+transitions suspended; no autonomous wake. DORMANT ≠ SILENCE (dry still passes
+at MIX<1). Primary exit: RESEED. MUTATE may edit one stored DNA trait without
+waking. FREEZE may latch without waking.
+
+### RESEED
+
+New deterministic SEED + ParasiteDNA; clear pending; cancel collapse; exit
+DORMANT; RelationshipState → LURKING; clear history/pressures; keep continuous
+macros. Preserve FREEZE latch (new parasite born frozen). Allowed under SILENCE.
+Does not fabricate a detector stimulus.
+
+### SILENCE
+
+Mute entire plugin output via ~4 ms click-safe ramp (≠ MIX=0). Analyzer
+continues. No responses launched; no backlog on unsilence. Relationship may
+observe/transition while silent **unless FREEZE is latched** (then held).
+Autonomous DNA mutation pauses while silenced. MUTATE/new COLLAPSE ignored
+while silent; RESEED allowed. FREEZE toggle allowed under silence. Active
+collapse clock pauses under silence and resumes from same phase on unsilence.
+On SILENCE ON: terminate active voice safely.
+
+### Analysis / history during commands
+
+| Command | Analyzer | History write | Rel transitions | DNA evolve | Responses |
+|---------|----------|---------------|-----------------|------------|-----------|
+| FREEZE | on | off (held) | paused | paused | yes (held manner) |
+| SILENCE | on | yes (if not frozen) | yes if not frozen | paused | no |
+| COLLAPSE | on | yes | paused (overlay owns manner) | paused | phase-biased |
+| DORMANT | on | yes | paused | paused | no |
+| RESEED | warm/safe | clear | → LURKING | new birth | after |
+
+### Persistence
+
+Persist: MIX/SENSITIVITY/HUNGER/MUTATION/OUTPUT/SEED, FREEZE, SILENCE, compact
+DORMANT flag + DNA (via SEED + generation path as suite). Do **not** persist
+stimulus history or mid-collapse arc. Reload: relationship starts LURKING
+(even if FREEZE latched → frozen LURKING); DORMANT restores dormant; mid-collapse
+→ DORMANT.
+
+### Determinism
+
+Dedicated streams: `parasite/performance/mutate`, `…/reseed`, `…/collapse/fever`.
+Identical input + seed + macros + command edges → identical stimuli, states,
+mutations, collapse phases, responses (within analysis tolerances).
+
+### Rejected alternatives
+
+Knob-automation verbs; FREEZE=MUTATION=0; COLLAPSE=HUNGER fade; SILENCE=MIX=0;
+autonomous collapse noises; second voice; tonal listening; audio memory;
+custom GUI redesign; MIDI/studio; inventing stimuli under silence/collapse.

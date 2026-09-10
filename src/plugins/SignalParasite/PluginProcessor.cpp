@@ -41,6 +41,22 @@ juce::AudioProcessorValueTreeState::ParameterLayout SignalParasiteProcessor::cre
         juce::NormalisableRange<float> { 0.0f, 1.0f, 0.001f }, 0.85f));
     params.push_back (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { "seed", 1 }, "SEED", 0, 999999, 2002));
+
+    // Stage 3 performance verbs. Two latches and three edge triggers, the same
+    // shape the rest of the suite uses.
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "freeze", 1 }, "Freeze", false));
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "silence", 1 }, "Silence", false));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "mutate", 1 }, "Mutate",
+        juce::NormalisableRange<float> { 0.0f, 1.0f, 0.01f }, 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "collapse", 1 }, "Collapse",
+        juce::NormalisableRange<float> { 0.0f, 1.0f, 0.01f }, 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "reseed", 1 }, "Reseed",
+        juce::NormalisableRange<float> { 0.0f, 1.0f, 0.01f }, 0.0f));
     return { params.begin(), params.end() };
 }
 
@@ -48,10 +64,13 @@ void SignalParasiteProcessor::prepareToPlay (double sampleRate, int samplesPerBl
 {
     sampleRate_ = sampleRate > 1.0 ? sampleRate : 44100.0;
     engine_.prepare (sampleRate_, samplesPerBlock);
+    silenceSm_.prepare (sampleRate_, 0.004f); // ~4 ms click-safe mute ramp
+    silenceSm_.setCurrentAndTarget (1.0f);
     monoScratch_.assign (static_cast<size_t> (std::max (1, samplesPerBlock)), 0.0f);
     syncEngineFromParams();
     engine_.snapMacros();
     engine_.forceRebuild (0);
+    restorePerformanceFromParams();
     lastPpq_ = 0.0;
     setLatencySamples (0);
 }
@@ -69,6 +88,87 @@ bool SignalParasiteProcessor::isBusesLayoutSupported (const BusesLayout& layouts
     if (out != juce::AudioChannelSet::mono() && out != juce::AudioChannelSet::stereo())
         return false;
     return in.size() == out.size();
+}
+
+void SignalParasiteProcessor::writeSeedToHost (uint64_t seed) noexcept
+{
+    const int s = static_cast<int> (std::clamp (seed, 0ull, 999999ull));
+    if (auto* p = apvts_.getParameter ("seed"))
+    {
+        const float norm = apvts_.getParameterRange ("seed").convertTo0to1 (static_cast<float> (s));
+        p->setValueNotifyingHost (norm);
+    }
+    lastSeedParam_ = s;
+}
+
+void SignalParasiteProcessor::restorePerformanceFromParams() noexcept
+{
+    const auto seed = static_cast<uint64_t> (juce::jlimit (
+        0, 999999, static_cast<int> (readParam (apvts_, "seed", 2002.0f))));
+    performance_.reset (seed == 0 ? 1ull : seed);
+
+    lastFreezeParam_ = readParam (apvts_, "freeze", 0.0f) > 0.5f;
+    lastSilenceParam_ = readParam (apvts_, "silence", 0.0f) > 0.5f;
+    lastMutateParam_ = readParam (apvts_, "mutate", 0.0f);
+    lastCollapseParam_ = readParam (apvts_, "collapse", 0.0f);
+    lastReseedParam_ = readParam (apvts_, "reseed", 0.0f);
+
+    // Latches only. A collapse arc is never journaled as still running.
+    if (lastFreezeParam_)
+        performance_.trigger (pfl::parasite_perf::Command::FreezeOn, 0.0, engine_);
+    if (lastSilenceParam_)
+        performance_.trigger (pfl::parasite_perf::Command::SilenceOn, 0.0, engine_);
+}
+
+void SignalParasiteProcessor::syncPerformanceCommands (double ppq) noexcept
+{
+    using Cmd = pfl::parasite_perf::Command;
+
+    const bool freeze = readParam (apvts_, "freeze", 0.0f) > 0.5f;
+    const bool silence = readParam (apvts_, "silence", 0.0f) > 0.5f;
+    const float mutate = readParam (apvts_, "mutate", 0.0f);
+    const float collapse = readParam (apvts_, "collapse", 0.0f);
+    const float reseed = readParam (apvts_, "reseed", 0.0f);
+
+    if (freeze && ! lastFreezeParam_)
+        performance_.trigger (Cmd::FreezeOn, ppq, engine_);
+    else if (! freeze && lastFreezeParam_)
+        performance_.trigger (Cmd::FreezeOff, ppq, engine_);
+
+    if (silence && ! lastSilenceParam_)
+        performance_.trigger (Cmd::SilenceOn, ppq, engine_);
+    else if (! silence && lastSilenceParam_)
+        performance_.trigger (Cmd::SilenceOff, ppq, engine_);
+
+    if (mutate >= 0.5f && lastMutateParam_ < 0.5f)
+        performance_.trigger (Cmd::Mutate, ppq, engine_);
+    if (collapse >= 0.5f && lastCollapseParam_ < 0.5f)
+        performance_.trigger (Cmd::Collapse, ppq, engine_);
+    if (reseed >= 0.5f && lastReseedParam_ < 0.5f)
+        performance_.trigger (Cmd::Reseed, ppq, engine_);
+
+    lastFreezeParam_ = freeze;
+    lastSilenceParam_ = silence;
+    lastMutateParam_ = mutate;
+    lastCollapseParam_ = collapse;
+    lastReseedParam_ = reseed;
+
+    uint64_t newSeed = 0;
+    if (performance_.takeSeedDirty (newSeed))
+        writeSeedToHost (newSeed);
+}
+
+void SignalParasiteProcessor::applySilenceGain (float* L, float* R, int n) noexcept
+{
+    const bool silenced = performance_.mode() == pfl::parasite_perf::Mode::Silenced;
+    silenceSm_.setTarget (silenced ? 0.0f : 1.0f);
+    for (int i = 0; i < n; ++i)
+    {
+        const float g = silenceSm_.getNext();
+        L[i] *= g;
+        if (R != nullptr)
+            R[i] *= g;
+    }
 }
 
 void SignalParasiteProcessor::syncEngineFromParams() noexcept
@@ -114,6 +214,9 @@ void SignalParasiteProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
         }
     }
 
+    syncPerformanceCommands (ppq);
+    performance_.tick (ppq, playing, engine_);
+
     const int n = buffer.getNumSamples();
     const int numCh = buffer.getNumChannels();
     if (n <= 0 || numCh <= 0)
@@ -138,12 +241,14 @@ void SignalParasiteProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
                              ppq + static_cast<double> (offset) * beatsPerSample, bpm, playing);
             for (int i = 0; i < chunk; ++i)
                 L[offset + i] = 0.5f * (L[offset + i] + mono[i]);
+            applySilenceGain (L + offset, nullptr, chunk);
             offset += chunk;
         }
     }
     else
     {
         engine_.process (L, R, L, R, n, ppq, bpm, playing);
+        applySilenceGain (L, R, n);
     }
 
     lastPpq_ = ppq;
@@ -159,12 +264,24 @@ void SignalParasiteProcessor::processBlockBypassed (juce::AudioBuffer<float>& bu
 
 void SignalParasiteProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    // Controls only — never analysis buffers, generated voice audio, or the
-    // Stage 2 stimulus history. A reloaded project starts LURKING, because the
-    // parasite has not heard this source yet in this session.
+    // Controls and latches only — never analysis buffers, generated voice
+    // audio, or the Stage 2 stimulus history. A reloaded project starts
+    // LURKING, because the parasite has not heard this source yet in this
+    // session.
     juce::ValueTree root ("PFLSignalParasiteState");
-    root.setProperty ("stateVersion", 2, nullptr);
+    root.setProperty ("stateVersion", 3, nullptr);
     root.setProperty ("algorithmVersion", pfl::dsp::SignalParasiteEngine::kAlgorithmVersion,
+                      nullptr);
+    root.setProperty ("performanceEngineVersion",
+                      pfl::parasite_perf::kPerformanceEngineVersion, nullptr);
+    root.setProperty ("freeze", performance_.state().freezeLatched, nullptr);
+    root.setProperty ("silence",
+                      performance_.mode() == pfl::parasite_perf::Mode::Silenced, nullptr);
+    // A collapse in flight is saved as where it was heading, not as a clock to
+    // resume: mid-arc becomes dormant.
+    root.setProperty ("dormant",
+                      performance_.dormant()
+                          || performance_.mode() == pfl::parasite_perf::Mode::Collapsing,
                       nullptr);
     root.appendChild (apvts_.copyState(), nullptr);
     if (auto xml = root.createXml())
@@ -182,6 +299,7 @@ void SignalParasiteProcessor::setStateInformation (const void* data, int sizeInB
             syncEngineFromParams();
             engine_.snapMacros();
             engine_.forceRebuild (0);
+            restorePerformanceFromParams();
             return;
         }
         if (tree.hasType ("PFLSignalParasiteState"))
@@ -191,6 +309,13 @@ void SignalParasiteProcessor::setStateInformation (const void* data, int sizeInB
             syncEngineFromParams();
             engine_.snapMacros();
             engine_.forceRebuild (0);
+            restorePerformanceFromParams();
+
+            const bool dormant = tree.getProperty ("dormant", false);
+            const bool freezeLatch = tree.getProperty ("freeze", false)
+                                     || (readParam (apvts_, "freeze", 0.0f) > 0.5f);
+            if (dormant || freezeLatch)
+                performance_.restoreStableMode (dormant, freezeLatch, engine_);
         }
     }
 }

@@ -2,7 +2,9 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "dsp/ParamSmoother.h"
 #include "dsp/SignalParasiteEngine.h"
+#include "performance/SignalParasitePerformanceController.h"
 
 #include <vector>
 
@@ -39,16 +41,31 @@ public:
 
     juce::AudioProcessorValueTreeState& getAPVTS() noexcept { return apvts_; }
     pfl::dsp::SignalParasiteEngine& engine() noexcept { return engine_; }
+    pfl::parasite_perf::SignalParasitePerformanceController& performance() noexcept
+    {
+        return performance_;
+    }
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     void syncEngineFromParams() noexcept;
+    void syncPerformanceCommands (double ppq) noexcept;
+    void writeSeedToHost (uint64_t seed) noexcept;
+    void restorePerformanceFromParams() noexcept;
+    void applySilenceGain (float* L, float* R, int n) noexcept;
 
     juce::AudioProcessorValueTreeState apvts_;
     pfl::dsp::SignalParasiteEngine engine_;
+    pfl::parasite_perf::SignalParasitePerformanceController performance_;
+    pfl::dsp::ParamSmoother silenceSm_;
     double sampleRate_ = 44100.0;
     double lastPpq_ = 0.0;
     int lastSeedParam_ = -1;
+    bool lastFreezeParam_ = false;
+    bool lastSilenceParam_ = false;
+    float lastMutateParam_ = 0.0f;
+    float lastCollapseParam_ = 0.0f;
+    float lastReseedParam_ = 0.0f;
     // Mono hosts still get a stereo parasite internally, then a mid sum.
     std::vector<float> monoScratch_;
 

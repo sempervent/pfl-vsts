@@ -53,6 +53,8 @@ enum class ParasiteSuppressReason : uint8_t
     Hunger,
     SourceBusy,
     Relationship,
+    Collapse,
+    Silenced,
     Count
 };
 
@@ -69,6 +71,8 @@ inline const char* parasiteSuppressName (ParasiteSuppressReason r) noexcept
         case ParasiteSuppressReason::Hunger: return "HUNGER";
         case ParasiteSuppressReason::SourceBusy: return "SOURCE_BUSY";
         case ParasiteSuppressReason::Relationship: return "RELATIONSHIP";
+        case ParasiteSuppressReason::Collapse: return "COLLAPSE";
+        case ParasiteSuppressReason::Silenced: return "SILENCED";
         default: return "?";
     }
 }
@@ -943,6 +947,9 @@ public:
     /** Full reset: clock, history, state, pressures and the journey metrics. */
     void reset() noexcept
     {
+        frozen_ = false;
+        transitionsPaused_ = false;
+        freezeStartRel_ = 0;
         onDiscontinuity();
         relSample_ = 0;
         stateEnterRel_ = 0;
@@ -962,6 +969,10 @@ public:
      */
     void onDiscontinuity() noexcept
     {
+        // A held relationship is held through a seek too: FREEZE means the mood
+        // survives whatever the transport does.
+        if (frozen_)
+            return;
         history_.reset();
         pressures_ = {};
         lastSummary_ = {};
@@ -979,13 +990,55 @@ public:
 
     int64_t clock() const noexcept { return relSample_; }
 
+    /**
+     * FREEZE. The state, the history and every pressure behind them stop
+     * where they are. Nothing accumulates while held, so unfreezing cannot
+     * fire a queue of missed transitions: the model simply picks the clock
+     * back up from the moment it was let go.
+     */
+    void setFrozen (bool f) noexcept
+    {
+        if (f == frozen_)
+            return;
+        if (f)
+        {
+            freezeStartRel_ = relSample_;
+            frozen_ = true;
+            return;
+        }
+        frozen_ = false;
+        // Frozen time is not time lived in the state, so the dwell floor that
+        // gates the next transition excludes it.
+        stateEnterRel_ += relSample_ - freezeStartRel_;
+        lastEvalRel_ = relSample_;
+        nextMinorRel_ = -1;
+        nextMajorRel_ = -1;
+        winSamples_ = 0;
+        winVoiceSamples_ = 0;
+        winFillSum_ = 0.0f;
+    }
+
+    bool frozen() const noexcept { return frozen_; }
+
+    /**
+     * COLLAPSE / DORMANT. The window still fills and the pressures still move
+     * — the parasite keeps forming an opinion — but the state machine does not
+     * act on it, because the collapse overlay owns manner for the duration.
+     */
+    void setTransitionsPaused (bool p) noexcept { transitionsPaused_ = p; }
+    bool transitionsPaused() const noexcept { return transitionsPaused_; }
+
     void noteStimulus (const StimulusEvent& e, double samplesPerBeat) noexcept
     {
+        if (frozen_)
+            return;
         history_.push (e, relSample_, samplesPerBeat);
     }
 
     void noteResponse (int64_t absStimulusSample) noexcept
     {
+        if (frozen_)
+            return;
         history_.markAnswered (absStimulusSample, relSample_);
         pressures_.fatigue = std::clamp (pressures_.fatigue + kFatiguePerResponse, 0.0f, 1.0f);
     }
@@ -997,6 +1050,17 @@ public:
     void advance (double samplesPerBeat, bool voiceActive, float fill01) noexcept
     {
         const double spb = std::max (1.0, samplesPerBeat);
+
+        if (frozen_)
+        {
+            // Held: the clock runs so history stays comparable across the
+            // freeze, but nothing that could move the state accumulates.
+            stateSamples_[static_cast<size_t> (state_)] += 1;
+            ++playedSamples_;
+            ++relSample_;
+            return;
+        }
+
         if (nextMinorRel_ < 0)
         {
             nextMinorRel_ = relSample_ + beatsToSamples (kMinorEvalBeats, spb);
@@ -1200,6 +1264,9 @@ private:
 
     void transitionStep (bool major, const ParasiteHistorySummary& sum, double spb) noexcept
     {
+        if (transitionsPaused_)
+            return;
+
         const float beatsInState =
             static_cast<float> (static_cast<double> (relSample_ - stateEnterRel_) / spb);
         const bool starved = sum.offered == 0 || sum.beatsSinceLast > kAbandonBeats;
@@ -1292,6 +1359,9 @@ private:
     uint32_t transitions_ = 0;
 
     bool traceEnabled_ = false;
+    bool frozen_ = false;
+    bool transitionsPaused_ = false;
+    int64_t freezeStartRel_ = 0;
     std::vector<ParasiteTransition> trace_;
 };
 
@@ -1504,26 +1574,31 @@ private:
 };
 
 // ============================================================================
-// SignalParasiteEngine — algorithm v2
+// SignalParasiteEngine — algorithm v3
 // ============================================================================
 
 /**
- * Signal Parasite Stage 2 — a collaborator with a relationship to its source.
+ * Signal Parasite Stage 3 — a relationship the performer can intervene in.
  *
  * Listen (original input only) → StimulusDetector → RelationshipModel →
  * ParasiteDNA response decision → ONE generated ParasiteVoice → DC → limiter
  * → MIX → OUTPUT.
  *
- * Stage 2 adds a bounded history of recent stimuli — descriptors, not audio —
- * and a LURKING / ATTACHED / ANSWERING / WITHDRAWN state over it. The state
- * biases how readily and how forwardly the parasite answers; DNA still owns
- * the personality, and a stimulus is still the only thing that can make a
- * sound. Algorithm v2: no performance verbs, no FFT, no pitch, one voice.
+ * Stage 2 added a bounded history of recent stimuli — descriptors, not audio —
+ * and a LURKING / ATTACHED / ANSWERING / WITHDRAWN state over it. Stage 3 adds
+ * the hooks the performance controller drives: hold DNA and mood (FREEZE),
+ * one bounded DNA touch (MUTATE), a 24-beat collapse arc that ends dormant,
+ * a new parasite on the same source (RESEED), and a hard response gate the
+ * processor's mute rides on (SILENCE).
+ *
+ * Every Stage 3 hook is a *manner* hook. None of them can manufacture a
+ * stimulus, so no command — collapse included — makes a sound the source did
+ * not ask for. Algorithm v3: still no FFT, no pitch, one voice.
  */
 class SignalParasiteEngine
 {
 public:
-    static constexpr int kAlgorithmVersion = 2;
+    static constexpr int kAlgorithmVersion = 3;
     static constexpr int kNumSuppressReasons = static_cast<int> (ParasiteSuppressReason::Count);
     static constexpr int kMaxTraceEvents = 4096;
     static constexpr double kWarmupMs = 50.0;
@@ -1576,7 +1651,7 @@ public:
         lastSensQ_ = -1;
         warmupLeft_ = warmupN_;
         pendingActive_ = false;
-        pendingSlid_ = false;
+        pendingSlides_ = 0;
         beatsSinceResponse_ = 4.0f;
         prevMutation_ = -1.0f;
         responseCount_ = 0;
@@ -1588,6 +1663,7 @@ public:
         suppress_.fill (0);
         stimulusTrace_.clear();
         responseTrace_.clear();
+        clearPerformanceState();
         samplesPerBeat_ = sampleRate_ * 0.5;
         rebuildRng();
         relationship_.reset();
@@ -1643,7 +1719,7 @@ public:
         features_.reset();
         voice_.reset();
         pendingActive_ = false;
-        pendingSlid_ = false;
+        pendingSlides_ = 0;
         lastBar_ = bar - 1;
         warmupLeft_ = warmupN_;
         beatsSinceResponse_ = 4.0f;
@@ -1657,6 +1733,7 @@ public:
         suppress_.fill (0);
         stimulusTrace_.clear();
         responseTrace_.clear();
+        clearPerformanceState();
         seedDirty_ = false;
     }
 
@@ -1666,6 +1743,199 @@ public:
         relationship_.setTraceEnabled (e);
     }
     bool traceEnabled() const noexcept { return traceEnabled_; }
+
+    // ---- Stage 3 performance hooks ------------------------------------------
+
+    /** FREEZE / COLLAPSE / SILENCE: autonomous bar-boundary evolution holds. */
+    void setDnaEvolutionPaused (bool p) noexcept { dnaEvolutionPaused_ = p; }
+    bool dnaEvolutionPaused() const noexcept { return dnaEvolutionPaused_; }
+
+    /** FREEZE: the relationship state, its history and its pressures all hold. */
+    void setRelationshipFrozen (bool f) noexcept { relationship_.setFrozen (f); }
+    bool relationshipFrozen() const noexcept { return relationship_.frozen(); }
+
+    /** COLLAPSE / DORMANT: keep observing, stop acting on what is observed. */
+    void setRelationshipTransitionsPaused (bool p) noexcept
+    {
+        relationship_.setTransitionsPaused (p);
+    }
+
+    /**
+     * SILENCE and DORMANT. False means every surviving stimulus is consumed
+     * without scheduling, so nothing queues up to fire the moment the gate
+     * reopens. Listening, history and pressures are unaffected.
+     */
+    void setResponsesEnabled (bool e) noexcept { responsesEnabled_ = e; }
+    bool responsesEnabled() const noexcept { return responsesEnabled_; }
+
+    /**
+     * The COLLAPSE overlay. While `active`, these replace the relationship's
+     * manner — accept gain, politeness gap, slot tilt and level — for as long
+     * as the arc runs. They never touch DNA and never touch the HUNGER curves
+     * themselves, only how far the answer sits from them.
+     */
+    struct CollapseVoiceMods
+    {
+        bool active = false;
+        float acceptMul = 1.0f;
+        float acceptCap = 0.62f;
+        float hungerMinGapMul = 1.0f;
+        float dnaRecentGapMul = 1.0f;
+        float gapPreferenceAdd = 0.0f;
+        float levelMul = 1.0f;
+        int delayLo = 0;
+        int delayHi = ParasiteDNA::kDelaySlots - 1;
+        int durLo = 0;
+        int durHi = ParasiteDNA::kDurSlots - 1;
+        float delayJitter = 0.0f;  // beats of onset scatter (FEVER)
+        float feverTimbre = 0.0f;  // note-on colour push; never written to DNA
+        int sourceBusyMaxSlides = 1;
+        bool responsesEnabled = true;
+    };
+
+    void setCollapseMods (const CollapseVoiceMods& m) noexcept { collapse_ = m; }
+    void clearCollapseMods() noexcept { collapse_ = {}; }
+    const CollapseVoiceMods& collapseMods() const noexcept { return collapse_; }
+
+    /** 0 none, 1 CLING, 2 FEVER, 3 WITHDRAW, 4 DORMANT. */
+    void applyCollapsePhase (uint8_t phase) noexcept
+    {
+        CollapseVoiceMods m;
+        switch (phase)
+        {
+            case 1: // CLING — desperate, close, a touch louder
+                m.active = true;
+                m.acceptMul = 1.45f;
+                m.acceptCap = 0.78f;
+                m.hungerMinGapMul = 0.72f;
+                m.dnaRecentGapMul = 0.70f;
+                m.gapPreferenceAdd = 0.22f;
+                m.levelMul = 1.05f;
+                m.delayLo = 0;
+                m.delayHi = 2;
+                m.durLo = 1;
+                m.durHi = 3;
+                m.sourceBusyMaxSlides = 2;
+                break;
+
+            case 2: // FEVER — erratic timing and colour, appetite barely up
+                m.active = true;
+                m.acceptMul = 1.05f;
+                m.acceptCap = 0.62f;
+                m.hungerMinGapMul = 1.0f;
+                m.dnaRecentGapMul = 0.90f;
+                m.levelMul = 1.0f;
+                m.delayLo = 0;
+                m.delayHi = ParasiteDNA::kDelaySlots - 1;
+                m.durLo = 0;
+                m.durHi = ParasiteDNA::kDurSlots - 1;
+                m.delayJitter = 0.06f;
+                m.feverTimbre = 1.0f;
+                break;
+
+            case 3: // WITHDRAW — late, short, quiet, mostly refusing
+                m.active = true;
+                m.acceptMul = 0.35f;
+                m.acceptCap = 0.40f;
+                m.hungerMinGapMul = 1.35f;
+                m.dnaRecentGapMul = 1.50f;
+                m.gapPreferenceAdd = 0.08f;
+                m.levelMul = 0.55f;
+                m.delayLo = 3;
+                m.delayHi = ParasiteDNA::kDelaySlots - 1;
+                m.durLo = 0;
+                m.durHi = 1;
+                break;
+
+            case 4: // DORMANT — present, listening, silent
+                m.active = true;
+                m.acceptMul = 0.0f;
+                m.acceptCap = 0.0f;
+                m.levelMul = 0.0f;
+                m.responsesEnabled = false;
+                break;
+
+            default:
+                break;
+        }
+        collapse_ = m;
+    }
+
+    /**
+     * MUTATE. One bounded op from a stream of its own, so a performer command
+     * can never shift the autonomous mutation schedule. Does not unfreeze and
+     * does not touch the relationship. Returns the op that was applied.
+     */
+    int manualMutate() noexcept
+    {
+        ParasiteMutOp op = drawManualMutOp();
+        bool changed = applyMutOp (op, manualMutateRng_);
+        if (! changed)
+        {
+            op = drawManualMutOp();
+            changed = applyMutOp (op, manualMutateRng_);
+        }
+        dna_.lastOp = static_cast<uint8_t> (op);
+        if (changed)
+            ++dna_.generation;
+        lastManualMutateOp_ = static_cast<int> (op);
+        return lastManualMutateOp_;
+    }
+
+    int lastManualMutateOp() const noexcept { return lastManualMutateOp_; }
+
+    const char* lastManualMutateOpName() const noexcept
+    {
+        if (lastManualMutateOp_ < 0)
+            return "NONE";
+        return parasiteMutOpName (static_cast<ParasiteMutOp> (lastManualMutateOp_));
+    }
+
+    /** Drop the scheduled answer and everything still queued behind it. */
+    void clearPendingResponse() noexcept
+    {
+        pendingActive_ = false;
+        pendingSlides_ = 0;
+        voiceBusyStim_ = -1;
+        detector_.clearQueue();
+    }
+
+    void stopVoiceSafely() noexcept { voice_.stopSafely(); }
+
+    /**
+     * RESEED. A different parasite on the same source: new SEED, new DNA, no
+     * shared history. The analyzer keeps running and the detector is only
+     * re-armed, so the reseed itself is never heard as a stimulus.
+     */
+    void applyPerformanceReseed (uint64_t newSeed, int bar) noexcept
+    {
+        masterSeed_ = newSeed == 0 ? 1ull : newSeed;
+        seedDirty_ = false;
+        rebuildRng();
+        birthDNA (bar);
+        relationship_.onDiscontinuity();
+        detector_.clearQueue();
+        pendingActive_ = false;
+        pendingSlides_ = 0;
+        voice_.stopSafely();
+        warmupLeft_ = warmupN_;
+        beatsSinceResponse_ = 4.0f;
+        prevMutation_ = -1.0f;
+        voiceBusyStim_ = -1;
+        lastManualMutateOp_ = -1;
+        lastBar_ = bar;
+    }
+
+    /**
+     * Leaving a hold. The remaining lifespan restarts from now and the live
+     * MUTATION reading is re-anchored, so a long freeze cannot cash out as a
+     * burst of catch-up mutations the moment it ends.
+     */
+    void snapDnaBaselines() noexcept
+    {
+        dna_.birthBar = std::max (dna_.birthBar, lastBar_);
+        prevMutation_ = mutSm_.current();
+    }
 
     void process (const float* inL, const float* inR, float* outL, float* outR, int numSamples,
                   double ppqStart, double bpm, bool playing) noexcept
@@ -1707,7 +1977,7 @@ public:
         {
             detector_.clearQueue();
             pendingActive_ = false;
-            pendingSlid_ = false;
+            pendingSlides_ = 0;
             voice_.stopSafely(); // finish/release any sounding answer; no new scheduling
             if (features_.fillSettled())
                 heldFill01_ = features_.frame().fill01;
@@ -1763,7 +2033,12 @@ public:
                 drainStimuli (hunger);
 
                 if (pendingActive_ && absSample_ >= pending_.onsetSample)
-                    resolvePending();
+                {
+                    if (responsesAllowed())
+                        resolvePending();
+                    else
+                        clearPendingResponse();
+                }
 
                 beatsSinceResponse_ = std::min (1.0e6f,
                                                 beatsSinceResponse_
@@ -1950,6 +2225,17 @@ private:
         return h;
     }
 
+    /** Back to Stage 2 behaviour: no hold, no overlay, no gate. */
+    void clearPerformanceState() noexcept
+    {
+        dnaEvolutionPaused_ = false;
+        responsesEnabled_ = true;
+        collapse_ = {};
+        lastManualMutateOp_ = -1;
+        relationship_.setFrozen (false);
+        relationship_.setTransitionsPaused (false);
+    }
+
     void rebuildRng() noexcept
     {
         using RNG = pfl::generative::DeterministicRNG;
@@ -1960,6 +2246,10 @@ private:
         acceptRng_ = RNG::derived (masterSeed_, hashTag ("parasite/response/accept"));
         spatialRng_ = RNG::derived (masterSeed_, hashTag ("parasite/response/spatial"));
         voiceNoiseRng_ = RNG::derived (masterSeed_, hashTag ("parasite/voice/noise"));
+        // Performance streams stand apart from the autonomous ones, so a
+        // command can never shift the schedule the parasite would have kept.
+        manualMutateRng_ = RNG::derived (masterSeed_, hashTag ("parasite/performance/mutate"));
+        collapseRng_ = RNG::derived (masterSeed_, hashTag ("parasite/collapse/fever"));
         // Its own stream: the state clock must not move when MUTATION does.
         relationship_.setClockRng (
             RNG::derived (masterSeed_, hashTag ("parasite/relationship/clock")));
@@ -2062,10 +2352,24 @@ private:
         return ParasiteMutOp::StaleWindow;
     }
 
-    /** One bounded touch. Never edits HUNGER curves, gap floors or the accept cap. */
-    bool applyMutOp (ParasiteMutOp op) noexcept
+    /**
+     * The performance MUTATE draw. STAY is not an option here: the performer
+     * asked for a change, so the stream picks from the ops that make one.
+     */
+    ParasiteMutOp drawManualMutOp() noexcept
     {
-        auto& rng = dnaMutateRng_;
+        const float v = manualMutateRng_.nextFloat();
+        if (v < 0.24f) return ParasiteMutOp::NudgeDelay;
+        if (v < 0.46f) return ParasiteMutOp::NudgeDur;
+        if (v < 0.62f) return ParasiteMutOp::TiltGap;
+        if (v < 0.76f) return ParasiteMutOp::TiltEcho;
+        if (v < 0.92f) return ParasiteMutOp::TiltColour;
+        return ParasiteMutOp::StaleWindow;
+    }
+
+    /** One bounded touch. Never edits HUNGER curves, gap floors or the accept cap. */
+    bool applyMutOp (ParasiteMutOp op, pfl::generative::DeterministicRNG& rng) noexcept
+    {
         switch (op)
         {
             case ParasiteMutOp::Stay:
@@ -2155,7 +2459,7 @@ private:
             return;
 
         const ParasiteMutOp op = drawMutOp (mut);
-        const bool changed = applyMutOp (op);
+        const bool changed = applyMutOp (op, dnaMutateRng_);
         dna_.birthBar = bar;
         dna_.lifespanBars = parasiteLifespanBars (mut);
         dna_.lastOp = static_cast<uint8_t> (op);
@@ -2169,6 +2473,14 @@ private:
         if (bar == lastBar_)
             return;
 
+        // Held DNA holds through bar lines, seed changes and long jumps alike.
+        // The bar cursor still moves, so nothing is owed when the hold lifts.
+        if (dnaEvolutionPaused_)
+        {
+            lastBar_ = bar;
+            return;
+        }
+
         if (seedDirty_)
         {
             // SEED change lands on a bar boundary; the sounding voice releases naturally.
@@ -2178,7 +2490,7 @@ private:
             // A new personality has no history with this source yet.
             relationship_.onDiscontinuity();
             pendingActive_ = false;
-            pendingSlid_ = false;
+            pendingSlides_ = 0;
             seedDirty_ = false;
             lastBar_ = bar;
             return;
@@ -2217,12 +2529,20 @@ private:
         relationship_.onDiscontinuity();
         heldFill01_ = 0.0f;
         pendingActive_ = false;
-        pendingSlid_ = false;
+        pendingSlides_ = 0;
         voice_.stopSafely();
         warmupLeft_ = warmupN_;
         beatsSinceResponse_ = 4.0f;
 
         const int bar = std::max (0, static_cast<int> (std::floor (ppq / 4.0)));
+        if (dnaEvolutionPaused_)
+        {
+            // A hold survives the seek: reconstructing DNA for the new musical
+            // position would silently undo the FREEZE the performer is holding.
+            lastBar_ = bar;
+            return;
+        }
+
         rebuildRng();
         birthDNA (bar);
         // Replay bar evolution so DNA matches absolute musical time, not arrival path.
@@ -2276,10 +2596,33 @@ private:
         return weightedPick (masked, n, rng);
     }
 
+    /** Where the collapse overlay wants this answer to sit, or the state's tilt. */
+    ParasiteRelationshipModel::SlotRange delayTilt() const noexcept
+    {
+        if (collapse_.active)
+            return { collapse_.delayLo, collapse_.delayHi };
+        return relationship_.delayTilt();
+    }
+
+    ParasiteRelationshipModel::SlotRange durationTilt() const noexcept
+    {
+        if (collapse_.active)
+            return { collapse_.durLo, collapse_.durHi };
+        return relationship_.durationTilt();
+    }
+
+    /** DNA politeness, plus whatever the collapse overlay is adding to it. */
+    float effectiveGapPreference() const noexcept
+    {
+        return std::clamp (dna_.gapPreference
+                               + (collapse_.active ? collapse_.gapPreferenceAdd : 0.0f),
+                           0.0f, 1.0f);
+    }
+
     int pickDelaySlot (bool sourceBusy) noexcept
     {
         int slot = weightedPick (dna_.delayW.data(), ParasiteDNA::kDelaySlots, delayRng_);
-        if (sourceBusy && dna_.gapPreference > 0.55f && slot < 3)
+        if (sourceBusy && effectiveGapPreference() > 0.55f && slot < 3)
         {
             // One re-roll toward the later half — still from DNA weights.
             float late[ParasiteDNA::kDelaySlots] = {
@@ -2288,8 +2631,8 @@ private:
             };
             slot = weightedPick (late, ParasiteDNA::kDelaySlots, delayRng_);
         }
-        return applyTilt (slot, dna_.delayW.data(), ParasiteDNA::kDelaySlots,
-                          relationship_.delayTilt(), delayRng_);
+        return applyTilt (slot, dna_.delayW.data(), ParasiteDNA::kDelaySlots, delayTilt(),
+                          delayRng_);
     }
 
     int pickDurationSlot (float hunger) noexcept
@@ -2307,19 +2650,19 @@ private:
             for (int i = 0; i < 3; ++i)
                 w[i] += take * (w[i] / shortSum);
         const int slot = weightedPick (w, ParasiteDNA::kDurSlots, durationRng_);
-        return applyTilt (slot, w, ParasiteDNA::kDurSlots, relationship_.durationTilt(),
-                          durationRng_);
+        return applyTilt (slot, w, ParasiteDNA::kDurSlots, durationTilt(), durationRng_);
     }
 
     /**
-     * DNA politeness, stretched or relaxed by the relationship. This sits on
-     * top of the HUNGER minimum gap and can only ever add to it — the state
-     * has no way to make the parasite denser than HUNGER allows.
+     * DNA politeness, stretched or relaxed by the relationship — or, while a
+     * collapse arc runs, by the phase overlay instead. This sits on top of the
+     * HUNGER minimum gap: neither the state nor the overlay reaches under it.
      */
     float recentGapBeats() const noexcept
     {
-        const float dnaGap = 0.75f + (2.0f - 0.75f) * std::clamp (dna_.gapPreference, 0.0f, 1.0f);
-        return dnaGap * relationship_.gapMultiplier();
+        const float dnaGap = 0.75f + (2.0f - 0.75f) * effectiveGapPreference();
+        return dnaGap
+               * (collapse_.active ? collapse_.dnaRecentGapMul : relationship_.gapMultiplier());
     }
 
     /**
@@ -2331,7 +2674,7 @@ private:
      */
     float sourceBusyThreshold() const noexcept
     {
-        return 1.05f + (0.82f - 1.05f) * std::clamp (dna_.gapPreference, 0.0f, 1.0f);
+        return 1.05f + (0.82f - 1.05f) * effectiveGapPreference();
     }
 
     void countSuppress (ParasiteSuppressReason r) noexcept
@@ -2339,6 +2682,12 @@ private:
         const auto i = static_cast<size_t> (r);
         if (i < suppress_.size())
             ++suppress_[i];
+    }
+
+    /** SILENCE and DORMANT both close this gate; a collapse arc leaves it open. */
+    bool responsesAllowed() const noexcept
+    {
+        return responsesEnabled_ && (! collapse_.active || collapse_.responsesEnabled);
     }
 
     /**
@@ -2352,6 +2701,17 @@ private:
         StimulusEvent ev;
         while (detector_.peek (ev, absSample_))
         {
+            // Muted or dormant: consume, never hold. A stimulus that arrives
+            // while the parasite cannot answer is a stimulus it missed, not
+            // one it owes — otherwise unsilencing would fire a backlog.
+            if (! responsesAllowed())
+            {
+                detector_.dropFront();
+                countSuppress (collapse_.active ? ParasiteSuppressReason::Collapse
+                                                : ParasiteSuppressReason::Silenced);
+                continue;
+            }
+
             if (ev.strength < dna_.minStimulusStrength)
             {
                 detector_.dropFront();
@@ -2387,24 +2747,32 @@ private:
                 continue;
             }
 
-            if (hunger < 1.0e-4f
-                || beatsSinceResponse_ < parasiteMinGapBeats (hunger))
+            const float minGap = parasiteMinGapBeats (hunger)
+                                 * (collapse_.active ? collapse_.hungerMinGapMul : 1.0f);
+            if (hunger < 1.0e-4f || beatsSinceResponse_ < minGap)
             {
                 detector_.dropFront();
                 countSuppress (ParasiteSuppressReason::Hunger);
                 continue;
             }
 
-            // HUNGER sets the appetite; the relationship only scales it, and
-            // the 0.62 cap survives so ANSWERING is still selective.
+            // HUNGER sets the appetite; the relationship — or, mid-arc, the
+            // collapse phase — only scales it, under a cap that keeps even the
+            // most forward manner selective.
             const float pBase = parasiteAcceptProbability (hunger, beatsSinceResponse_);
-            const float pEff = std::clamp (pBase * relationship_.acceptGain(), 0.0f, 0.62f);
+            const float pEff =
+                collapse_.active
+                    ? std::clamp (pBase * collapse_.acceptMul, 0.0f, collapse_.acceptCap)
+                    : std::clamp (pBase * relationship_.acceptGain(), 0.0f, 0.62f);
             const float draw = acceptRng_.nextFloat();
             if (draw >= pEff)
             {
                 detector_.dropFront();
-                countSuppress (draw < pBase ? ParasiteSuppressReason::Relationship
-                                            : ParasiteSuppressReason::Hunger);
+                if (collapse_.active)
+                    countSuppress (ParasiteSuppressReason::Collapse);
+                else
+                    countSuppress (draw < pBase ? ParasiteSuppressReason::Relationship
+                                                : ParasiteSuppressReason::Hunger);
                 continue;
             }
 
@@ -2427,16 +2795,28 @@ private:
         pending_.durSamples = std::max<int64_t> (
             1, static_cast<int64_t> (std::llround (
                    kDurationBeats[static_cast<size_t> (pending_.durSlot)] * samplesPerBeat_)));
+        // FEVER scatters the onset off the slot grid. Its own stream, and never
+        // earlier than the stimulus that caused it.
+        if (collapse_.active && collapse_.delayJitter > 0.0f)
+        {
+            const float u = collapseRng_.nextFloat() * 2.0f - 1.0f;
+            pending_.onsetSample = std::max (
+                ev.sampleIndex,
+                pending_.onsetSample
+                    + static_cast<int64_t> (std::llround (
+                          static_cast<double> (u * collapse_.delayJitter) * samplesPerBeat_)));
+        }
         pendingActive_ = true;
-        pendingSlid_ = false;
+        pendingSlides_ = 0;
     }
 
     void resolvePending() noexcept
     {
         // SOURCE_BUSY is probed at the scheduled onset, not at detection time.
+        const int maxSlides = collapse_.active ? std::max (0, collapse_.sourceBusyMaxSlides) : 1;
         if (features_.frame().fill01 > sourceBusyThreshold())
         {
-            if (! pendingSlid_ && pending_.delaySlot < ParasiteDNA::kDelaySlots - 1)
+            if (pendingSlides_ < maxSlides && pending_.delaySlot < ParasiteDNA::kDelaySlots - 1)
             {
                 const int from = pending_.delaySlot;
                 const int to = from + 1;
@@ -2445,11 +2825,11 @@ private:
                     (kDelayBeats[static_cast<size_t> (to)]
                      - kDelayBeats[static_cast<size_t> (from)])
                     * samplesPerBeat_));
-                pendingSlid_ = true;
+                ++pendingSlides_;
                 return;
             }
             pendingActive_ = false;
-            pendingSlid_ = false;
+            pendingSlides_ = 0;
             countSuppress (ParasiteSuppressReason::SourceBusy);
             return;
         }
@@ -2461,13 +2841,32 @@ private:
         n.change = std::clamp (std::max (ev.strength, ev.change), 0.0f, 1.0f);
         n.balance = std::clamp (ev.balance, -1.0f, 1.0f);
         n.durationSamples = pending_.durSamples;
-        n.levelScale = relationship_.levelScale();
+        n.levelScale = collapse_.active ? collapse_.levelMul : relationship_.levelScale();
 
         // Spatial stream is isolated from the schedule streams.
         const float jitter = (spatialRng_.nextFloat() * 2.0f - 1.0f) * 0.12f;
         n.balance = std::clamp (n.balance + jitter, -1.0f, 1.0f);
 
-        voice_.noteOn (n, dna_);
+        // FEVER colours the answer at note-on from a local copy. The DNA on
+        // disk is the DNA the performer froze; a fever never rewrites it.
+        if (collapse_.active && collapse_.feverTimbre > 0.0f)
+        {
+            const float f = std::clamp (collapse_.feverTimbre, 0.0f, 1.0f);
+            ParasiteDNA fevered = dna_;
+            fevered.brightnessBias = std::clamp (
+                fevered.brightnessBias + 0.45f * f * (collapseRng_.nextFloat() * 2.0f - 1.0f),
+                -1.0f, 1.0f);
+            fevered.resBias = std::clamp (fevered.resBias + 0.35f * f, 0.0f, 1.0f);
+            fevered.energyBias = std::clamp (fevered.energyBias + 0.20f * f, -1.0f, 1.0f);
+            fevered.durBias = std::clamp (fevered.durBias - 0.25f * f, 0.0f, 1.0f);
+            if (collapseRng_.nextFloat() < 0.35f)
+                fevered.chirpSign = -fevered.chirpSign;
+            voice_.noteOn (n, fevered);
+        }
+        else
+        {
+            voice_.noteOn (n, dna_);
+        }
 
         if (lastResponseOnsetSample_ >= 0)
         {
@@ -2499,7 +2898,7 @@ private:
         relationship_.noteResponse (ev.sampleIndex);
         beatsSinceResponse_ = 0.0f;
         pendingActive_ = false;
-        pendingSlid_ = false;
+        pendingSlides_ = 0;
     }
 
     struct PendingResponse
@@ -2530,12 +2929,18 @@ private:
     pfl::generative::DeterministicRNG delayRng_ {}, durationRng_ {}, acceptRng_ {},
         spatialRng_ {};
     pfl::generative::DeterministicRNG voiceNoiseRng_ {};
+    pfl::generative::DeterministicRNG manualMutateRng_ {}, collapseRng_ {};
+
+    bool dnaEvolutionPaused_ = false;
+    bool responsesEnabled_ = true;
+    CollapseVoiceMods collapse_ {};
+    int lastManualMutateOp_ = -1;
 
     ParasiteDNA dna_ {};
     float gapPreferenceBirth_ = 0.5f;
     PendingResponse pending_ {};
     bool pendingActive_ = false;
-    bool pendingSlid_ = false;
+    int pendingSlides_ = 0;
 
     int64_t absSample_ = 0;
     double beatClock_ = 0.0;

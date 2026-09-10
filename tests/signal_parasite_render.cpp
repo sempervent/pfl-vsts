@@ -1,4 +1,6 @@
+#include "dsp/ParamSmoother.h"
 #include "dsp/SignalParasiteEngine.h"
+#include "performance/SignalParasitePerformanceController.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_core/juce_core.h>
@@ -354,15 +356,224 @@ void renderMixTrio (const fs::path& dir, const std::string& stem, Fixture fixtur
     render (dir, { stem + "-wet", fixture, 1.0f });
     render (dir, { stem + "-mix050", fixture, 0.50f });
 }
+
+// ---------------------------------------------------------------------------
+// Stage 3 — performance intervention
+// ---------------------------------------------------------------------------
+
+namespace perf_ns = pfl::parasite_perf;
+
+struct Cue
+{
+    double beat = 0.0;
+    perf_ns::Command cmd = perf_ns::Command::FreezeOn;
+};
+
+struct PerfVariant
+{
+    std::string name;
+    Fixture fixture = Fixture::Sparse;
+    double beats = 96.0;
+    std::vector<Cue> cues;
+    float mix = 1.0f;
+    float sens = 0.50f;
+    float hunger = 0.60f;
+    float mutation = 0.25f;
+    float output = 0.85f;
+    uint64_t seed = 2002;
+    // Optional HUNGER automation, for the "collapse is not a fade" comparison.
+    double hungerFadeFrom = -1.0;
+    double hungerFadeTo = -1.0;
+};
+
+void renderPerf (const fs::path& dir, const PerfVariant& v)
+{
+    const int n = beatsToSamples (v.beats);
+    std::vector<float> in = makeFixture (v.fixture, n, v.beats);
+    std::vector<float> inL (in), inR (in);
+    for (size_t i = 0; i < inR.size(); ++i)
+        inR[i] *= 0.92f;
+
+    std::vector<float> outL (static_cast<size_t> (n)), outR (static_cast<size_t> (n));
+
+    pfl::dsp::SignalParasiteEngine eng;
+    perf_ns::SignalParasitePerformanceController perf;
+    eng.prepare (kSr, 256);
+    eng.setSeed (v.seed);
+    eng.setMacros (v.mix, v.sens, v.hunger, v.mutation, v.output);
+    eng.snapMacros();
+    eng.forceRebuild (0);
+    eng.setTraceEnabled (true);
+    perf.reset (v.seed);
+    perf.setTraceEnabled (true);
+
+    // The processor's ~4 ms click-safe mute, reproduced so the wav shows what
+    // SILENCE actually sounds like rather than what the engine did underneath.
+    pfl::dsp::ParamSmoother silenceSm;
+    silenceSm.prepare (kSr, 0.004f);
+    silenceSm.setCurrentAndTarget (1.0f);
+
+    const double bps = (kBpm / 60.0) / kSr;
+    size_t nextCue = 0;
+    for (int done = 0; done < n; done += 256)
+    {
+        const int m = std::min (256, n - done);
+        const double ppq = static_cast<double> (done) * bps;
+
+        while (nextCue < v.cues.size() && v.cues[nextCue].beat <= ppq)
+        {
+            perf.trigger (v.cues[nextCue].cmd, ppq, eng);
+            ++nextCue;
+        }
+        if (v.hungerFadeFrom >= 0.0 && ppq >= v.hungerFadeFrom)
+        {
+            const double t = std::clamp (
+                (ppq - v.hungerFadeFrom) / std::max (1.0, v.hungerFadeTo - v.hungerFadeFrom),
+                0.0, 1.0);
+            eng.setHunger (static_cast<float> (v.hunger * (1.0 - t)));
+        }
+
+        perf.tick (ppq, true, eng);
+        eng.process (inL.data() + done, inR.data() + done, outL.data() + done,
+                     outR.data() + done, m, ppq, kBpm, true);
+
+        silenceSm.setTarget (perf.mode() == perf_ns::Mode::Silenced ? 0.0f : 1.0f);
+        for (int i = 0; i < m; ++i)
+        {
+            const float g = silenceSm.getNext();
+            outL[static_cast<size_t> (done + i)] *= g;
+            outR[static_cast<size_t> (done + i)] *= g;
+        }
+    }
+
+    float peak = 0.0f;
+    for (int i = 0; i < n; ++i)
+        peak = std::max (peak, std::max (std::abs (outL[static_cast<size_t> (i)]),
+                                         std::abs (outR[static_cast<size_t> (i)])));
+
+    writeWav (dir / (v.name + ".wav"), outL, outR);
+
+    std::ofstream tr (dir / (v.name + "-trace.txt"));
+    tr << "PFL Signal Parasite - Stage 3 (algorithm v"
+       << pfl::dsp::SignalParasiteEngine::kAlgorithmVersion << ", performance engine v"
+       << perf_ns::kPerformanceEngineVersion << ")\n";
+    tr << "fixture=" << fixtureName (v.fixture) << " sr=" << kSr << " bpm=" << kBpm
+       << " beats=" << v.beats << "\n";
+    tr << "mix=" << v.mix << " sensitivity=" << v.sens << " hunger=" << v.hunger
+       << " mutation=" << v.mutation << " output=" << v.output << " seed=" << v.seed << "\n";
+    tr << "finalMode=" << perf_ns::modeName (perf.mode())
+       << " collapsePhase=" << perf_ns::collapsePhaseName (perf.collapsePhase())
+       << " dormant=" << (perf.dormant() ? 1 : 0)
+       << " freezeLatched=" << (perf.state().freezeLatched ? 1 : 0)
+       << " seedNow=" << eng.seed() << " reseeds=" << perf.state().reseedCount << "\n";
+    tr << "stimuli=" << eng.stimulusCount() << " responses=" << eng.responseCount()
+       << " dnaGeneration=" << eng.dnaGeneration() << " responseDuty=" << eng.responseDuty()
+       << " peak=" << peak << "\n";
+    tr << "suppress:";
+    for (int i = 0; i < static_cast<int> (pfl::dsp::ParasiteSuppressReason::Count); ++i)
+    {
+        const auto reason = static_cast<pfl::dsp::ParasiteSuppressReason> (i);
+        if (reason == pfl::dsp::ParasiteSuppressReason::None)
+            continue;
+        tr << " " << pfl::dsp::parasiteSuppressName (reason) << "=" << eng.suppressCount (reason);
+    }
+    tr << "\n";
+    tr << "finalState=" << pfl::dsp::parasiteRelationshipName (eng.relationshipState())
+       << " transitions=" << eng.stateTransitions() << " historySize=" << eng.historySize()
+       << "\n";
+    tr << "stimulusFingerprint=" << eng.stimulusFingerprint() << "\n";
+    tr << "responseFingerprint=" << eng.responseFingerprint() << "\n";
+    tr << "stateFingerprint=" << eng.stateFingerprint() << "\n";
+    tr << "dnaFingerprint=" << eng.dnaFingerprint() << "\n\n";
+
+    tr << "# performance events: ppq command detail\n";
+    for (const auto& e : perf.events())
+        tr << e.ppq << " " << perf_ns::commandName (e.command) << " " << e.detail << "\n";
+
+    tr << "\n# responses: onsetBeat delaySlot durSlot durationBeats strength brightness pan"
+          " kind state\n";
+    for (const auto& r : eng.responses())
+    {
+        tr << r.onsetBeat << " " << r.delaySlot << " " << r.durSlot << " " << r.durationBeats
+           << " " << r.strength << " " << r.brightness << " " << r.pan << " "
+           << (r.kind == pfl::dsp::StimulusKind::Attack ? "ATTACK" : "SHIFT") << " "
+           << pfl::dsp::parasiteRelationshipName (
+                  static_cast<pfl::dsp::ParasiteRelationship> (r.state))
+           << "\n";
+    }
+}
+
+void renderStage3 (const fs::path& dir)
+{
+    using Cmd = perf_ns::Command;
+
+    // FREEZE holds the mood and the DNA; MUTATE nudges one trait under the hold.
+    renderPerf (dir, { "freeze-mutate", Fixture::Sparse, 128.0,
+                       { { 32.0, Cmd::FreezeOn },
+                         { 48.0, Cmd::Mutate },
+                         { 64.0, Cmd::Mutate },
+                         { 96.0, Cmd::FreezeOff } } });
+
+    // The whole 24-beat arc, then eight bars of the dormancy it lands in.
+    renderPerf (dir, { "collapse-active", Fixture::Sparse, 128.0, { { 24.0, Cmd::Collapse } } });
+    renderPerf (dir, { "collapse-drums", Fixture::Drums, 128.0, { { 24.0, Cmd::Collapse } } });
+
+    // Same source, same appetite, HUNGER faded to nothing instead. A dimmer,
+    // not an arc: no phases, no ending, and it comes back if you turn it up.
+    PerfVariant fade;
+    fade.name = "collapse-vs-hunger-fade";
+    fade.fixture = Fixture::Sparse;
+    fade.beats = 128.0;
+    fade.hungerFadeFrom = 24.0;
+    fade.hungerFadeTo = 48.0;
+    renderPerf (dir, fade);
+
+    // Dormant with a busy source in front of it: still listening, still silent.
+    renderPerf (dir, { "dormant-under-pressure", Fixture::Busy, 128.0,
+                       { { 8.0, Cmd::Collapse } } });
+
+    // RESEED is the way out of dormancy — a different parasite, same source.
+    renderPerf (dir, { "reseed-from-dormant", Fixture::Sparse, 160.0,
+                       { { 16.0, Cmd::Collapse }, { 64.0, Cmd::Reseed } } });
+    renderPerf (dir, { "reseed-live", Fixture::Drums, 128.0, { { 48.0, Cmd::Reseed } } });
+
+    // SILENCE mutes the plugin while the relationship keeps running underneath,
+    // and nothing owed is paid back when the mute lifts.
+    renderPerf (dir, { "silence-listening", Fixture::Drums, 128.0,
+                       { { 32.0, Cmd::SilenceOn }, { 80.0, Cmd::SilenceOff } } });
+    renderPerf (dir, { "silence-frozen", Fixture::Drums, 128.0,
+                       { { 24.0, Cmd::FreezeOn },
+                         { 32.0, Cmd::SilenceOn },
+                         { 80.0, Cmd::SilenceOff } } });
+
+    // One take through the whole vocabulary, at the shipped mix.
+    PerfVariant journey;
+    journey.name = "performance-journey";
+    journey.fixture = Fixture::Journey;
+    journey.beats = 240.0;
+    journey.mix = 0.50f;
+    journey.cues = { { 32.0, Cmd::FreezeOn }, { 44.0, Cmd::Mutate },  { 60.0, Cmd::FreezeOff },
+                     { 88.0, Cmd::SilenceOn }, { 104.0, Cmd::SilenceOff },
+                     { 132.0, Cmd::Collapse }, { 180.0, Cmd::Reseed } };
+    renderPerf (dir, journey);
+}
 } // namespace
 
 int main (int argc, char** argv)
 {
-    fs::path dir = "renders/signal-parasite/stage2";
+    fs::path dir = "renders/signal-parasite/stage3";
     if (argc > 1)
         dir = argv[1];
     std::error_code ec;
     fs::create_directories (dir, ec);
+
+    const auto dirStr = dir.string();
+    if (dirStr.find ("stage3") != std::string::npos)
+    {
+        renderStage3 (dir);
+        std::cout << "stage3 renders in " << dir << "\n";
+        return 0;
+    }
 
     renderMixTrio (dir, "drums", Fixture::Drums);
     renderMixTrio (dir, "pad", Fixture::Pad);

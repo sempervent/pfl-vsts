@@ -108,59 +108,31 @@ See `docs/PULSE_COLONY.md`.
 
 COLLAPSE: SWARM → STARVE → FRACTURE → RESIDUE (24 beats). FREEZE ≠ MUTATION=0; SILENCE ≠ MIX=0.
 
-## Signal Parasite (Stage 2 COMPLETE — Ableton PASS)
+## Signal Parasite (Stage 3 — awaiting acceptance)
 
 ```text
-Host audio in (mono or stereo)          Host tempo / transport / PPQ
-        |                                        |
-        +--- ORIGINAL input tap (before mix) ----+
-        |                                        v
-        v                              ParasiteFeatureExtractor
-       dry                               energy · attack · brightness
-        |                                change · balance · fill01
-        |                                        |
-        |                                        v
-        |                              ParasiteStimulusDetector
-        |                                ATTACK | SHIFT, queue cap 8
-        |                                        |
-        |                                        v
-        |                              ParasiteRelationshipModel
-        |                                RecentStimulusHistory (16 descriptors)
-        |                                -> source / attachment / conversation
-        |                                   / withdrawal / fatigue pressures
-        |                                -> LURKING | ATTACHED | ANSWERING
-        |                                   | WITHDRAWN
-        |                                        |
-        |                                        v
-        |                              ParasiteBehavior
-        |                                DNA (birth/mutate) + HUNGER gate
-        |                                biased by state, same vocabularies
-        |                                -> absolute-sample schedule
-        |                                        |
-        |                                        v
-        |                              ONE ParasiteVoice (generated)
-        |                                noise -> resonant LP chirp -> AR
-        |                                -> saturator -> constant-power pan
-        |                                        |
-        |                                        v
-        |                                   DC -> limiter
-        |                                        |
-        +----------------> MIX -----------------+
-                            |
-                            v
-                        OUTPUT -> clamp -> audio out
+Host / APVTS
+    ↓
+PerformanceCommand (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE)
+    ↓
+SignalParasitePerformanceController
+    ↓
+FeatureExtractor → StimulusDetector → RecentStimulusHistory
+    → RelationshipModel (LURKING|ATTACHED|ANSWERING|WITHDRAWN)
+    → ParasiteDNA + HUNGER → ONE ParasiteVoice
+    ↓
+MIX / OUTPUT / silenceGain (~4 ms)
 ```
 
 Ableton PASS Stages 1–2. Tags `signal-parasite-stage1-complete`,
-`signal-parasite-stage2-complete`. Shared editor sizing via
-`PflGenericEditorSizing.h` accepted. See `docs/SIGNAL_PARASITE.md`.
+`signal-parasite-stage2-complete`. Algorithm **v3** + performance-engine **v1**.
+COLLAPSE: CLING → FEVER → WITHDRAW → DORMANT (24 beats). FREEZE ≠ MUTATION=0;
+SILENCE ≠ MIX=0. Shared editor sizing accepted. See `docs/SIGNAL_PARASITE.md`.
 
 The wet path is **generated**, never the input reprocessed. Analysis reads the
-original input only, so the parasite cannot trigger on its own output. No FFT,
-no pitch tracking. Performance verbs arrive in Stage 3. SENSITIVITY owns
-detection, HUNGER owns response density, MUTATION owns grammar drift only.
-Response onsets are scheduled in absolute samples, so the event stream is
-independent of the host buffer size.
+original input only. No FFT, no pitch tracking. SENSITIVITY owns detection,
+HUNGER owns response density, MUTATION owns grammar drift; relationship state
+and performance verbs colour manner without inventing stimuli.
 
 ## Audio engine (shared DSP)
 
