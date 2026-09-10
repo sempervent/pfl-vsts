@@ -1819,6 +1819,11 @@ public:
     /** Samples of relationship time. Advances only while the transport plays. */
     int64_t relationshipSamples() const noexcept { return relationship_.playedSamples(); }
 
+    const std::vector<ParasiteTransition>& stateTransitionTrace() const noexcept
+    {
+        return relationship_.transitions();
+    }
+
     /** Fraction of *played* time spent in one state. Stopped time does not count. */
     float stateOccupancy (ParasiteRelationship s) const noexcept
     {

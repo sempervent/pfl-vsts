@@ -37,44 +37,111 @@ int beatsToSamples (double beats)
     return static_cast<int> (beats * kSr * 60.0 / kBpm);
 }
 
-/** Synthetic kit: kick, snare, offbeat hats, 16th ghosts. Matches the test fixture. */
+/** Drop one synthetic percussive hit into `x`. Matches the test fixtures. */
+void addHit (std::vector<float>& x, double beat, float amp, double decayMs, double toneHz,
+             float noiseMix, FixtureLcg& lcg)
+{
+    const double spb = kSr * 60.0 / kBpm;
+    const auto n = static_cast<int64_t> (x.size());
+    const int64_t start = std::llround (beat * spb);
+    const int64_t len = static_cast<int64_t> (decayMs * 0.001 * kSr * 5.0);
+    for (int64_t i = 0; i < len; ++i)
+    {
+        const int64_t j = start + i;
+        if (j < 0 || j >= n)
+            continue;
+        const double t = static_cast<double> (i) / kSr;
+        const float env = static_cast<float> (std::exp (-t / (decayMs * 0.001)));
+        const float tone = static_cast<float> (std::sin (2.0 * kPi * toneHz * t));
+        x[static_cast<size_t> (j)] +=
+            amp * env * ((1.0f - noiseMix) * tone + noiseMix * lcg.next());
+    }
+}
+
+void clampFixture (std::vector<float>& x)
+{
+    for (auto& v : x)
+        v = std::clamp (v, -0.99f, 0.99f);
+}
+
+void addDrumBar (std::vector<float>& x, double b0, FixtureLcg& lcg)
+{
+    addHit (x, b0 + 0.0, 0.85f, 90.0, 55.0, 0.05f, lcg);
+    addHit (x, b0 + 2.0, 0.85f, 90.0, 55.0, 0.05f, lcg);
+    addHit (x, b0 + 1.0, 0.45f, 60.0, 190.0, 0.65f, lcg);
+    addHit (x, b0 + 3.0, 0.45f, 60.0, 190.0, 0.65f, lcg);
+    for (int e = 0; e < 8; ++e)
+        addHit (x, b0 + e * 0.5 + 0.25, 0.16f, 25.0, 5000.0, 0.90f, lcg);
+    for (int s = 0; s < 16; ++s)
+        if (s % 4 == 3)
+            addHit (x, b0 + s * 0.25, 0.055f, 18.0, 7000.0, 0.95f, lcg);
+}
+
+/** Sparse partner: a downbeat, and every other bar one answer. Lots of room. */
+void addSparseBar (std::vector<float>& x, double b0, int bar, FixtureLcg& lcg)
+{
+    addHit (x, b0 + 0.0, 0.80f, 120.0, 60.0, 0.10f, lcg);
+    if (bar % 2 == 1)
+        addHit (x, b0 + 2.5, 0.45f, 60.0, 2400.0, 0.80f, lcg);
+}
+
+/** Busy partner: loud sixteenths, short tails, almost no room. */
+void addBusyBar (std::vector<float>& x, double b0, FixtureLcg& lcg)
+{
+    for (int s = 0; s < 16; ++s)
+        addHit (x, b0 + s * 0.25, s % 4 == 0 ? 0.90f : 0.65f, 28.0, s % 2 ? 2600.0 : 80.0,
+                s % 2 ? 0.85f : 0.20f, lcg);
+}
+
 std::vector<float> makeDrums (int n)
 {
     std::vector<float> x (static_cast<size_t> (n), 0.0f);
-    const double spb = kSr * 60.0 / kBpm;
     FixtureLcg lcg;
-    auto hit = [&] (double beat, float amp, double decayMs, double toneHz, float noiseMix)
-    {
-        const int64_t start = std::llround (beat * spb);
-        const int64_t len = static_cast<int64_t> (decayMs * 0.001 * kSr * 5.0);
-        for (int64_t i = 0; i < len; ++i)
-        {
-            const int64_t j = start + i;
-            if (j < 0 || j >= n)
-                continue;
-            const double t = static_cast<double> (i) / kSr;
-            const float env = static_cast<float> (std::exp (-t / (decayMs * 0.001)));
-            const float tone = static_cast<float> (std::sin (2.0 * kPi * toneHz * t));
-            x[static_cast<size_t> (j)] +=
-                amp * env * ((1.0f - noiseMix) * tone + noiseMix * lcg.next());
-        }
-    };
+    const double spb = kSr * 60.0 / kBpm;
     const int bars = static_cast<int> (n / (spb * 4.0)) + 1;
     for (int b = 0; b < bars; ++b)
-    {
-        const double b0 = b * 4.0;
-        hit (b0 + 0.0, 0.85f, 90.0, 55.0, 0.05f);
-        hit (b0 + 2.0, 0.85f, 90.0, 55.0, 0.05f);
-        hit (b0 + 1.0, 0.45f, 60.0, 190.0, 0.65f);
-        hit (b0 + 3.0, 0.45f, 60.0, 190.0, 0.65f);
-        for (int e = 0; e < 8; ++e)
-            hit (b0 + e * 0.5 + 0.25, 0.16f, 25.0, 5000.0, 0.90f);
-        for (int s = 0; s < 16; ++s)
-            if (s % 4 == 3)
-                hit (b0 + s * 0.25, 0.055f, 18.0, 7000.0, 0.95f);
-    }
-    for (auto& v : x)
-        v = std::clamp (v, -0.99f, 0.99f);
+        addDrumBar (x, b * 4.0, lcg);
+    clampFixture (x);
+    return x;
+}
+
+std::vector<float> makeSparse (int n)
+{
+    std::vector<float> x (static_cast<size_t> (n), 0.0f);
+    FixtureLcg lcg { 4242u };
+    const double spb = kSr * 60.0 / kBpm;
+    const int bars = static_cast<int> (n / (spb * 4.0)) + 1;
+    for (int b = 0; b < bars; ++b)
+        addSparseBar (x, b * 4.0, b, lcg);
+    clampFixture (x);
+    return x;
+}
+
+std::vector<float> makeBusy (int n)
+{
+    std::vector<float> x (static_cast<size_t> (n), 0.0f);
+    FixtureLcg lcg { 909u };
+    const double spb = kSr * 60.0 / kBpm;
+    const int bars = static_cast<int> (n / (spb * 4.0)) + 1;
+    for (int b = 0; b < bars; ++b)
+        addBusyBar (x, b * 4.0, lcg);
+    clampFixture (x);
+    return x;
+}
+
+/** Sparse → busy → sparse. The whole relationship arc in one take. */
+std::vector<float> makeJourney (int n, double sectionBeats)
+{
+    std::vector<float> x (static_cast<size_t> (n), 0.0f);
+    FixtureLcg lcg { 1717u };
+    const int barsPerSection = static_cast<int> (sectionBeats / 4.0);
+    for (int b = 0; b < barsPerSection; ++b)
+        addSparseBar (x, b * 4.0, b, lcg);
+    for (int b = 0; b < barsPerSection; ++b)
+        addBusyBar (x, sectionBeats + b * 4.0, lcg);
+    for (int b = 0; b < barsPerSection; ++b)
+        addSparseBar (x, 2.0 * sectionBeats + b * 4.0, b, lcg);
+    clampFixture (x);
     return x;
 }
 
@@ -121,7 +188,20 @@ void writeWav (const fs::path& path, const std::vector<float>& L, const std::vec
     std::cout << "wrote " << path.filename().string() << "\n";
 }
 
-enum class Fixture { Drums, Pad, Silence };
+enum class Fixture { Drums, Sparse, Busy, Pad, Journey, Silence };
+
+const char* fixtureName (Fixture f)
+{
+    switch (f)
+    {
+        case Fixture::Drums: return "drums";
+        case Fixture::Sparse: return "sparse";
+        case Fixture::Busy: return "busy";
+        case Fixture::Pad: return "pad";
+        case Fixture::Journey: return "journey";
+        default: return "silence";
+    }
+}
 
 struct Variant
 {
@@ -136,12 +216,23 @@ struct Variant
     double beats = 64.0;
 };
 
+std::vector<float> makeFixture (Fixture f, int n, double beats)
+{
+    switch (f)
+    {
+        case Fixture::Drums: return makeDrums (n);
+        case Fixture::Sparse: return makeSparse (n);
+        case Fixture::Busy: return makeBusy (n);
+        case Fixture::Pad: return makePad (n);
+        case Fixture::Journey: return makeJourney (n, beats / 3.0);
+        default: return std::vector<float> (static_cast<size_t> (n), 0.0f);
+    }
+}
+
 void render (const fs::path& dir, const Variant& v)
 {
     const int n = beatsToSamples (v.beats);
-    std::vector<float> in = v.fixture == Fixture::Drums ? makeDrums (n)
-                            : v.fixture == Fixture::Pad ? makePad (n)
-                                                        : std::vector<float> ((size_t) n, 0.0f);
+    std::vector<float> in = makeFixture (v.fixture, n, v.beats);
     // Slight stereo offset so the balance feature and the pan law have something
     // to work with, without turning the fixture into a different signal.
     std::vector<float> inL (in), inR (in);
@@ -174,12 +265,10 @@ void render (const fs::path& dir, const Variant& v)
     writeWav (dir / (v.name + ".wav"), outL, outR);
 
     std::ofstream tr (dir / (v.name + "-trace.txt"));
-    tr << "PFL Signal Parasite — Stage 1 (algorithm v"
+    tr << "PFL Signal Parasite - Stage 2 (algorithm v"
        << pfl::dsp::SignalParasiteEngine::kAlgorithmVersion << ")\n";
-    tr << "fixture=" << (v.fixture == Fixture::Drums ? "drums"
-                         : v.fixture == Fixture::Pad ? "pad"
-                                                     : "silence")
-       << " sr=" << kSr << " bpm=" << kBpm << " beats=" << v.beats << "\n";
+    tr << "fixture=" << fixtureName (v.fixture) << " sr=" << kSr << " bpm=" << kBpm
+       << " beats=" << v.beats << "\n";
     tr << "mix=" << v.mix << " sensitivity=" << v.sens << " hunger=" << v.hunger
        << " mutation=" << v.mutation << " output=" << v.output << " seed=" << v.seed << "\n";
     tr << "stimuli=" << eng.stimulusCount() << " (attack=" << eng.attackCount()
@@ -197,16 +286,56 @@ void render (const fs::path& dir, const Variant& v)
         tr << " " << pfl::dsp::parasiteSuppressName (reason) << "=" << eng.suppressCount (reason);
     }
     tr << "\n";
+    tr << "acceptRatio=" << eng.acceptRatio() << " historySize=" << eng.historySize()
+       << " stateTransitions=" << eng.stateTransitions()
+       << " finalState=" << pfl::dsp::parasiteRelationshipName (eng.relationshipState()) << "\n";
+
+    tr << "occupancy:";
+    for (int i = 0; i < static_cast<int> (pfl::dsp::ParasiteRelationship::Count); ++i)
+    {
+        const auto st = static_cast<pfl::dsp::ParasiteRelationship> (i);
+        tr << " " << pfl::dsp::parasiteRelationshipName (st) << "=" << eng.stateOccupancy (st);
+    }
+    tr << "\n";
+
+    const auto& pr = eng.pressures();
+    tr << "pressures: source=" << pr.source << " attachment=" << pr.attachment
+       << " conversation=" << pr.conversation << " withdrawal=" << pr.withdrawal
+       << " fatigue=" << pr.fatigue << "\n";
+    const auto& hs = eng.historySummary();
+    tr << "window: offered=" << hs.offered << " answered=" << hs.answered
+       << " exchanges=" << hs.exchanges << " ratePerBeat=" << hs.ratePerBeat
+       << " interest=" << hs.interest << " gapScore=" << hs.gapScore
+       << " success=" << hs.success << "\n";
+
     tr << "stimulusFingerprint=" << eng.stimulusFingerprint() << "\n";
     tr << "responseFingerprint=" << eng.responseFingerprint() << "\n";
+    tr << "stateFingerprint=" << eng.stateFingerprint() << "\n";
     tr << "dnaFingerprint=" << eng.dnaFingerprint() << "\n\n";
 
-    tr << "# responses: onsetBeat delaySlot durSlot durationBeats strength brightness pan kind\n";
+    const double spb = kSr * 60.0 / kBpm;
+    tr << "# state transitions: beat from > to tick\n";
+    for (const auto& t : eng.stateTransitionTrace())
+    {
+        tr << static_cast<double> (t.relSample) / spb << " "
+           << pfl::dsp::parasiteRelationshipName (
+                  static_cast<pfl::dsp::ParasiteRelationship> (t.from))
+           << " > "
+           << pfl::dsp::parasiteRelationshipName (
+                  static_cast<pfl::dsp::ParasiteRelationship> (t.to))
+           << " " << (t.major ? "major" : "minor") << "\n";
+    }
+
+    tr << "\n# responses: onsetBeat delaySlot durSlot durationBeats strength brightness pan kind"
+          " state\n";
     for (const auto& r : eng.responses())
     {
         tr << r.onsetBeat << " " << r.delaySlot << " " << r.durSlot << " " << r.durationBeats
            << " " << r.strength << " " << r.brightness << " " << r.pan << " "
-           << (r.kind == pfl::dsp::StimulusKind::Attack ? "ATTACK" : "SHIFT") << "\n";
+           << (r.kind == pfl::dsp::StimulusKind::Attack ? "ATTACK" : "SHIFT") << " "
+           << pfl::dsp::parasiteRelationshipName (
+                  static_cast<pfl::dsp::ParasiteRelationship> (r.state))
+           << "\n";
     }
 
     tr << "\n# stimuli: beat kind strength energy brightness change balance\n";
@@ -229,7 +358,7 @@ void renderMixTrio (const fs::path& dir, const std::string& stem, Fixture fixtur
 
 int main (int argc, char** argv)
 {
-    fs::path dir = "renders/signal-parasite/stage1";
+    fs::path dir = "renders/signal-parasite/stage2";
     if (argc > 1)
         dir = argv[1];
     std::error_code ec;
@@ -258,8 +387,34 @@ int main (int argc, char** argv)
         render (dir, { "seed-" + std::to_string (seed), Fixture::Drums, 1.0f, 0.50f, 0.50f, 0.25f,
                        0.85f, seed });
 
-    // Nothing in, nothing out — the parasite has no voice of its own.
+    // Nothing in, nothing out — the parasite has no voice of its own, and no
+    // state can invent one.
     render (dir, { "silence", Fixture::Silence, 1.0f, 1.00f, 1.00f, 1.00f });
+
+    // Stage 2: the same ears and the same appetite on three kinds of partner.
+    // Sparse leaves room and gets bonded with; busy is a wall it backs away
+    // from; the pad is a slow acquaintance.
+    renderMixTrio (dir, "sparse", Fixture::Sparse);
+    renderMixTrio (dir, "busy", Fixture::Busy);
+    for (auto h : { 0.35f, 0.70f })
+    {
+        const auto tag = juce::String (h, 2).toStdString();
+        render (dir, { "state-sparse-hunger-" + tag, Fixture::Sparse, 1.0f, 0.50f, h, 0.0f,
+                       0.85f, 2002, 96.0 });
+        render (dir, { "state-busy-hunger-" + tag, Fixture::Busy, 1.0f, 0.50f, h, 0.0f, 0.85f,
+                       2002, 96.0 });
+        render (dir, { "state-pad-hunger-" + tag, Fixture::Pad, 1.0f, 0.50f, h, 0.0f, 0.85f,
+                       2002, 96.0 });
+    }
+
+    // The whole arc in one take: sparse → busy → sparse. Bond, back off, return.
+    render (dir, { "journey-relationship-wet", Fixture::Journey, 1.0f, 0.50f, 0.60f, 0.25f, 0.85f,
+                   2002, 192.0 });
+    render (dir, { "journey-relationship-mix", Fixture::Journey, 0.50f, 0.50f, 0.60f, 0.25f,
+                   0.85f, 2002, 192.0 });
+    // Same arc with DNA frozen, so every difference in the trace is the state.
+    render (dir, { "journey-relationship-nomut", Fixture::Journey, 1.0f, 0.50f, 0.60f, 0.00f,
+                   0.85f, 2002, 192.0 });
 
     // Long journey at defaults: 64 bars of drums, wet and at the shipped mix.
     render (dir, { "journey-wet", Fixture::Drums, 1.0f, 0.50f, 0.35f, 0.25f, 0.85f, 2002, 256.0 });
