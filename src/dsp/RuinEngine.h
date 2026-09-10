@@ -4,6 +4,8 @@
 #include "FeedbackDelay.h"
 #include "Filter.h"
 #include "ParamSmoother.h"
+#include "RuinFracture.h"
+#include "RuinStateMachine.h"
 #include "SafetyLimiter.h"
 #include "Saturator.h"
 
@@ -17,13 +19,13 @@ namespace pfl::dsp
 {
 
 /**
- * Ruin Engine Stage 1 core: deterministic evolving degradation of external audio.
+ * Ruin Engine Stage 2: Stage 1 DSP foundation + generative processing states.
  * Musical-time structural decisions are buffer-independent (4-beat eval grid).
  */
 class RuinEngine
 {
 public:
-    static constexpr int kAlgorithmVersion = 1;
+    static constexpr int kAlgorithmVersion = 2;
     static constexpr float kMaxFeedback = 0.72f;
 
     void prepare (double sampleRate) noexcept
@@ -51,7 +53,7 @@ public:
         delay_.setFullWetMode (true);
         rebuildRng();
         reset();
-        applyAgeCurves (0.0f, 0.0f, true);
+        mapDspTargets (0.0f, 0.0f, true);
     }
 
     void reset() noexcept
@@ -69,10 +71,14 @@ public:
         walkTarget_ = 0.0f;
         samplesUntilWalk_ = 0;
         lastEvalIndex_ = -1;
-        barsUntilRetarget_ = 8;
+        evolutionPaused_ = false;
+        discardPendingEvals_ = false;
         tone_ = grit_ = wobble_ = smear_ = 0.0f;
         toneT_ = gritT_ = wobbleT_ = smearT_ = 0.0f;
-        evolutionPaused_ = false;
+        fractureAmt_ = 0.0f;
+        stateMachine_.reset (masterSeed_);
+        fracture_.setSeed (masterSeed_);
+        syncTargetsFromState (true);
     }
 
     void setSeed (uint64_t seed) noexcept
@@ -82,7 +88,7 @@ public:
         masterSeed_ = seed == 0 ? 1ull : seed;
         rebuildRng();
         reset();
-        applyAgeCurves (ageSmooth_.current(), instSmooth_.current(), true);
+        mapDspTargets (ageSmooth_.current(), instSmooth_.current(), true);
     }
 
     uint64_t seed() const noexcept { return masterSeed_; }
@@ -92,17 +98,15 @@ public:
     void setInstability (float v) noexcept { instSmooth_.setTarget (std::clamp (v, 0.0f, 1.0f)); }
     void setOutput (float v) noexcept { outSmooth_.setTarget (std::clamp (v, 0.0f, 1.0f)); }
 
-    /** Snap macro smoothers to their targets (prepare / offline setup). */
     void snapMacros() noexcept
     {
         mixSmooth_.setCurrentAndTarget (mixSmooth_.target());
         ageSmooth_.setCurrentAndTarget (ageSmooth_.target());
         instSmooth_.setCurrentAndTarget (instSmooth_.target());
         outSmooth_.setCurrentAndTarget (outSmooth_.target());
-        applyAgeCurves (ageSmooth_.current(), instSmooth_.current(), true);
+        mapDspTargets (ageSmooth_.current(), instSmooth_.current(), true);
     }
 
-    /** Pause structural evolution (bypass / transport stop). No catch-up on resume. */
     void setEvolutionPaused (bool paused) noexcept
     {
         if (paused && ! evolutionPaused_)
@@ -112,16 +116,32 @@ public:
 
     bool evolutionPaused() const noexcept { return evolutionPaused_; }
 
+    void setBypassed (bool b) noexcept
+    {
+        bypassed_ = b;
+        if (b)
+            setEvolutionPaused (true);
+    }
+
+    /** Offline / diagnostic only — not a public plugin parameter. */
+    void forceProcessingState (bool on, RuinProcessingState s) noexcept
+    {
+        stateMachine_.setForcedState (on, s);
+        syncTargetsFromState (true);
+        mapDspTargets (ageSmooth_.current(), instSmooth_.current(), true);
+    }
+
     float tone() const noexcept { return tone_; }
     float grit() const noexcept { return grit_; }
     float wobble() const noexcept { return wobble_; }
     float smear() const noexcept { return smear_; }
 
-    /**
-     * Process interleaved stereo (or mono duplicated by caller).
-     * ppqStart is musical position at first sample; bpm > 0.
-     * When transportPlaying is false, structural evolution pauses.
-     */
+    RuinProcessingState processingState() const noexcept { return stateMachine_.state(); }
+    RuinProcessingState previousProcessingState() const noexcept { return stateMachine_.previousState(); }
+    float damagePressure() const noexcept { return stateMachine_.damagePressure(); }
+    float recoveryPressure() const noexcept { return stateMachine_.recoveryPressure(); }
+    float fractureAmount() const noexcept { return fractureAmt_; }
+
     void process (float* left, float* right, int numSamples,
                   bool transportPlaying, double ppqStart, double bpm) noexcept
     {
@@ -143,15 +163,16 @@ public:
             const float mix = mixSmooth_.getNext();
             const float outG = outSmooth_.getNext();
 
-            // Morph profile toward targets
             const float morph = 0.0008f + 0.0025f * inst;
             tone_ += (toneT_ - tone_) * morph;
             grit_ += (gritT_ - grit_) * morph;
             wobble_ += (wobbleT_ - wobble_) * morph;
             smear_ += (smearT_ - smear_) * morph;
+            fractureAmt_ += (stateMachine_.targets().fractureAmount - fractureAmt_) * morph;
 
-            applyAgeCurves (age, inst, false);
+            mapDspTargets (age, inst, false);
             updateMicroMotion (age, inst);
+            fracture_.advance (ppq);
 
             const float cutoff = cutoffSmooth_.getNext();
             const float drive = driveSmooth_.getNext();
@@ -170,7 +191,7 @@ public:
             float wetL = dryL;
             float wetR = dryR;
 
-            // AGE≈0: wet path is identity (true transparency). Still advance smoothers above.
+            // AGE≈0: wet path is identity (Stage 1 contract). Still advance smoothers above.
             if (age > 1.0e-4f)
             {
                 filterL_.setCutoffHz (cutoff);
@@ -188,7 +209,6 @@ public:
 
                 if (noiseAmt > 1.0e-6f)
                 {
-                    // Gate noise by input energy so fresh silence does not self-noise.
                     const float energy = std::min (1.0f, (std::abs (inL) + std::abs (inR)) * 6.0f);
                     if (energy > 1.0e-5f)
                     {
@@ -203,6 +223,9 @@ public:
                 wetR = dcR_.processSample (dR);
                 wetL = limL_.processSample (wetL);
                 wetR = limR_.processSample (wetR);
+
+                wetL *= fracture_.gainL();
+                wetR *= fracture_.gainR();
             }
 
             float outL = dryL * (1.0f - mix) + wetL * mix;
@@ -217,25 +240,35 @@ public:
         }
     }
 
-    void setBypassed (bool b) noexcept
-    {
-        bypassed_ = b;
-        if (b)
-            setEvolutionPaused (true);
-    }
-
 private:
     void rebuildRng() noexcept
     {
-        structureRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, 0x53545255ull); // STRU
-        profileRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, 0x50524F46ull);   // PROF
+        noiseRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, 0x4E4F4953ull); // NOIS
         instabilityRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, 0x494E5354ull); // INST
-        noiseRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, 0x4E4F4953ull);     // NOIS
+    }
+
+    void syncTargetsFromState (bool snap) noexcept
+    {
+        const auto& t = stateMachine_.targets();
+        if (snap)
+        {
+            toneT_ = tone_ = t.tone;
+            gritT_ = grit_ = t.grit;
+            wobbleT_ = wobble_ = t.wobble;
+            smearT_ = smear_ = t.smear;
+            fractureAmt_ = t.fractureAmount;
+        }
+        else
+        {
+            toneT_ = t.tone;
+            gritT_ = t.grit;
+            wobbleT_ = t.wobble;
+            smearT_ = t.smear;
+        }
     }
 
     void advanceStructure (double ppq) noexcept
     {
-        // 4-beat evaluation grid — absolute musical index (seed + timeline deterministic)
         const int evalIndex = static_cast<int> (std::floor (ppq / 4.0));
         if (evalIndex == lastEvalIndex_)
             return;
@@ -247,112 +280,58 @@ private:
             return;
         }
 
-        // Seek / first block / large jump: rebuild structural state from eval 0..evalIndex
-        // so SEED + absolute PPQ reproduce the same profile regardless of insert time.
+        const float age = ageSmooth_.current();
+        const float inst = instSmooth_.current();
+
         if (lastEvalIndex_ < 0 || evalIndex < lastEvalIndex_ || evalIndex > lastEvalIndex_ + 64)
         {
-            rebuildStructuralTo (evalIndex);
+            rebuildStructuralTo (evalIndex, age, inst);
             return;
         }
 
         for (int idx = lastEvalIndex_ + 1; idx <= evalIndex; ++idx)
-            evaluateAt (idx);
+        {
+            stateMachine_.evaluateAt (idx, age, inst);
+            syncTargetsFromState (false);
+            const double evalPpq = static_cast<double> (idx) * 4.0;
+            fracture_.maybeSchedule (idx, evalPpq, stateMachine_.targets().fractureAmount, inst);
+        }
         lastEvalIndex_ = evalIndex;
     }
 
-    void rebuildStructuralTo (int evalIndex) noexcept
+    void rebuildStructuralTo (int evalIndex, float age, float inst) noexcept
     {
-        rebuildRng();
-        tone_ = grit_ = wobble_ = smear_ = 0.0f;
-        toneT_ = gritT_ = wobbleT_ = smearT_ = 0.0f;
-        barsUntilRetarget_ = 8;
-        applyAgeCurves (ageSmooth_.current(), instSmooth_.current(), true);
+        // Do NOT reset noiseRng_/instabilityRng_ — sample-rate streams must stay continuous
+        // across seek; only musical-time state is reconstructed.
+        fracture_.setSeed (masterSeed_);
+        stateMachine_.reset (masterSeed_);
+        stateMachine_.seedInitialFromAge (age, inst);
         const int end = std::max (0, evalIndex);
         for (int idx = 0; idx <= end; ++idx)
-            evaluateAt (idx);
+        {
+            stateMachine_.evaluateAt (idx, age, inst);
+            const double evalPpq = static_cast<double> (idx) * 4.0;
+            fracture_.maybeSchedule (idx, evalPpq, stateMachine_.targets().fractureAmount, inst);
+            // Advance through the 4-beat window so gestures can complete between schedules
+            for (double p = evalPpq; p < evalPpq + 4.0; p += 0.125)
+                fracture_.advance (p);
+        }
+        syncTargetsFromState (true);
+        mapDspTargets (age, inst, true);
         lastEvalIndex_ = end;
-        // Snap current profile to targets after catch-up (avoid long morph from zero)
-        tone_ = toneT_;
-        grit_ = gritT_;
-        wobble_ = wobbleT_;
-        smear_ = smearT_;
     }
 
-    void evaluateAt (int /*evalIndex*/) noexcept
+    void mapDspTargets (float age, float inst, bool snap) noexcept
     {
-        const float inst = instSmooth_.current();
-        if (inst < 1.0e-4f)
-            return;
-
-        if (barsUntilRetarget_ > 0)
-        {
-            --barsUntilRetarget_;
-            return;
-        }
-
-        // Stay bias even at high instability
-        const float stay = 0.55f - 0.35f * inst;
-        if (structureRng_.nextFloat() < stay)
-        {
-            barsUntilRetarget_ = rollLifespan (inst);
-            return;
-        }
-
-        nudgeProfile (inst);
-    }
-
-    int rollLifespan (float inst) noexcept
-    {
-        // Eval units (4 beats each): low inst ~8–16, high ~2–4
-        const float span = 2.0f + 10.0f * (1.0f - inst);
-        return 2 + static_cast<int> (structureRng_.nextFloat() * span);
-    }
-
-    void nudgeProfile (float inst) noexcept
-    {
-        const float maxDelta = 0.04f + 0.12f * inst;
-        const int which = static_cast<int> (profileRng_.nextFloat() * 4.0f) % 4;
-        auto nudge = [&] (float& t)
-        {
-            t = std::clamp (t + profileRng_.nextFloat (-maxDelta, maxDelta), 0.0f, 1.0f);
-        };
-        if (which == 0) nudge (toneT_);
-        else if (which == 1) nudge (gritT_);
-        else if (which == 2) nudge (wobbleT_);
-        else nudge (smearT_);
-
-        barsUntilRetarget_ = rollLifespan (inst);
-    }
-
-    void applyAgeCurves (float age, float inst, bool snap) noexcept
-    {
-        // Smoothstep AGE so low values stay nearly clean
         const float a = age * age * (3.0f - 2.0f * age);
+        const float t = std::clamp (0.55f * tone_ + 0.45f * a, 0.0f, 1.0f);
+        const float g = std::clamp (0.55f * grit_ + 0.45f * a, 0.0f, 1.0f);
+        const float s = std::clamp (0.55f * smear_ + 0.45f * a, 0.0f, 1.0f);
 
-        // Base coherent targets from AGE; profile nudges sit on top
-        const float toneBase = a;
-        const float gritBase = a;
-        const float wobbleBase = a * (0.35f + 0.65f * inst);
-        const float smearBase = a;
-
-        if (snap)
-        {
-            toneT_ = tone_ = toneBase;
-            gritT_ = grit_ = gritBase;
-            wobbleT_ = wobble_ = wobbleBase;
-            smearT_ = smear_ = smearBase;
-        }
-        // else: structural targets (toneT_…) only change via nudgeProfile —
-        // do not continuously pull them back to AGE (preserves timeline determinism).
-
-        const float t = std::clamp (0.62f * toneBase + 0.38f * tone_, 0.0f, 1.0f);
-        const float g = std::clamp (0.62f * gritBase + 0.38f * grit_, 0.0f, 1.0f);
-        const float s = std::clamp (0.62f * smearBase + 0.38f * smear_, 0.0f, 1.0f);
-
-        // AGE=0 → transparent wet: open filter, no drive, no noise, no feedback
         const float cutoff = 18000.0f * std::pow (0.08f, t) + 220.0f;
         const float drive = a < 1.0e-4f ? 0.0f : (0.05f + 0.85f * g);
-        const float noise = a < 0.15f ? 0.0f : (0.002f + 0.06f * std::pow ((a - 0.15f) / 0.85f, 1.3f));
+        const float noise = a < 0.15f ? 0.0f
+                                      : (0.002f + 0.06f * std::pow ((a - 0.15f) / 0.85f, 1.3f) * g);
         const float delaySec = 0.03f + 0.55f * s * s;
         const float fb = a < 1.0e-4f ? 0.0f : std::min (kMaxFeedback, 0.12f + 0.55f * s);
 
@@ -363,10 +342,6 @@ private:
             noiseSmooth_.setCurrentAndTarget (noise);
             delaySecSmooth_.setCurrentAndTarget (delaySec);
             fbSmooth_.setCurrentAndTarget (fb);
-            mixSmooth_.setCurrentAndTarget (mixSmooth_.current());
-            ageSmooth_.setCurrentAndTarget (age);
-            instSmooth_.setCurrentAndTarget (inst);
-            outSmooth_.setCurrentAndTarget (outSmooth_.current());
         }
         else
         {
@@ -376,6 +351,7 @@ private:
             delaySecSmooth_.setTarget (delaySec * microDelayMul_);
             fbSmooth_.setTarget (fb);
         }
+        (void) inst;
     }
 
     void updateMicroMotion (float age, float inst) noexcept
@@ -412,22 +388,23 @@ private:
     bool evolutionPaused_ = false;
     bool discardPendingEvals_ = false;
     bool bypassed_ = false;
+    int lastEvalIndex_ = -1;
 
     Filter filterL_, filterR_;
     Saturator saturator_;
     FeedbackDelay delay_;
     DCBlocker dcL_, dcR_;
     SafetyLimiter limL_, limR_;
+    RuinStateMachine stateMachine_;
+    RuinFractureEnvelope fracture_;
 
     ParamSmoother mixSmooth_, ageSmooth_, instSmooth_, outSmooth_;
     ParamSmoother cutoffSmooth_, driveSmooth_, delaySecSmooth_, fbSmooth_, noiseSmooth_;
 
-    pfl::generative::DeterministicRNG structureRng_, profileRng_, instabilityRng_, noiseRng_;
+    pfl::generative::DeterministicRNG noiseRng_, instabilityRng_;
 
-    float tone_ = 0, grit_ = 0, wobble_ = 0, smear_ = 0;
+    float tone_ = 0, grit_ = 0, wobble_ = 0, smear_ = 0, fractureAmt_ = 0;
     float toneT_ = 0, gritT_ = 0, wobbleT_ = 0, smearT_ = 0;
-    int barsUntilRetarget_ = 8;
-    int lastEvalIndex_ = -1;
 
     double lfoPhase_ = 0.0;
     float walk_ = 0.0f;

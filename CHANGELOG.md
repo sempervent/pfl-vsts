@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Ruin Engine — Stage 2 (draft)
+
+- Explicit generative processing states: INTACT / WEATHERED / FRACTURED / RUINED / RECOVERING
+- Constrained transition graph; AGE eligibility vs INSTABILITY restlessness
+- Wet-path fracture attenuation windows; algorithm **v2**
+- Draft PR #11 — awaiting creative-director Ableton acceptance
+
 ### Ruin Engine — Stage 1 COMPLETE
 
 - Creative-director Ableton acceptance **PASS** (safe generative audio vertical slice)
