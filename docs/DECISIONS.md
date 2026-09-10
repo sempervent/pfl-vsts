@@ -1561,3 +1561,28 @@ stimulus. Seed changes regenerate DNA at the next bar boundary.
 MIDI and controllers; performance verbs; FFT and pitch tracking; more than one
 voice; any wet path that processes the input; self-listening; per-block event
 caps.
+
+---
+
+## 2026-09-10 — Signal Parasite Stage 1 Ableton PASS
+
+### Acceptance
+
+CREATIVE-DIRECTOR ABLETON ACCEPTANCE: **PASS**.
+Tag: `signal-parasite-stage1-complete`. PR #21 merged.
+
+Audio/reactive implementation behaves successfully in Ableton: listening,
+stimulus detection, and generated ParasiteVoice responses are accepted.
+
+### Deferred UI (accepted; Stage 2)
+
+KNOWN DEFERRED UI ISSUE: editor height/layout requires scrolling for full
+parameter set; footer encoding/layout also requires investigation (UTF-8 em dash
+mojibake such as `â€`). Does not block Stage 1. Must be fixed in Stage 2 before
+additional musical work is considered complete.
+
+### Next
+
+Signal Parasite Stage 2: relationship model (LURKING / ATTACHED / ANSWERING /
+WITHDRAWN) over recent stimulus history — not audio memory — plus editor sizing
+and footer encoding fix.

@@ -8,6 +8,21 @@ generated sound. It is not a processor: the wet path never contains your input.
 - Formats: AU, VST3 (Fx), stereo in / stereo out, no MIDI
 - Algorithm version: **1**
 
+## Status
+
+**Stage 1 COMPLETE** — Ableton **PASS**. Tag: `signal-parasite-stage1-complete` (PR #21).
+
+## CREATIVE-DIRECTOR ABLETON ACCEPTANCE: PASS (Stage 1)
+
+Confirmed by human Ableton testing: the audio/reactive implementation behaves
+successfully. Listening, stimulus detection, and generated responses are accepted.
+
+### Known deferred UI issue (accepted for Stage 1)
+
+Editor height/layout requires scrolling for the full parameter set; footer
+encoding/layout also requires investigation (mojibake such as `â€` from UTF-8
+em dash). Scheduled for Stage 2 before further musical work is considered complete.
+
 ## The idea
 
 Feed it drums and it interjects — a short burst answering a kick, a sixteenth
@@ -129,3 +144,8 @@ reasons, structural fingerprints and the full event lists.
 
 Deliberately absent: MIDI and controllers, performance verbs, FFT or pitch
 tracking, more than one voice, and any wet path that processes the input.
+
+## Stage 2 (next)
+
+Attachment / behavioral relationship (stimulus history — not audio memory) plus
+editor layout/encoding fix. Algorithm → v2.

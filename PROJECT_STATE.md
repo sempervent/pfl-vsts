@@ -4,14 +4,15 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**PFL Signal Parasite Stage 1 — IMPLEMENTED, awaiting Ableton acceptance**
-(audio-reactive generative collaborator). Pulse Colony **PARKED** at Stage 3. Memory Eater **PARKED** at Stage 4. Ruin Engine PARKED at Stage 4.
+**PFL Signal Parasite Stage 2 — NEXT** (attachment / behavioral relationship + editor layout fix).
+Signal Parasite Stage 1 COMPLETE (Ableton PASS). Pulse Colony **PARKED** at Stage 3.
+Memory Eater **PARKED** at Stage 4. Ruin Engine PARKED at Stage 4.
 
 Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 ## Branch / tags
 
-- Signal Parasite Stage 1: `pr/signal-parasite-stage1-reactive` (draft PR)
+- Stage 1 complete: `signal-parasite-stage1-complete` (PR #21)
 - Stage 3 complete: `pulse-colony-stage3-complete` (PR #20)
 - Stage 2 complete: `pulse-colony-stage2-complete` (PR #19)
 - Stage 1 complete: `pulse-colony-stage1-complete` (PR #18)
@@ -91,15 +92,12 @@ Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 1 IMPLEMENTED** — awaiting creative-director Ableton acceptance |
-| Engine | algorithm **v1** (`src/dsp/SignalParasiteEngine.h`, header-only) |
+| Status | **Stage 1 COMPLETE** (Ableton PASS) — Stage 2 NEXT |
+| Engine | algorithm **v1** (`src/dsp/SignalParasiteEngine.h`) |
 | Formats | AU VST3 (`Fx`) · `Sig1` · `com.pfl.signalparasite` |
 | Params | MIX 0.50, SENSITIVITY 0.50, HUNGER 0.35, MUTATION 0.25, OUTPUT 0.85, SEED 2002 |
-| Job | Listen (original input only) → ATTACK/SHIFT stimuli → DNA + HUNGER gate → ONE generated ParasiteVoice |
-| Wet | **Generated** audio (noise → resonant LP chirp → AR → saturator → pan), never the input reprocessed |
-| Orthogonality | SENSITIVITY 0.2/0.5/0.9 → 32/63/94 stimuli · HUNGER 0/0.35/0.7/1.0 → 0/7/15/21 answers at fixed stimuli · MUTATION 0/0.25/1.0 → DNA gen 0/1/3 at fixed answers |
-| Determinism | Identical fingerprints across buffer sizes 64…1024 (incl. odd sizes) and across runs |
-| Scope | No MIDI, no FFT/pitch, no performance verbs, one voice |
-| Renders | `renders/signal-parasite/stage1/` |
-| Docs | `docs/SIGNAL_PARASITE.md`, decision record in `docs/DECISIONS.md` |
-| Tag | (none yet) |
+| Job | Listen → ATTACK/SHIFT stimuli → DNA + HUNGER → ONE generated ParasiteVoice |
+| Wet | Generated audio only (noise → resonant LP chirp); analysis taps original input |
+| Tag | `signal-parasite-stage1-complete` (PR #21) |
+| Deferred UI | Editor height requires scrolling for full parameter set; footer encoding artifact (`—` mojibake). Accepted for Stage 1; fix in Stage 2. |
+| Next | Stage 2: relationship model (LURKING/ATTACHED/ANSWERING/WITHDRAWN) + editor layout fix |

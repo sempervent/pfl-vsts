@@ -2,25 +2,20 @@
 
 ## Unreleased
 
-### Signal Parasite — Stage 1
+### Signal Parasite — Stage 2 NEXT
 
-- New plugin: audio-reactive generative collaborator, algorithm **v1**
-  (`SignalParasite` / `Sig1` / `com.pfl.signalparasite`, AU + VST3 Fx)
-- Listen → `ParasiteFeatureExtractor` → `ParasiteStimulusDetector` → DNA + HUNGER
-  gate → one `ParasiteVoice` → wet
-- Wet is **generated** audio (noise → resonant LP chirp → AR → saturator → pan),
-  never the input reprocessed; analysis taps the original input only, so it
-  cannot hear itself
-- ATTACK and SHIFT detection paths, both edge-triggered with envelope-anchored
-  re-arm: drums fixture reads 62 attacks / 1 shift, pad fixture 1 attack /
-  29 shifts
-- Macro orthogonality: SENSITIVITY 0.2/0.5/0.9 → 32/63/94 stimuli; HUNGER
-  0/0.35/0.7/1.0 → 0/7/15/21 answers at fixed stimuli; MUTATION 0/0.25/1.0 →
-  DNA generation 0/1/3 at fixed answers
-- Deterministic and buffer-size independent (identical fingerprints across
-  64…1024, including odd sizes); no FFT, no pitch tracking, no performance verbs
-- Renders: `renders/signal-parasite/stage1/`
-- Branch: `pr/signal-parasite-stage1-reactive`
+- Attachment / behavioral relationship + shared editor layout fix
+- Branch planned: `pr/signal-parasite-stage2-relationship`
+
+### Signal Parasite — Stage 1 COMPLETE
+
+- Creative-director Ableton acceptance **PASS** (audio-reactive generative collaborator)
+- Algorithm **v1**; listen → ATTACK/SHIFT → DNA + HUNGER → one ParasiteVoice
+- Wet is generated audio; analysis taps original input only; no self-trigger
+- SENSITIVITY / HUNGER / MUTATION orthogonality accepted
+- **Deferred UI (accepted):** editor height requires scrolling; footer encoding artifact — fix in Stage 2
+- Tag: `signal-parasite-stage1-complete`
+- PR #21 merged to `main`
 
 ### Pulse Colony — Stage 3 COMPLETE (PARKED)
 
