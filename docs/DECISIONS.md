@@ -1051,3 +1051,75 @@ Tag: `memory-eater-stage3-complete`. PR #16 merged.
 Generational memory is musically successful on Return tracks.
 Send-first remains canonical. Ready for Stage 4 performance intervention (final software stage before park).
 
+---
+
+## 2026-09-10 — Memory Eater Stage 4 performance intervention
+
+### Why
+
+Stage 3 generational ecology is musically accepted on a Return track. Stage 4 makes that
+ecology **deliberately performable** with five high-level verbs shared across the suite
+vocabulary, without exposing slots, genealogy, or DSP internals. This is the final planned
+software-development stage before Memory Eater is parked.
+
+### Shared suite command contract
+
+| Command | Host | Semantics class |
+|---------|------|-----------------|
+| FREEZE | bool toggle | Latch |
+| SILENCE | bool toggle | Latch |
+| MUTATE | float 0→1 edge | One-shot |
+| COLLAPSE | float 0→1 edge | One-shot |
+| RESEED | float 0→1 edge | One-shot |
+
+Priority: **SILENCE > COLLAPSE > FREEZE > MUTATE**. Holding edge params high does not retrigger.
+
+Architecture: Host/APVTS → PerformanceCommand → `MemoryEaterPerformanceController` → ecology/scheduler → recall → MIX/OUTPUT/silence gain.
+
+### Memory-specific meanings
+
+- **FREEZE** — freeze the **memory library** (six-slot ecology + lineage), not an audio sample. Recalling continues. Ring write paused; clear ring on enter/exit. Lifecycle/promote/reinforce paused. Manual MUTATE may still insert one child into the frozen cast.
+- **MUTATE** — retell one memory incorrectly: one bounded structural descendant via dedicated `performance.mutate.*` RNG streams. Works while frozen; does not unfreeze. Empty ecology → safe no-op (`MUTATE NO_ELIGIBLE_MEMORY`). Ignored during COLLAPSE/SILENCE.
+- **COLLAPSE** — performance forgetting arc, **24 beats**: REMEMBER → ERODE → DEVOUR → RESIDUE (6 each). Overrides FREEZE. Ends in 0–1 residue (prefer one strongest survivor; ~12% chance of total amnesia when tiny ecology). Audible contraction on wet Return. Seek cancels mid-collapse (keep survivors). Mid-collapse not persisted.
+- **RESEED** — new personality (SEED + future selection/promotion/descendant streams). **Preserves** stored audio, strength, generation, lineage. Cancel incomplete capture. Not amnesia.
+- **SILENCE** — mute **entire** plugin output (≠ MIX=0) with click-safe ramp. **Listen while silent**: ring continues writing; ecology lifecycle + recall scheduling paused; terminate active recall; cancel incomplete capture. Unsilence: no backlog burst; FREEZE latch restored beneath silence; COLLAPSE timeline resumes.
+
+### FREEZE vs SILENCE
+
+FREEZE: stop learning, keep speaking from held memories.
+SILENCE: keep listening, stop speaking.
+
+### Determinism / persistence
+
+Performance commands are deterministic timeline inputs. Algorithm **v4** + performance-engine **v1**. Persist FREEZE/SILENCE/SEED via APVTS. Never serialize ecology audio. Restore: empty ecology + toggle latches; no mid-collapse journal.
+
+### Rejected
+
+Copying Ruin mutation axes; FREEZE-as-looper; COLLAPSE-as-instant-clear; RESEED-as-forget; SILENCE=MIX0; serializing memory audio; new continuous knobs; studio/MIDI mapping.
+
+### Safety notes (implementation)
+
+- FREEZE/SILENCE pause lifecycle and `resyncTimeline` + `snapScheduler` on exit so paused musical time does not become a catch-up wipe / opportunity backlog.
+- COLLAPSE may leave FREEZE latched under the host toggle; residue re-enters Frozen if latch remains.
+- Collapsed mode pauses lifecycle so residue does not evaporate while parked.
+
+---
+
+## 2026-09-10 — Memory Eater Stage 4 Ableton PASS + PARK
+
+### Acceptance
+
+CREATIVE-DIRECTOR ABLETON ACCEPTANCE: **PASS**.
+Tag: `memory-eater-stage4-complete`. PR #17 merged.
+
+Performance intervention accepted on send/return: FREEZE holds a playable cast;
+MUTATE while frozen is deliberate; COLLAPSE forgets toward residue; RESEED changes
+personality without amnesia; SILENCE is useful on the Return (listen-while-silent).
+
+### Product decision
+
+**MEMORY EATER v4 IS SUFFICIENTLY COMPLETE TO SHIP AND PARK.**
+
+No Stage 5 without new listening evidence or explicit creative-director direction.
+Send-first remains canonical. Short-term ring, six-slot ecology, generational memory,
+and the five performance verbs are preserved as the shipped surface.

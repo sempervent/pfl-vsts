@@ -11,6 +11,7 @@ src/
     DroneOrganism/
     BrokenConductor/
     RuinEngine/
+    MemoryEater/
 ```
 
 ## Drone Organism (Phase 4)
@@ -65,6 +66,22 @@ MIX → OUTPUT clamp → audio out
 ```
 
 Real AU/VST3 audio effect (`Fx`). See `docs/RUIN_ENGINE.md`.
+
+## Memory Eater (Stage 4)
+
+```text
+Host audio in (mono or stereo)
+        +
+Host tempo / transport / PPQ + performance commands
+        ↓
+MemoryEaterPerformanceController (FREEZE MUTATE COLLAPSE RESEED SILENCE)
+        ↓
+MemoryEaterEngine (algorithm v4 — ring + 6-slot ecology + genealogy)
+        ↓
+recall voice → DC → limiter → MIX → OUTPUT → silenceGain → audio out
+```
+
+Send-first Return workflow (MIX=1.0). Never writes wet into the ring. See `docs/MEMORY_EATER.md`.
 
 ## Audio engine (shared DSP)
 

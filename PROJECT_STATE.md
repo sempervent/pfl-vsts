@@ -4,14 +4,15 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**PFL Memory Eater Stage 4 — IN PROGRESS** (performance intervention).
-Stage 3 COMPLETE (Ableton PASS). Ruin Engine PARKED at Stage 4.
+**PFL Pulse Colony Stage 1 — NEXT** (single-cell rhythmic organism).
+Memory Eater **PARKED** at Stage 4 (Ableton PASS). Ruin Engine PARKED at Stage 4.
 
 Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 ## Branch / tags
 
-- Active: `pr/memory-eater-stage4-performance`
+- Active (next): `pr/pulse-colony-stage1-single-cell`
+- Stage 4 complete: `memory-eater-stage4-complete` (PR #17)
 - Stage 3 complete: `memory-eater-stage3-complete` (PR #16)
 - Stage 2 complete: `memory-eater-stage2-complete` (PR #15)
 - Stage 1 complete: `memory-eater-stage1-complete` (PR #14)
@@ -60,11 +61,21 @@ Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 3 IN PROGRESS** (draft PR); Stage 2 COMPLETE |
-| Engine | algorithm **v3** |
+| Status | **PARKED** — Stage 4 COMPLETE (Ableton PASS) |
+| Engine | algorithm **v4** + performance-engine **v1** |
 | Formats | AU VST3 (`Fx`) · `Mem1` · `com.pfl.memoryeater` |
 | Params | MIX, HUNGER, MEMORY, OUTPUT, SEED |
+| Performance | FREEZE, MUTATE, COLLAPSE, RESEED, SILENCE |
 | Workflow | **SEND-FIRST** — Return + MIX=1.0; source via Ableton Sends |
-| Ecology | 6 slots · gens 0…3 · descendant capture (no feedback loop) |
-| Tags | `memory-eater-stage1-complete` · `memory-eater-stage2-complete` |
-| Next | Creative-director Ableton acceptance for Stage 3 |
+| Ecology | short-term ring · 6 slots · gens 0…3 · descendant capture (no feedback) |
+| Tags | `memory-eater-stage1-complete` … `memory-eater-stage4-complete` |
+| Product decision | **MEMORY EATER v4 IS SUFFICIENTLY COMPLETE TO SHIP AND PARK.** Stage 5 requires new listening evidence or explicit creative-director direction. |
+
+## Pulse Colony
+
+| Field | Value |
+|-------|--------|
+| Status | **Stage 1 NEXT** — single PulseCell |
+| Engine | algorithm **v1** (planned) |
+| Formats | AU VST3 (`Fx`) — TBD unique identity |
+| Params (planned) | MIX, DENSITY, MUTATION, MOTION, OUTPUT, SEED |
