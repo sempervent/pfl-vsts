@@ -20,7 +20,11 @@ struct MemorySlot
     double originBeat = 0.0;   // musical time of fragment start when captured
     double promoteBeat = 0.0;
     double lastRecallBeat = -1.0e9;
+    double lastChildBirthBeat = -1.0e9;
     int recallCount = 0;
+    int generation = 0;        // 0 = live-input; 1+ = descendant
+    int parentMemoryId = 0;    // 0 if root
+    int rootMemoryId = 0;      // = memoryId for gen0
     float strength = 0.0f;
     float fatigue = 0.0f;
     std::vector<float> bufferL;
@@ -29,7 +33,7 @@ struct MemorySlot
 
 struct EcologyTraceEvent
 {
-    enum class Kind { Promote, Recall, Decay, Forget, Replace };
+    enum class Kind { Promote, Recall, Decay, Forget, Replace, DescendantCapture, DescendantPromote };
     Kind kind = Kind::Promote;
     double beat = 0.0;
     int memoryId = 0;
@@ -38,18 +42,25 @@ struct EcologyTraceEvent
     float fatigue = 0.0f;
     double sourceBeat = 0.0;
     float fragmentBeats = 0.0f;
+    int generation = 0;
+    int parentMemoryId = 0;
+    int rootMemoryId = 0;
 };
 
 /**
- * Stage 2 fixed memory ecology: bounded slots owning preallocated fragment audio.
- * Lives beyond the short-term ring. No processBlock allocation.
+ * Stage 2/3 fixed memory ecology: bounded slots owning preallocated fragment audio.
+ * Lives beyond the short-term ring. Stage 3 adds generational descendants.
+ * No processBlock allocation.
  */
 class MemoryEcology
 {
 public:
     static constexpr int kNumSlots = 6;
+    static constexpr int kMaxGeneration = 3; // gens 0..3
     static constexpr float kMaxFragmentBeats = 1.0f;
     static constexpr float kMinDesignBpm = 40.0f;
+    static constexpr float kGenCooldownBeats = 12.0f;
+    static constexpr float kGlobalChildCooldownBeats = 8.0f;
     static constexpr float kForgetThreshold = 0.045f;
     static constexpr float kBaseReinforce = 0.22f;
     static constexpr float kFatigueOnRecall = 1.0f;
@@ -73,7 +84,8 @@ public:
         activeSlot_ = -1;
         traces_.clear();
         traces_.reserve (8192);
-        promotions_ = recallsStored_ = forgotten_ = replacements_ = 0;
+        promotions_ = recallsStored_ = forgotten_ = replacements_ = descendants_ = 0;
+        lastChildPromoteBeat_ = -1.0e9;
     }
 
     void clearAll() noexcept
@@ -84,7 +96,8 @@ public:
         activeSlot_ = -1;
         lastEcologyBeat_ = 0.0;
         traces_.clear();
-        promotions_ = recallsStored_ = forgotten_ = replacements_ = 0;
+        promotions_ = recallsStored_ = forgotten_ = replacements_ = descendants_ = 0;
+        lastChildPromoteBeat_ = -1.0e9;
     }
 
     /** After seek/loop: keep slots, but do not decay across the timeline jump. */
@@ -111,6 +124,39 @@ public:
     int recallsStored() const noexcept { return recallsStored_; }
     int forgotten() const noexcept { return forgotten_; }
     int replacements() const noexcept { return replacements_; }
+    int descendants() const noexcept { return descendants_; }
+    double lastChildPromoteBeat() const noexcept { return lastChildPromoteBeat_; }
+    void setLastChildPromoteBeat (double b) noexcept { lastChildPromoteBeat_ = b; }
+
+    int lineageCount (int rootId) const noexcept
+    {
+        if (rootId <= 0) return 0;
+        int n = 0;
+        for (const auto& s : slots_)
+            if (s.valid && s.rootMemoryId == rootId)
+                ++n;
+        return n;
+    }
+
+    int maxLineageOccupancy() const noexcept
+    {
+        int best = 0;
+        for (const auto& s : slots_)
+        {
+            if (! s.valid) continue;
+            best = std::max (best, lineageCount (s.rootMemoryId));
+        }
+        return best;
+    }
+
+    int countByGeneration (int gen) const noexcept
+    {
+        int n = 0;
+        for (const auto& s : slots_)
+            if (s.valid && s.generation == gen)
+                ++n;
+        return n;
+    }
     int occupiedCount() const noexcept
     {
         int n = 0;
@@ -205,7 +251,11 @@ public:
             const float age = static_cast<float> (std::max (0.0, beat - s.originBeat));
             // Prefer stronger, less fatigued; high MEMORY favors older origin age.
             const float ageBias = 0.35f + 0.65f * std::pow (std::min (age / 96.0f, 1.0f), 0.7f + 0.6f * mem);
-            const float w = (0.08f + s.strength) * (1.0f - 0.92f * s.fatigue) * ageBias;
+            const int locc = lineageCount (s.rootMemoryId);
+            const float lineagePen = 1.0f / (1.0f + 0.35f * static_cast<float> (std::max (0, locc - 1)));
+            // Mild preference against deepest gens unless MEMORY is high
+            const float genBias = 1.0f - 0.12f * static_cast<float> (s.generation) * (1.0f - 0.7f * mem);
+            const float w = (0.08f + s.strength) * (1.0f - 0.92f * s.fatigue) * ageBias * lineagePen * genBias;
             weights[i] = std::max (0.0f, w);
             sum += weights[i];
         }
@@ -300,11 +350,130 @@ public:
         s.recallCount = 0;
         s.strength = 0.28f + 0.12f * mem + 0.05f * lifetimeRng_.nextFloat();
         s.fatigue = 0.15f;
+        s.generation = 0;
+        s.parentMemoryId = 0;
+        s.rootMemoryId = s.memoryId;
+        s.lastChildBirthBeat = -1.0e9;
         ++promotions_;
         lastPromotedSlot_ = dest;
 
         if (traceEnabled_)
             pushTrace (EcologyTraceEvent::Kind::Promote, beat, s, dest);
+        return true;
+    }
+
+    /**
+     * Promote a descendant from pre-captured wet scratch (Stage 3).
+     * Applies mild generation-scaled copy-loss at birth. Never allocates.
+     */
+    bool tryPromoteDescendant (double beat, int parentSlot, const float* srcL, const float* srcR,
+                               int fragSamples, float fragBeats, float memoryParam) noexcept
+    {
+        if (parentSlot < 0 || parentSlot >= kNumSlots || srcL == nullptr || srcR == nullptr)
+            return false;
+        if (fragSamples < 8 || fragSamples > maxFragSamples_)
+            return false;
+        const auto& parent = slots_[static_cast<size_t> (parentSlot)];
+        if (! parent.valid)
+            return false;
+        if (parent.generation >= kMaxGeneration)
+            return false;
+
+        const int rootId = parent.rootMemoryId > 0 ? parent.rootMemoryId : parent.memoryId;
+        const int locc = lineageCount (rootId);
+        const int occ = occupiedCount();
+        const int lineageCap = (occ >= 4) ? 2 : 3;
+
+        int dest = -1;
+        if (locc >= lineageCap)
+        {
+            // Replace weakest same-lineage slot (not active / not parent)
+            float bestScore = 1.0e9f;
+            for (int i = 0; i < kNumSlots; ++i)
+            {
+                if (i == activeSlot_ || i == parentSlot) continue;
+                const auto& s = slots_[static_cast<size_t> (i)];
+                if (! s.valid || s.rootMemoryId != rootId) continue;
+                const float score = s.strength * 2.0f - 0.01f * static_cast<float> (beat - s.lastRecallBeat);
+                if (score < bestScore) { bestScore = score; dest = i; }
+            }
+            if (dest < 0)
+                return false;
+        }
+        else
+        {
+            dest = findEmptySlot();
+            if (dest < 0)
+                dest = chooseVictim (beat);
+            if (dest < 0)
+                return false;
+        }
+
+        auto& s = slots_[static_cast<size_t> (dest)];
+
+        // Activity gate on SOURCE before touching dest (never corrupt a victim slot)
+        float srcPeak = 0.0f;
+        for (int i = 0; i < fragSamples; ++i)
+            srcPeak = std::max (srcPeak, std::max (std::abs (srcL[i]), std::abs (srcR[i])));
+        if (srcPeak < 0.01f)
+            return false;
+
+        const int childGen = parent.generation + 1;
+        const float g = static_cast<float> (childGen);
+        // Mild attenuation only — never amplify (tanh soft-sat after gain < 1)
+        const float gain = std::clamp (1.0f - 0.04f * g, 0.85f, 1.0f);
+        const float drive = 1.0f + 0.06f * g;
+
+        if (s.valid)
+        {
+            if (traceEnabled_)
+                pushTrace (EcologyTraceEvent::Kind::Replace, beat, s, dest);
+            ++replacements_;
+        }
+
+        for (int i = 0; i < fragSamples; ++i)
+        {
+            float L = srcL[i] * gain;
+            float R = srcR[i] * gain;
+            // Soft clip without makeup gain (avoids small-signal amplification)
+            L = std::tanh (L * drive) / drive;
+            R = std::tanh (R * drive) / drive;
+            if (! std::isfinite (L)) L = 0.0f;
+            if (! std::isfinite (R)) R = 0.0f;
+            s.bufferL[static_cast<size_t> (i)] = L;
+            s.bufferR[static_cast<size_t> (i)] = R;
+        }
+        for (int i = fragSamples; i < maxFragSamples_; ++i)
+        {
+            s.bufferL[static_cast<size_t> (i)] = 0.0f;
+            s.bufferR[static_cast<size_t> (i)] = 0.0f;
+        }
+
+        const float mem = std::clamp (memoryParam, 0.0f, 1.0f);
+        s.valid = true;
+        s.memoryId = nextMemoryId_++;
+        s.lengthSamples = fragSamples;
+        s.fragmentBeats = fragBeats;
+        s.originBeat = parent.originBeat;
+        s.promoteBeat = beat;
+        s.lastRecallBeat = -1.0e9;
+        s.lastChildBirthBeat = -1.0e9;
+        s.recallCount = 0;
+        s.generation = childGen;
+        s.parentMemoryId = parent.memoryId;
+        s.rootMemoryId = rootId;
+        s.strength = 0.18f + 0.08f * mem; // weaker than typical parent
+        s.fatigue = 0.55f; // cooldown before immediate re-pick
+        ++descendants_;
+        ++promotions_;
+        lastPromotedSlot_ = dest;
+        lastChildPromoteBeat_ = beat;
+
+        // Update parent's last child birth (parent may still be active)
+        slots_[static_cast<size_t> (parentSlot)].lastChildBirthBeat = beat;
+
+        if (traceEnabled_)
+            pushTrace (EcologyTraceEvent::Kind::DescendantPromote, beat, s, dest);
         return true;
     }
 
@@ -344,6 +513,10 @@ private:
         s.strength = 0.0f;
         s.fatigue = 0.0f;
         s.recallCount = 0;
+        s.generation = 0;
+        s.parentMemoryId = 0;
+        s.rootMemoryId = 0;
+        s.lastChildBirthBeat = -1.0e9;
     }
 
     int findEmptySlot() noexcept
@@ -396,6 +569,9 @@ private:
         ev.fatigue = s.fatigue;
         ev.sourceBeat = s.originBeat;
         ev.fragmentBeats = s.fragmentBeats;
+        ev.generation = s.generation;
+        ev.parentMemoryId = s.parentMemoryId;
+        ev.rootMemoryId = s.rootMemoryId;
         traces_.push_back (ev);
     }
 
@@ -408,7 +584,8 @@ private:
     double lastEcologyBeat_ = 0.0;
     bool traceEnabled_ = false;
     std::vector<EcologyTraceEvent> traces_;
-    int promotions_ = 0, recallsStored_ = 0, forgotten_ = 0, replacements_ = 0;
+    int promotions_ = 0, recallsStored_ = 0, forgotten_ = 0, replacements_ = 0, descendants_ = 0;
+    double lastChildPromoteBeat_ = -1.0e9;
     pfl::generative::DeterministicRNG promoteRng_, slotRng_, ecologyRecallRng_, lifetimeRng_;
 };
 

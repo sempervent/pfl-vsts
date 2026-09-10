@@ -29,17 +29,19 @@ struct MemoryRecallEvent
     float memory = 0.0f;
     bool fromStored = false;
     int memoryId = -1;
+    int generation = 0;
 };
 
 /**
- * Memory Eater Stage 2: short-term ring + generative memory ecology.
- * Algorithm v2. Recalled wet is NOT written back into memory.
+ * Memory Eater Stage 3: ecology + bounded generational descendant capture.
+ * Algorithm v3. Recalled wet is NOT written back into the ring.
+ * Descendants come from explicit capture of the internal wet recall path only.
  * Send-first: MIX=1.0 on Ableton Return is the canonical workflow.
  */
 class MemoryEaterEngine
 {
 public:
-    static constexpr int kAlgorithmVersion = 2;
+    static constexpr int kAlgorithmVersion = 3;
     static constexpr float kMaxHistoryBeats = 32.0f;
     static constexpr float kMinDesignBpm = 40.0f;
     static constexpr double kOpportunityBeats = 0.5;
@@ -54,6 +56,9 @@ public:
         {
             history_.prepare (sampleRate_, maxBlockSize_, kMaxHistoryBeats, kMinDesignBpm);
             ecology_.prepare (sampleRate_);
+            const int n = ecology_.maxFragSamples();
+            captureL_.assign (static_cast<size_t> (std::max (1, n)), 0.0f);
+            captureR_.assign (static_cast<size_t> (std::max (1, n)), 0.0f);
             events_.clear();
             events_.reserve (4096);
             reset();
@@ -78,6 +83,7 @@ public:
         voiceActive_ = false;
         sourceMode_ = 0;
         voiceSlot_ = -1;
+        cancelCapture();
         lastEvalIndex_ = -1;
         lastRecallBeat_ = -1.0e9;
         lastTransportPlaying_ = false;
@@ -93,9 +99,10 @@ public:
             return;
         masterSeed_ = seed == 0 ? 1ull : seed;
         rebuildRng();
-        // Preserve ring + ecology; stop active recall safely
+        // Preserve ring + ecology/lineage; stop active recall/capture safely
         if (voiceActive_)
             beginRelease();
+        cancelCapture();
     }
 
     uint64_t seed() const noexcept { return masterSeed_; }
@@ -134,8 +141,12 @@ public:
 
     size_t totalRamBytes() const noexcept
     {
-        return historyRamBytes() + ecology_.slotRamBytes();
+        return historyRamBytes() + ecology_.slotRamBytes()
+               + captureL_.size() * sizeof (float) + captureR_.size() * sizeof (float);
     }
+
+    int descendantsCreated() const noexcept { return ecology_.descendants(); }
+    bool captureArmed() const noexcept { return captureArmed_; }
 
     void process (float* left, float* right, int numSamples,
                   bool transportPlaying, double ppqStart, double bpm) noexcept
@@ -161,6 +172,7 @@ public:
                 ecology_.resyncTimeline (ppqStart);
                 sourceMode_ = 0;
                 voiceSlot_ = -1;
+                cancelCapture(); // never promote partial child across seek
                 lastEvalIndex_ = -1;
                 lastRecallBeat_ = -1.0e9;
             }
@@ -170,6 +182,7 @@ public:
         {
             if (voiceActive_)
                 beginRelease();
+            cancelCapture(); // cancel incomplete descendant on stop
         }
         lastTransportPlaying_ = transportPlaying;
 
@@ -206,6 +219,10 @@ public:
             wetL = limL_.processSample (wetL);
             wetR = limR_.processSample (wetR);
 
+            // Stage 3: explicit descendant capture from internal wet (pre MIX/OUTPUT)
+            if (transportPlaying)
+                tickCapture (wetL, wetR, ppq, memory);
+
             float outL = inL * (1.0f - mix) + wetL * mix;
             float outR = inR * (1.0f - mix) + wetR * mix;
             outL = std::clamp (outL * outG, -0.99f, 0.99f);
@@ -229,6 +246,8 @@ private:
         lookbackRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, 0x4C4F4F4Bull);
         fragmentRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, 0x46524147ull);
         durationRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, 0x44555241ull);
+        descendantRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, 0x44455343ull); // DESC
+        captureWindowRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, 0x57494E44ull); // WIND
         ecology_.reseed (masterSeed_);
     }
 
@@ -350,7 +369,8 @@ private:
             const int loops = std::max (1, static_cast<int> (std::ceil (
                 durBeats / std::max (0.01f, s.fragmentBeats))));
             pushRecallEvent (beat, s.originBeat, beat - s.originBeat, s.fragmentBeats, durBeats,
-                             loops, hunger, memory, true, s.memoryId);
+                             loops, hunger, memory, true, s.memoryId, s.generation);
+            maybeArmDescendantCapture (slot, beat, memory, bpm);
             return;
         }
 
@@ -399,14 +419,14 @@ private:
         const int loops = std::max (1, static_cast<int> (std::ceil (durBeats / fragBeats)));
         const double sourceBeat = beat - lookbackBeats;
         pushRecallEvent (beat, sourceBeat, lookbackBeats, fragBeats, durBeats, loops,
-                         hunger, memory, false, -1);
+                         hunger, memory, false, -1, 0);
 
         ecology_.tryPromote (history_, beat, sourceBeat, lookbackSamples2, fragLenSamples_,
                              fragBeats, memory, inputActivity_);
     }
 
     void pushRecallEvent (double beat, double sourceBeat, double lookback, float frag, float dur,
-                          int loops, float hunger, float memory, bool stored, int mid) noexcept
+                          int loops, float hunger, float memory, bool stored, int mid, int gen) noexcept
     {
         if (! traceEnabled_ || events_.size() >= events_.capacity())
             return;
@@ -421,7 +441,120 @@ private:
         ev.memory = memory;
         ev.fromStored = stored;
         ev.memoryId = mid;
+        ev.generation = gen;
         events_.push_back (ev);
+    }
+
+    void cancelCapture() noexcept
+    {
+        captureArmed_ = false;
+        captureWriting_ = false;
+        capturePos_ = 0;
+        captureTarget_ = 0;
+        captureParentSlot_ = -1;
+        captureFragBeats_ = 0.0f;
+        captureSkipRemaining_ = 0;
+    }
+
+    void maybeArmDescendantCapture (int parentSlot, double beat, float memory, double bpm) noexcept
+    {
+        cancelCapture();
+        if (parentSlot < 0)
+            return;
+        const auto& p = ecology_.slot (parentSlot);
+        if (! p.valid)
+            return;
+        if (p.generation >= MemoryEcology::kMaxGeneration)
+            return;
+        if (p.recallCount < 2) // first reinforce only; anti-cascade
+            return;
+        if (beat - p.promoteBeat < MemoryEcology::kGenCooldownBeats)
+            return;
+        if (beat - p.lastChildBirthBeat < MemoryEcology::kGenCooldownBeats)
+            return;
+        if (beat - ecology_.lastChildPromoteBeat() < MemoryEcology::kGlobalChildCooldownBeats)
+            return;
+
+        const float mem = std::clamp (memory, 0.0f, 1.0f);
+        float prob = (0.14f + 0.20f * mem) * (1.0f - 0.45f * p.fatigue)
+                     * std::pow (0.75f, static_cast<float> (p.generation));
+        prob = std::clamp (prob, 0.0f, 0.32f);
+        if (descendantRng_.nextFloat() >= prob)
+            return;
+
+        // Structural mutation: offset + shorter window into parent length
+        const float offU = captureWindowRng_.nextFloat();
+        const float lenU = captureWindowRng_.nextFloat();
+        const int parentLen = std::max (8, p.lengthSamples);
+        captureSkipRemaining_ = static_cast<int> (offU * 0.28f * static_cast<float> (parentLen));
+        int target = static_cast<int> ((0.55f + 0.37f * lenU) * static_cast<float> (parentLen));
+        target = std::clamp (target, 8, ecology_.maxFragSamples());
+        // Also bound by remaining sustain after attack
+        const int sustainBudget = std::max (8, voiceDurationSamples_ - attackSamples_);
+        target = std::min (target, sustainBudget);
+
+        captureArmed_ = true;
+        captureWriting_ = false;
+        capturePos_ = 0;
+        captureTarget_ = target;
+        captureParentSlot_ = parentSlot;
+        captureFragBeats_ = p.fragmentBeats * (static_cast<float> (target) / static_cast<float> (parentLen));
+        captureMemoryParam_ = mem;
+        captureBpm_ = bpm;
+        if (traceEnabled_ && ecology_.traces().size() < 8192)
+        {
+            // lightweight: reuse ecology push via temporary slot snapshot not available;
+            // recall event already logged; descendant promote logged on finalize
+        }
+    }
+
+    void tickCapture (float wetL, float wetR, double beat, float memory) noexcept
+    {
+        if (! captureArmed_)
+            return;
+        // Only capture during sustain of stored voice
+        if (! voiceActive_ || sourceMode_ != 1 || voicePhase_ != 1)
+        {
+            if (voicePhase_ == 2 || ! voiceActive_)
+            {
+                // End of recall without enough samples → cancel
+                if (capturePos_ > 0 && capturePos_ >= captureTarget_ / 2)
+                    finalizeCapture (beat, memory);
+                else
+                    cancelCapture();
+            }
+            return;
+        }
+
+        if (captureSkipRemaining_ > 0)
+        {
+            --captureSkipRemaining_;
+            return;
+        }
+
+        captureWriting_ = true;
+        if (capturePos_ < captureTarget_ && capturePos_ < static_cast<int> (captureL_.size()))
+        {
+            captureL_[static_cast<size_t> (capturePos_)] = wetL;
+            captureR_[static_cast<size_t> (capturePos_)] = wetR;
+            ++capturePos_;
+        }
+        if (capturePos_ >= captureTarget_)
+            finalizeCapture (beat, memory);
+    }
+
+    void finalizeCapture (double beat, float memory) noexcept
+    {
+        if (! captureArmed_ || captureParentSlot_ < 0 || capturePos_ < 8)
+        {
+            cancelCapture();
+            return;
+        }
+        const int n = capturePos_;
+        ecology_.tryPromoteDescendant (beat, captureParentSlot_,
+                                       captureL_.data(), captureR_.data(),
+                                       n, captureFragBeats_, memory);
+        cancelCapture();
     }
 
     void beginRelease() noexcept
@@ -455,6 +588,9 @@ private:
                 ecology_.clearActiveSlot();
                 voiceSlot_ = -1;
                 sourceMode_ = 0;
+                // Incomplete capture already handled in tickCapture; ensure cancelled
+                if (captureArmed_ && capturePos_ < captureTarget_)
+                    cancelCapture();
                 return;
             }
         }
@@ -507,6 +643,7 @@ private:
     DCBlocker dcL_, dcR_;
     SafetyLimiter limL_, limR_;
     pfl::generative::DeterministicRNG opportunityRng_, lookbackRng_, fragmentRng_, durationRng_;
+    pfl::generative::DeterministicRNG descendantRng_, captureWindowRng_;
 
     int lastEvalIndex_ = -1;
     double lastRecallBeat_ = -1.0e9;
@@ -527,6 +664,18 @@ private:
     int attackSamples_ = 144;
     int releaseSamples_ = 384;
     int xfadeSamples_ = 240;
+
+    // Stage 3 descendant capture (preallocated scratch; never wet→ring)
+    bool captureArmed_ = false;
+    bool captureWriting_ = false;
+    int capturePos_ = 0;
+    int captureTarget_ = 0;
+    int captureParentSlot_ = -1;
+    int captureSkipRemaining_ = 0;
+    float captureFragBeats_ = 0.0f;
+    float captureMemoryParam_ = 0.5f;
+    double captureBpm_ = 120.0;
+    std::vector<float> captureL_, captureR_;
 
     bool traceEnabled_ = false;
     std::vector<MemoryRecallEvent> events_;

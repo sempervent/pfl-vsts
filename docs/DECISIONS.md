@@ -1001,3 +1001,53 @@ Tag: `memory-eater-stage2-complete`. PR #15 merged.
 **SEND-FIRST** remains canonical: Ableton Return with MIX=1.0; source via Sends.
 Insert still supported. No SEND MODE parameter.
 
+
+---
+
+## 2026-09-10 — Memory Eater Stage 3 generational / bounded self-resampling
+
+### Why
+
+Stage 2 memories can now occasionally produce **descendants** — memories of memories — so listeners hear recognizably related but altered retellings.
+
+### Explicit descendant capture (not feedback)
+
+Rejected continuous wet→input / wet→ring feedback.
+Chosen: arm a fixed scratch during a **stored** recall; tap wet after fragment playback + DC/limiter, **before** MIX/OUTPUT; promote a child MemorySlot when the window fills.
+
+### Generation model
+
+- Generation 0: live-input promotion (Stage 2 path)
+- Generation 1+: descendant of a stored recall
+- Cap: **3** (gens 0…3) — deeper than 3 loses recognizability under 6 slots
+- Metadata: `generation`, `parentMemoryId`, `rootMemoryId`, `lastChildBirthBeat`
+
+### Mutation
+
+Primary: structural (capture offset 0–28%, length 55–92% of parent).
+Secondary copy-loss at birth only: mild level loss + soft sat scaled by generation. No bandwidth filter. No Ruin Engine states. No pitch/reverse/stretch.
+
+### Anti-cascade / diversity
+
+- Child only from stored recalls; parent.recallCount ≥ 2; generation cooldown 12 beats; global ≥8 beats between births
+- New child not eligible to spawn until later opportunities
+- ≤3 slots per root (≤2 when ecology ≥4 occupied); soft weight penalty in selection
+
+### Controls / transport
+
+Public controls unchanged. HUNGER=activity; MEMORY=depth (+ modest lineage persistence).
+Seek/stop cancel incomplete capture; ecology/lineage survive seek. No audio serialization.
+
+
+---
+
+## 2026-09-10 — Memory Eater Stage 3 Ableton PASS
+
+### Acceptance
+
+CREATIVE-DIRECTOR ABLETON ACCEPTANCE: **PASS**.
+Tag: `memory-eater-stage3-complete`. PR #16 merged.
+
+Generational memory is musically successful on Return tracks.
+Send-first remains canonical. Ready for Stage 4 performance intervention (final software stage before park).
+

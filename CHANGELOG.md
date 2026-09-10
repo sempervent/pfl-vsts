@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Memory Eater — Stage 3 COMPLETE
+
+- Creative-director Ableton acceptance **PASS** (generational memory)
+- Bounded self-resampling via explicit descendant capture; gens 0…3; algorithm **v3**
+- **SEND-FIRST** preserved; Return-track descendants musically successful
+- Tag: `memory-eater-stage3-complete`
+- PR #16 merged to `main`
+
 ### Memory Eater — Stage 2 COMPLETE
 
 - Creative-director Ableton acceptance **PASS** (memory ecology)

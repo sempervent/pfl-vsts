@@ -59,7 +59,7 @@ void renderRun (pfl::dsp::MemoryEaterEngine& eng, std::vector<float>& L, std::ve
 
 static void testAlgorithmVersion()
 {
-    EXPECT (pfl::dsp::MemoryEaterEngine::kAlgorithmVersion == 2);
+    EXPECT (pfl::dsp::MemoryEaterEngine::kAlgorithmVersion == 3);
 }
 
 static void testMixZeroDry()
@@ -543,6 +543,72 @@ static void testEcologyForgetting()
               << " occupied=" << eng.ecology().occupiedCount() << "\n";
 }
 
+static void testDescendantsAppear()
+{
+    const double sr = 48000.0, bpm = 96.0;
+    const double bps = (bpm / 60.0) / sr;
+    const int n = static_cast<int> (256.0 / bps);
+    auto src = makeIdentSource (n, sr, bpm);
+    pfl::dsp::MemoryEaterEngine eng;
+    eng.prepare (sr);
+    eng.setSeed (9001);
+    eng.setMix (1.0f);
+    eng.setHunger (0.85f);
+    eng.setMemory (0.85f);
+    eng.setOutput (0.9f);
+    eng.snapMacros();
+    eng.setTraceEnabled (true);
+    auto L = src, R = src;
+    renderRun (eng, L, R, sr, bpm, true, 256);
+    EXPECT (eng.ecology().descendants() > 0);
+    int maxGen = 0;
+    for (int i = 0; i < eng.ecology().numSlots(); ++i)
+    {
+        const auto& s = eng.ecology().slot (i);
+        if (s.valid)
+            maxGen = std::max (maxGen, s.generation);
+    }
+    for (const auto& e : eng.events())
+        if (e.fromStored)
+            maxGen = std::max (maxGen, e.generation);
+    EXPECT (maxGen >= 1);
+    EXPECT (maxGen <= pfl::dsp::MemoryEcology::kMaxGeneration);
+    EXPECT (eng.ecology().maxLineageOccupancy() <= 3);
+    std::cout << "descendants=" << eng.ecology().descendants()
+              << " maxGen=" << maxGen
+              << " maxLineageOcc=" << eng.ecology().maxLineageOccupancy() << "\n";
+}
+
+static void testGenerationCapNoOverflow()
+{
+    EXPECT (pfl::dsp::MemoryEcology::kMaxGeneration == 3);
+}
+
+static void testSeekCancelsCapturePreservesLineage()
+{
+    const double sr = 48000.0, bpm = 96.0;
+    const double bps = (bpm / 60.0) / sr;
+    const int n = static_cast<int> (180.0 / bps);
+    auto src = makeIdentSource (n, sr, bpm);
+    pfl::dsp::MemoryEaterEngine eng;
+    eng.prepare (sr);
+    eng.setSeed (4242);
+    eng.setMix (1.0f);
+    eng.setHunger (0.9f);
+    eng.setMemory (0.9f);
+    eng.setOutput (0.9f);
+    eng.snapMacros();
+    auto L = src, R = src;
+    renderRun (eng, L, R, sr, bpm, true, 128);
+    const int desc = eng.ecology().descendants();
+    const int occ = eng.ecology().occupiedCount();
+    std::vector<float> z (64, 0.2f);
+    eng.process (z.data(), z.data(), 64, true, 600.0, bpm);
+    EXPECT (! eng.captureArmed());
+    EXPECT (eng.ecology().occupiedCount() == occ);
+    EXPECT (eng.ecology().descendants() == desc);
+}
+
 static void testNoWetWriteback()
 {
     // Ring must only grow from input: after MIX=1 recalls, silence input should
@@ -614,6 +680,9 @@ int main()
     testHungerIncreasesActivity();
     testStoredOutlivesRing();
     testEcologyForgetting();
+    testDescendantsAppear();
+    testGenerationCapNoOverflow();
+    testSeekCancelsCapturePreservesLineage();
     testNoWetWriteback();
 
     if (gFails == 0)

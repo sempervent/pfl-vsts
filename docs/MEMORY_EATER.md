@@ -4,51 +4,21 @@ Deterministic generative **audio-memory** effect.
 
 ## Status
 
-**Stage 1 COMPLETE** — Ableton **PASS**. Tag: `memory-eater-stage1-complete` · PR #14.
+**Stage 1–3 COMPLETE** — Ableton **PASS** (tags `memory-eater-stage1-complete` … `stage3-complete`).
 
-**Stage 2 COMPLETE** — Ableton **PASS**. Tag: `memory-eater-stage2-complete` · PR #15.
+**Stage 4 IN PROGRESS** — performance intervention (final planned software stage).
 
-**Stage 3 IN PROGRESS** — generational / bounded self-resampling.
+## CREATIVE-DIRECTOR ABLETON ACCEPTANCE: PASS (Stage 3)
 
-Ruin Engine remains PARKED at Stage 4.
+Generational memory accepted. Descendants remain useful on a Return track.
+**SEND-FIRST** remains canonical. Ready for final performance-intervention stage.
 
-## CREATIVE-DIRECTOR ABLETON ACCEPTANCE: PASS (Stage 2)
-
-Memory ecology accepted. Recurring fragments, forgetting, and deep callbacks beyond the 32-beat ring are musically useful.
-
-### SEND-FIRST (preserved)
+## SEND-FIRST (canonical)
 
 ```text
-SOURCE TRACKS
-    ↓ Ableton Sends
-MEMORY EATER RETURN
-    MIX = 1.0
+SOURCE TRACK(S) ──► Ableton Sends ──► RETURN (PFL Memory Eater, MIX=1.0)
 ```
-
-Insert remains supported. Do not route the Return into its own Send.
-
-## Purpose
-
-Listen to recent audio, retain bounded history, promote longer-lived memories, and (Stage 3) allow remembered fragments to occasionally become parents of descendant memories — without a continuous feedback loop.
-
-## Architecture (Stage 2)
-
-```text
-INPUT ──► short-term ring (original only)
-              │
-              ├─► sparse PROMOTE ──► memory ecology (6 slots)
-              │
-              ▼
-         recall scheduler ──► recent ring OR stored slot
-              │
-              ▼
-         one-voice microloop → DC → limiter → MIX ← DRY → OUTPUT
-```
-
-## Public controls
-
-MIX · HUNGER · MEMORY · OUTPUT · SEED
 
 ## Algorithm
 
-Stage 2: **v2**. Stage 3 will increment to **v3**.
+Stage 3: **v3**. Stage 4 will add performance-engine **v1** + algorithm **v4**.
