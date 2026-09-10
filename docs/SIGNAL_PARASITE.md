@@ -10,9 +10,19 @@ generated sound. Stage 3 makes that relationship *performable*.
 
 ## Status
 
-**Stage 3 — WAITING FOR CREATIVE-DIRECTOR ACCEPTANCE.**
-Stages 1–2 COMPLETE — Ableton **PASS**.
-Tags: `signal-parasite-stage2-complete` (PR #22), `signal-parasite-stage1-complete` (PR #21).
+**Stage 3 COMPLETE — CREATIVE-DIRECTOR ABLETON ACCEPTANCE: PASS.**
+**PARKED.** Tag: `signal-parasite-stage3-complete` (PR #23).
+Also: `signal-parasite-stage2-complete` (PR #22), `signal-parasite-stage1-complete` (PR #21).
+
+## CREATIVE-DIRECTOR ABLETON ACCEPTANCE: PASS (Stage 3)
+
+Confirmed by human Ableton testing: performance intervention works as engineered.
+FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE accepted. Relationship model and
+SENSITIVITY / HUNGER / MUTATION distinctions remain.
+
+**Product decision:** SIGNAL PARASITE v3 IS SUFFICIENTLY COMPLETE TO SHIP AND PARK.
+
+No Stage 4. No tonal-listening work. Next suite effort is UI / release polish.
 
 ## CREATIVE-DIRECTOR ABLETON ACCEPTANCE: PASS (Stage 2)
 
@@ -105,15 +115,11 @@ Normal desktop: no scrolling required. Footer: `PFL Signal Parasite - Stage 3`.
 `renders/signal-parasite/stage3/` — performance journey and verb diagnostics.
 `renders/signal-parasite/stage2/` — relationship fixtures (accepted).
 
-## Ableton acceptance (Stage 3)
+## Ableton acceptance (Stage 3) — PASS
 
-Computer-only. First verify all 11 controls visible without scrolling and clean
-footer. Then defaults (MIX .50 / SENS .50 / HUNGER .35 / MUT .25 / SEED 2002)
-for 64–128 bars: FREEZE, HUNGER/SENS while frozen, MUTATE, COLLAPSE→DORMANT,
-RESEED, SILENCE listen/unsilence, FREEZE+SILENCE, no-source commands silent.
-Insert vs Return (MIX=1) both valid.
+Performance verbs accepted in Ableton. Insert and Return (MIX=1) both valid.
 
-## Out of scope
+## Out of scope / parked
 
-Pitch/tonal listening, FFT, audio memory, second voice, MIDI/studio, custom GUI
-redesign. After PASS: **park** — do not auto-start Stage 4 or tonal work.
+Pitch/tonal listening, FFT, audio memory, second voice, MIDI/studio.
+**Do not auto-start Stage 4 or tonal work.** Suite UI / release polish is next.

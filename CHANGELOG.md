@@ -2,16 +2,16 @@
 
 ## Unreleased
 
-### Signal Parasite — Stage 3 (awaiting creative-director acceptance)
+### Signal Parasite — Stage 3 COMPLETE (PARKED)
 
-- Algorithm **v3** + performance-engine **v1**: FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE
-- FREEZE holds ParasiteDNA + RelationshipState while still listening/answering
-- Manual MUTATE = one bounded DNA trait (≠ continuous MUTATION)
-- COLLAPSE = 24-beat CLING → FEVER → WITHDRAW → DORMANT (≠ HUNGER fade; ≠ SILENCE)
-- SILENCE mutes total output (~4 ms ramp) while analyzer keeps listening; no unsilence backlog
-- RESEED wakes a new parasite / exits DORMANT; preserves FREEZE latch
-- Editor auto-sizes for 11 controls (~420×484); Stage 3 footer
-- Branch: `pr/signal-parasite-stage3-performance`
+- Creative-director Ableton acceptance **PASS** (performance intervention)
+- FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE; algorithm **v3** + performance-engine **v1**
+- Relationship model + Stage 1 voice preserved when performance idle
+- Ableton template interaction evaluated; no seventh plugin required now
+- **Product decision:** SIGNAL PARASITE v3 IS SUFFICIENTLY COMPLETE TO SHIP AND PARK
+- Tag: `signal-parasite-stage3-complete`
+- PR #23 merged to `main`
+- Next product effort: suite UI / release polish (not Stage 4 / tonal)
 
 ### Signal Parasite — Stage 2 COMPLETE
 

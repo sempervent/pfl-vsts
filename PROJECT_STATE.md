@@ -4,16 +4,17 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**PFL Signal Parasite Stage 3 — WAITING FOR CREATIVE-DIRECTOR ACCEPTANCE**
-(performance intervention FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE).
-Stage 2 COMPLETE (Ableton PASS). Pulse Colony **PARKED** at Stage 3.
-Memory Eater **PARKED** at Stage 4. Ruin Engine PARKED at Stage 4.
+**PFL SUITE UI / RELEASE POLISH** — Signal Parasite **PARKED** at Stage 3
+(Ableton PASS). Next: unified custom interfaces; no new plugin / Stage 4 /
+tonal / MIDI work.
 
-Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
+Pulse Colony **PARKED** at Stage 3. Memory Eater **PARKED** at Stage 4.
+Ruin Engine PARKED at Stage 4. Broken Conductor software paused after Stage 6
+(Stage 7 = physical rig).
 
 ## Branch / tags
 
-- Stage 3 in progress: `pr/signal-parasite-stage3-performance`
+- Stage 3 complete: `signal-parasite-stage3-complete` (PR #23)
 - Stage 2 complete: `signal-parasite-stage2-complete` (PR #22)
 - Stage 1 complete: `signal-parasite-stage1-complete` (PR #21)
 - Stage 3 complete: `pulse-colony-stage3-complete` (PR #20)
@@ -95,15 +96,15 @@ Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 3 awaiting acceptance**; Stages 1–2 COMPLETE (Ableton PASS) |
-| Engine | algorithm **v3** + performance-engine **v1** (`SignalParasiteEngine.h` + `SignalParasitePerformanceController.h`) |
+| Status | **PARKED** — Stage 3 COMPLETE (Ableton PASS) |
+| Engine | algorithm **v3** + performance-engine **v1** |
 | Formats | AU VST3 (`Fx`) · `Sig1` · `com.pfl.signalparasite` |
 | Params | MIX 0.50, SENSITIVITY 0.50, HUNGER 0.35, MUTATION 0.25, OUTPUT 0.85, SEED 2002 |
 | Performance | FREEZE, SILENCE, MUTATE, COLLAPSE, RESEED |
-| Job | Listen → ATTACK/SHIFT → relationship → DNA + HUNGER → ONE ParasiteVoice; Stage 3 adds performance verbs above that stack |
-| Relationship | LURKING / ATTACHED / ANSWERING / WITHDRAWN (held under FREEZE; overlay under COLLAPSE) |
+| Job | Listen → ATTACK/SHIFT → relationship → DNA + HUNGER → ONE ParasiteVoice |
+| Relationship | LURKING / ATTACHED / ANSWERING / WITHDRAWN |
 | Collapse | CLING → FEVER → WITHDRAW → DORMANT (24 beats) |
 | Wet | Generated audio only; analysis taps original input |
-| Tags | `signal-parasite-stage2-complete` (PR #22); `signal-parasite-stage1-complete` (PR #21) |
-| Editor | 11 automatable params → ~420×484 via `PflGenericEditorSizing.h`; Stage 3 footer |
-| Next | Creative-director Ableton listening on Stage 3. After PASS: park (no Stage 4 / tonal auto-start). |
+| Tags | `signal-parasite-stage1-complete` … `signal-parasite-stage3-complete` |
+| Product decision | **SIGNAL PARASITE v3 IS SUFFICIENTLY COMPLETE TO SHIP AND PARK.** |
+| Next | No Stage 4 / tonal listening without new listening evidence or explicit creative-director direction. Suite UI polish is the next product effort. |

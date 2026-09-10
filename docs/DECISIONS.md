@@ -1867,3 +1867,37 @@ mutations, collapse phases, responses (within analysis tolerances).
 Knob-automation verbs; FREEZE=MUTATION=0; COLLAPSE=HUNGER fade; SILENCE=MIX=0;
 autonomous collapse noises; second voice; tonal listening; audio memory;
 custom GUI redesign; MIDI/studio; inventing stimuli under silence/collapse.
+
+---
+
+## 2026-09-10 — Signal Parasite Stage 3 Ableton PASS + PARK
+
+### Acceptance
+
+CREATIVE-DIRECTOR ABLETON ACCEPTANCE: **PASS**.
+Tag: `signal-parasite-stage3-complete`. PR #23 merged.
+
+Performance intervention accepted: FREEZE holds personality + relationship while
+still listening/answering; MUTATE is one bounded DNA habit; COLLAPSE is an
+audible CLING→FEVER→WITHDRAW→DORMANT arc (≠ HUNGER fade); RESEED awakens a
+different parasite; SILENCE mutes output while keeping ears open. SENSITIVITY /
+HUNGER / MUTATION remain distinct. Stage 2 relationship behavior preserved when
+performance idle.
+
+### Product decision
+
+**SIGNAL PARASITE v3 IS SUFFICIENTLY COMPLETE TO SHIP AND PARK.**
+
+Creative director also evaluated Ableton template interaction across PFL plugins
+and determined another plugin is not currently necessary. Next highest-value
+effort: suite cleanup and visual/UI polish.
+
+Preserve: FeatureExtractor, StimulusDetector, LURKING/ATTACHED/ANSWERING/WITHDRAWN,
+SENSITIVITY, HUNGER, MUTATION, FREEZE, MUTATE, COLLAPSE, RESEED, SILENCE.
+Do not retune musical behavior.
+
+### Next
+
+**PFL SUITE UI / RELEASE POLISH** — remove stage numbers from musician-facing UI,
+shared custom editor, distinct visual identities. No Stage 4, no tonal listening,
+no seventh plugin, no MIDI/studio work.

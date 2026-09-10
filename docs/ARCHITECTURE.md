@@ -108,7 +108,7 @@ See `docs/PULSE_COLONY.md`.
 
 COLLAPSE: SWARM → STARVE → FRACTURE → RESIDUE (24 beats). FREEZE ≠ MUTATION=0; SILENCE ≠ MIX=0.
 
-## Signal Parasite (Stage 3 — awaiting acceptance)
+## Signal Parasite (PARKED — Stage 3 COMPLETE)
 
 ```text
 Host / APVTS  (MIX SENSITIVITY HUNGER MUTATION OUTPUT SEED
@@ -149,10 +149,9 @@ Host audio in ---- ORIGINAL tap --------------------+
                      OUTPUT -> silenceGain (~4 ms) -> audio out
 ```
 
-Ableton PASS Stages 1–2. Tags `signal-parasite-stage1-complete`,
-`signal-parasite-stage2-complete`. Algorithm **v3** + performance-engine **v1**.
-COLLAPSE: CLING → FEVER → WITHDRAW → DORMANT (24 beats). FREEZE ≠ MUTATION=0;
-SILENCE ≠ MIX=0. Shared editor sizing accepted. See `docs/SIGNAL_PARASITE.md`.
+Ableton PASS Stages 1–3. Tags `signal-parasite-stage1-complete` …
+`signal-parasite-stage3-complete`. **PARKED** at v3. No Stage 4 / tonal
+without new listening evidence. See `docs/SIGNAL_PARASITE.md`.
 
 The wet path is **generated**, never the input reprocessed. Analysis reads the
 original input only. No FFT, no pitch tracking. SENSITIVITY owns detection,
