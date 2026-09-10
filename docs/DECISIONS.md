@@ -1096,3 +1096,9 @@ Performance commands are deterministic timeline inputs. Algorithm **v4** + perfo
 ### Rejected
 
 Copying Ruin mutation axes; FREEZE-as-looper; COLLAPSE-as-instant-clear; RESEED-as-forget; SILENCE=MIX0; serializing memory audio; new continuous knobs; studio/MIDI mapping.
+
+### Safety notes (implementation)
+
+- FREEZE/SILENCE pause lifecycle and `resyncTimeline` + `snapScheduler` on exit so paused musical time does not become a catch-up wipe / opportunity backlog.
+- COLLAPSE may leave FREEZE latched under the host toggle; residue re-enters Frozen if latch remains.
+- Collapsed mode pauses lifecycle so residue does not evaporate while parked.
