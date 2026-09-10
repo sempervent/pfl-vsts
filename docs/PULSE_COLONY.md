@@ -4,6 +4,8 @@ Deterministic generative **rhythmic audio gate** — evolving PulseCell organism
 
 ## Status
 
+**Stage 3 IN PROGRESS** — performance intervention (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE).
+
 **Stage 2 COMPLETE** — Ableton **PASS**. Tag: `pulse-colony-stage2-complete`.
 
 Stage 1 COMPLETE — Ableton **PASS**. Tag: `pulse-colony-stage1-complete`.
@@ -51,6 +53,16 @@ Accepted findings:
 | MOTION | 0.35 | wet stereo movement |
 | OUTPUT | 0.85 | post-mix level |
 | SEED | 2002 | deterministic personality |
+| FREEZE | off | latch — pause DNA evolution + hunger; arbiter/gate live |
+| SILENCE | off | latch — total output mute (≠ MIX=0) |
+| MUTATE | edge | one cell, one bounded MutOp |
+| COLLAPSE | edge | 24-beat SWARM→STARVE→FRACTURE→RESIDUE |
+| RESEED | edge | new three-cell universe |
+
+## Performance (Stage 3)
+
+Priority: **SILENCE > COLLAPSE > FREEZE > MUTATE**. Algorithm **v3**, performance-engine **v1**.
+Idle (no commands) preserves Stage 2 autonomous colony behavior.
 
 ## Signal path
 
@@ -73,8 +85,8 @@ in ─► dry ──────────────────────
 | SKITTER | Propulsion around Anchor — short opens |
 | GHOST | Sparse gap punctuation |
 
-## Explicitly out of scope (Stage 2)
+## Explicitly out of scope
 
-Multiband · performance FREEZE/MUTATE/COLLAPSE · MIDI · audio memory · feedback · parallel cell audio sum · public role knobs · studio/controllers
+Multiband · MIDI · audio memory · feedback · parallel cell audio sum · public role knobs · studio/controllers · silent Stage 2 retunes
 
-Next: Stage 3 performance intervention (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE), then park.
+Next after Stage 3 Ableton PASS: park.

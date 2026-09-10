@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Pulse Colony — Stage 3 IN PROGRESS
+
+- Performance intervention: FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE
+- Algorithm **v3** + performance-engine **v1**; Stage 2 autonomy unchanged when idle
+- COLLAPSE arc SWARM→STARVE→FRACTURE→RESIDUE (≠ DENSITY ramp)
+- Branch: `pr/pulse-colony-stage3-performance`
+
 ### Pulse Colony — Stage 2 COMPLETE
 
 - Creative-director Ableton acceptance **PASS** (multi-cell rhythmic colony)

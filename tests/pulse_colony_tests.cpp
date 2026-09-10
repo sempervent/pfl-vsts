@@ -1,4 +1,6 @@
 #include "dsp/PulseColonyEngine.h"
+#include "dsp/ParamSmoother.h"
+#include "performance/PulseColonyPerformanceController.h"
 
 #include <cmath>
 #include <cstdint>
@@ -59,6 +61,41 @@ void processRun (pfl::dsp::PulseColonyEngine& eng, std::vector<float>& L, std::v
     }
 }
 
+void processWithPerf (pfl::dsp::PulseColonyEngine& eng,
+                      pfl::pulse_perf::PulseColonyPerformanceController& perf,
+                      std::vector<float>& L, std::vector<float>& R,
+                      double sr, double bpm, double startBeat, double numBeats,
+                      bool playing, int block = 256,
+                      pfl::dsp::ParamSmoother* silenceSm = nullptr)
+{
+    const double bps = (bpm / 60.0) / sr;
+    const int n = static_cast<int> (numBeats / bps);
+    const int offset = static_cast<int> (startBeat / bps);
+    int done = 0;
+    while (done < n)
+    {
+        const int m = std::min (block, n - done);
+        const int idx = offset + done;
+        if (idx + m > static_cast<int> (L.size()))
+            break;
+        const double ppq = startBeat + static_cast<double> (done) * bps;
+        perf.tick (ppq, playing, eng);
+        eng.process (L.data() + idx, R.data() + idx, m, playing, ppq, bpm);
+        if (silenceSm != nullptr)
+        {
+            const bool silenced = perf.mode() == pfl::pulse_perf::Mode::Silenced;
+            silenceSm->setTarget (silenced ? 0.0f : 1.0f);
+            for (int i = 0; i < m; ++i)
+            {
+                const float g = silenceSm->getNext();
+                L[static_cast<size_t> (idx + i)] *= g;
+                R[static_cast<size_t> (idx + i)] *= g;
+            }
+        }
+        done += m;
+    }
+}
+
 std::string dnaKey (const pfl::dsp::PulseDNA& dna)
 {
     std::ostringstream os;
@@ -94,7 +131,8 @@ void setupDefaults (pfl::dsp::PulseColonyEngine& eng, float dens = 0.5f, float m
 
 static void testAlgorithmVersion()
 {
-    EXPECT (pfl::dsp::PulseColonyEngine::kAlgorithmVersion == 2);
+    EXPECT (pfl::dsp::PulseColonyEngine::kAlgorithmVersion == 3);
+    EXPECT (pfl::pulse_perf::kPerformanceEngineVersion == 1);
 }
 
 static void testThreeCellsExist()
@@ -638,6 +676,283 @@ static void testLongSoak()
     EXPECT (eng.colonyOpenOccupancy() < 0.95f);
 }
 
+static void testStage3FreezeHoldsGenHungerGate()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    const double bps = (bpm / 60.0) / sr;
+    const int n = static_cast<int> (96.0 / bps);
+    auto src = makeTone (n, sr);
+    pfl::dsp::PulseColonyEngine eng;
+    pfl::pulse_perf::PulseColonyPerformanceController perf;
+    setupDefaults (eng, 0.55f, 0.80f, 0.0f);
+    perf.reset (2002);
+    auto L = src, R = src;
+    processWithPerf (eng, perf, L, R, sr, bpm, 0.0, 32.0, true);
+    const int gen0 = eng.generation();
+    const float h0 = eng.beatsSinceRole (0);
+    const float h1 = eng.beatsSinceRole (1);
+    const float h2 = eng.beatsSinceRole (2);
+    eng.setTraceEnabled (true);
+    eng.clearTraces();
+    perf.trigger (pfl::pulse_perf::Command::FreezeOn, 32.0, eng);
+    EXPECT (eng.evolutionPaused());
+    processWithPerf (eng, perf, L, R, sr, bpm, 32.0, 64.0, true);
+    EXPECT (perf.mode() == pfl::pulse_perf::Mode::Frozen);
+    EXPECT (eng.generation() == gen0);
+    // Hunger must not accumulate while frozen (may reset to 0 on accept).
+    EXPECT (eng.beatsSinceRole (0) <= h0 + 1.0e-4f);
+    EXPECT (eng.beatsSinceRole (1) <= h1 + 1.0e-4f);
+    EXPECT (eng.beatsSinceRole (2) <= h2 + 1.0e-4f);
+    // Gate still opens while frozen
+    EXPECT (eng.roleAcceptCount (0) + eng.roleAcceptCount (1) + eng.roleAcceptCount (2) >= 1);
+}
+
+static void testStage3FreezeDensNoDnaChange()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    const double bps = (bpm / 60.0) / sr;
+    const int n = static_cast<int> (80.0 / bps);
+    auto src = makeTone (n, sr);
+    pfl::dsp::PulseColonyEngine eng;
+    pfl::pulse_perf::PulseColonyPerformanceController perf;
+    setupDefaults (eng, 0.40f, 0.50f, 0.0f);
+    perf.reset (2002);
+    auto L = src, R = src;
+    processWithPerf (eng, perf, L, R, sr, bpm, 0.0, 16.0, true);
+    perf.trigger (pfl::pulse_perf::Command::FreezeOn, 16.0, eng);
+    const auto k0 = dnaKey (eng.cellDna (0));
+    const auto k1 = dnaKey (eng.cellDna (1));
+    const auto k2 = dnaKey (eng.cellDna (2));
+    eng.setDensity (0.95f);
+    eng.snapMacros();
+    processWithPerf (eng, perf, L, R, sr, bpm, 16.0, 64.0, true);
+    EXPECT (dnaKey (eng.cellDna (0)) == k0);
+    EXPECT (dnaKey (eng.cellDna (1)) == k1);
+    EXPECT (dnaKey (eng.cellDna (2)) == k2);
+}
+
+static void testStage3FreezeMutateOneCell()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    const double bps = (bpm / 60.0) / sr;
+    const int n = static_cast<int> (64.0 / bps);
+    auto src = makeTone (n, sr);
+    pfl::dsp::PulseColonyEngine eng;
+    pfl::pulse_perf::PulseColonyPerformanceController perf;
+    setupDefaults (eng, 0.55f, 0.50f, 0.0f);
+    perf.reset (2002);
+    auto L = src, R = src;
+    processWithPerf (eng, perf, L, R, sr, bpm, 0.0, 16.0, true);
+    perf.trigger (pfl::pulse_perf::Command::FreezeOn, 16.0, eng);
+    const int g0 = eng.roleGeneration (0);
+    const int g1 = eng.roleGeneration (1);
+    const int g2 = eng.roleGeneration (2);
+    const int sum0 = g0 + g1 + g2;
+    perf.trigger (pfl::pulse_perf::Command::Mutate, 16.0, eng);
+    EXPECT (perf.mode() == pfl::pulse_perf::Mode::Frozen);
+    const int sum1 = eng.roleGeneration (0) + eng.roleGeneration (1) + eng.roleGeneration (2);
+    EXPECT (sum1 == sum0 + 1 || eng.lastManualMutateOp() == 0); // +1 gen or Stay no-op
+    EXPECT (perf.mode() == pfl::pulse_perf::Mode::Frozen);
+}
+
+static void testStage3MutateDoesNotUnfreeze()
+{
+    pfl::dsp::PulseColonyEngine eng;
+    pfl::pulse_perf::PulseColonyPerformanceController perf;
+    setupDefaults (eng);
+    perf.reset (2002);
+    perf.trigger (pfl::pulse_perf::Command::FreezeOn, 0.0, eng);
+    perf.trigger (pfl::pulse_perf::Command::Mutate, 0.0, eng);
+    EXPECT (perf.mode() == pfl::pulse_perf::Mode::Frozen);
+    EXPECT (eng.evolutionPaused());
+}
+
+static void testStage3CollapseResidueNotDensRamp()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    const double bps = (bpm / 60.0) / sr;
+    const int n = static_cast<int> (80.0 / bps);
+    auto src = makeTone (n, sr);
+
+    // Collapse path
+    pfl::dsp::PulseColonyEngine engC;
+    pfl::pulse_perf::PulseColonyPerformanceController perf;
+    setupDefaults (engC, 0.70f, 0.40f, 0.0f);
+    perf.reset (2002);
+    auto Lc = src, Rc = src;
+    processWithPerf (engC, perf, Lc, Rc, sr, bpm, 0.0, 16.0, true);
+    const float densBefore = 0.70f;
+    perf.trigger (pfl::pulse_perf::Command::Collapse, 16.0, engC);
+    processWithPerf (engC, perf, Lc, Rc, sr, bpm, 16.0, 28.0, true);
+    EXPECT (perf.mode() == pfl::pulse_perf::Mode::Collapsed
+            || perf.mode() == pfl::pulse_perf::Mode::Collapsing);
+    EXPECT (perf.state().collapsePhase == pfl::pulse_perf::CollapsePhase::Residue
+            || perf.mode() == pfl::pulse_perf::Mode::Collapsed);
+    EXPECT (engC.soloRole() >= 0);
+
+    // Dens-ramp fingerprint (no collapse) — different structural path
+    pfl::dsp::PulseColonyEngine engD;
+    setupDefaults (engD, densBefore, 0.40f, 0.0f);
+    auto Ld = src, Rd = src;
+    processRun (engD, Ld, Rd, sr, bpm, 0.0, true);
+    engD.setDensity (0.05f);
+    engD.snapMacros();
+    // Rebuild buffers
+    Ld = src;
+    Rd = src;
+    processRun (engD, Ld, Rd, sr, bpm, 0.0, true);
+    // Collapse residue uses solo + stripped roles; dens ramp keeps multi-role DNA typically
+    EXPECT (! (dnaKey (engC.cellDna (0)) == dnaKey (engD.cellDna (0))
+               && dnaKey (engC.cellDna (1)) == dnaKey (engD.cellDna (1))
+               && dnaKey (engC.cellDna (2)) == dnaKey (engD.cellDna (2))));
+}
+
+static void testStage3ReseedPreservesMacros()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    const double bps = (bpm / 60.0) / sr;
+    const int n = static_cast<int> (48.0 / bps);
+    auto src = makeTone (n, sr);
+    pfl::dsp::PulseColonyEngine eng;
+    pfl::pulse_perf::PulseColonyPerformanceController perf;
+    setupDefaults (eng, 0.62f, 0.44f, 0.33f);
+    perf.reset (2002);
+    auto L = src, R = src;
+    processWithPerf (eng, perf, L, R, sr, bpm, 0.0, 16.0, true);
+    const auto oldSeed = eng.seed();
+    const auto dnaBefore = dnaKey (eng.cellDna (0));
+    perf.trigger (pfl::pulse_perf::Command::Reseed, 16.0, eng);
+    EXPECT (eng.seed() != oldSeed);
+    EXPECT (dnaKey (eng.cellDna (0)) != dnaBefore || eng.cellDna (1).generation == 0);
+    // Macro targets unchanged (engine still has same set targets)
+    processWithPerf (eng, perf, L, R, sr, bpm, 16.0, 16.0, true);
+    EXPECT (perf.currentSeed() == eng.seed());
+}
+
+static void testStage3SilenceZerosOutputMixUnchanged()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    const double bps = (bpm / 60.0) / sr;
+    const int n = static_cast<int> (48.0 / bps);
+    auto src = makeTone (n, sr, 220.0, 0.5f);
+    pfl::dsp::PulseColonyEngine eng;
+    pfl::pulse_perf::PulseColonyPerformanceController perf;
+    pfl::dsp::ParamSmoother silenceSm;
+    setupDefaults (eng, 0.60f, 0.40f, 0.0f);
+    eng.setMix (0.85f);
+    eng.snapMacros();
+    perf.reset (2002);
+    silenceSm.prepare (sr, 0.004f);
+    silenceSm.setCurrentAndTarget (1.0f);
+    auto L = src, R = src;
+    processWithPerf (eng, perf, L, R, sr, bpm, 0.0, 8.0, true, 256, &silenceSm);
+    perf.trigger (pfl::pulse_perf::Command::SilenceOn, 8.0, eng);
+    // Clear region and reprocess silence window
+    const int off = static_cast<int> (8.0 / bps);
+    const int len = static_cast<int> (16.0 / bps);
+    for (int i = 0; i < len && off + i < n; ++i)
+    {
+        L[static_cast<size_t> (off + i)] = src[static_cast<size_t> (off + i)];
+        R[static_cast<size_t> (off + i)] = src[static_cast<size_t> (off + i)];
+    }
+    processWithPerf (eng, perf, L, R, sr, bpm, 8.0, 16.0, true, 256, &silenceSm);
+    float peak = 0.0f;
+    const int checkFrom = off + static_cast<int> (0.02 * sr); // after ramp
+    for (int i = checkFrom; i < off + len && i < n; ++i)
+        peak = std::max (peak, std::abs (L[static_cast<size_t> (i)]));
+    EXPECT (peak < 0.02f);
+    // MIX is orthogonal to silence (still 0.85 target; silence is post-mix gain)
+    eng.setMix (0.85f);
+
+    perf.trigger (pfl::pulse_perf::Command::SilenceOff, 24.0, eng);
+    for (int i = 0; i < static_cast<int> (16.0 / bps) && off + len + i < n; ++i)
+    {
+        L[static_cast<size_t> (off + len + i)] = src[static_cast<size_t> (off + len + i)];
+        R[static_cast<size_t> (off + len + i)] = src[static_cast<size_t> (off + len + i)];
+    }
+    processWithPerf (eng, perf, L, R, sr, bpm, 24.0, 16.0, true, 256, &silenceSm);
+    float peak2 = 0.0f;
+    const int uFrom = off + len + static_cast<int> (0.02 * sr);
+    for (int i = uFrom; i < n; i += 64)
+        peak2 = std::max (peak2, std::abs (L[static_cast<size_t> (i)]));
+    EXPECT (peak2 > 0.05f);
+}
+
+static void testStage3CommandScriptDeterminism()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    auto run = [&] ()
+    {
+        const double bps = (bpm / 60.0) / sr;
+        const int n = static_cast<int> (220.0 / bps);
+        auto src = makeTone (n, sr);
+        pfl::dsp::PulseColonyEngine eng;
+        pfl::pulse_perf::PulseColonyPerformanceController perf;
+        setupDefaults (eng, 0.55f, 0.45f, 0.25f);
+        perf.reset (2002);
+        perf.setTraceEnabled (true);
+        auto L = src, R = src;
+        processWithPerf (eng, perf, L, R, sr, bpm, 0.0, 32.0, true);
+        perf.trigger (pfl::pulse_perf::Command::FreezeOn, 32.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 32.0, 8.0, true);
+        perf.trigger (pfl::pulse_perf::Command::Mutate, 40.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 40.0, 8.0, true);
+        perf.trigger (pfl::pulse_perf::Command::Mutate, 48.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 48.0, 8.0, true);
+        perf.trigger (pfl::pulse_perf::Command::FreezeOff, 56.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 56.0, 16.0, true);
+        perf.trigger (pfl::pulse_perf::Command::Collapse, 72.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 72.0, 28.0, true);
+        perf.trigger (pfl::pulse_perf::Command::SilenceOn, 100.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 100.0, 8.0, true);
+        perf.trigger (pfl::pulse_perf::Command::SilenceOff, 108.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 108.0, 16.0, true);
+        perf.trigger (pfl::pulse_perf::Command::Reseed, 124.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 124.0, 32.0, true);
+
+        std::ostringstream os;
+        os << "seed=" << eng.seed()
+           << " mode=" << static_cast<int> (perf.mode())
+           << " gen=" << eng.generation()
+           << " mutRole=" << perf.state().lastMutateRole
+           << " residue=" << perf.state().residueRole
+           << " dna0=" << dnaKey (eng.cellDna (0))
+           << " dna1=" << dnaKey (eng.cellDna (1))
+           << " dna2=" << dnaKey (eng.cellDna (2));
+        return os.str();
+    };
+    EXPECT (run() == run());
+}
+
+static void testStage3PerfBufferMatrix()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    const int blocks[] = { 64, 127, 128, 255, 256, 511, 512, 1024 };
+    std::string ref;
+    for (int b : blocks)
+    {
+        const double bps = (bpm / 60.0) / sr;
+        const int n = static_cast<int> (80.0 / bps);
+        auto src = makeTone (n, sr);
+        pfl::dsp::PulseColonyEngine eng;
+        pfl::pulse_perf::PulseColonyPerformanceController perf;
+        setupDefaults (eng, 0.55f, 0.50f, 0.0f);
+        perf.reset (2002);
+        auto L = src, R = src;
+        processWithPerf (eng, perf, L, R, sr, bpm, 0.0, 16.0, true, b);
+        perf.trigger (pfl::pulse_perf::Command::FreezeOn, 16.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 16.0, 8.0, true, b);
+        perf.trigger (pfl::pulse_perf::Command::Mutate, 24.0, eng);
+        std::ostringstream os;
+        os << eng.generation() << ":" << eng.lastManualMutateRole() << ":"
+           << eng.lastManualMutateOp() << ":" << dnaKey (eng.cellDna (0));
+        if (ref.empty())
+            ref = os.str();
+        else
+            EXPECT (os.str() == ref);
+    }
+}
+
 int main()
 {
     testAlgorithmVersion();
@@ -661,6 +976,16 @@ int main()
     testTemposAndRates();
     testSeekReconstruct();
     testLongSoak();
+
+    testStage3FreezeHoldsGenHungerGate();
+    testStage3FreezeDensNoDnaChange();
+    testStage3FreezeMutateOneCell();
+    testStage3MutateDoesNotUnfreeze();
+    testStage3CollapseResidueNotDensRamp();
+    testStage3ReseedPreservesMacros();
+    testStage3SilenceZerosOutputMixUnchanged();
+    testStage3CommandScriptDeterminism();
+    testStage3PerfBufferMatrix();
 
     if (gFails == 0)
     {

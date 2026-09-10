@@ -1,4 +1,6 @@
 #include "dsp/PulseColonyEngine.h"
+#include "dsp/ParamSmoother.h"
+#include "performance/PulseColonyPerformanceController.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_core/juce_core.h>
@@ -184,6 +186,278 @@ int main()
             eng.process (wetL.data() + done, wetR.data() + done, m, true, done * bps, bpm);
         }
         writeWav (dir / "stage2-journey-mix.wav", wetL, wetR, sr);
+    }
+
+    // ---- Stage 3 performance renders ----
+    {
+        const fs::path d3 = "renders/pulse-colony/stage3";
+        fs::create_directories (d3);
+        auto writePerfTrace = [&] (const fs::path& path,
+                                   const pfl::pulse_perf::PulseColonyPerformanceController& perf,
+                                   const pfl::dsp::PulseColonyEngine& eng)
+        {
+            std::ofstream tr (path);
+            tr << "Pulse Colony Stage 3 performance trace\n";
+            tr << "algorithm=" << pfl::dsp::PulseColonyEngine::kAlgorithmVersion
+               << " perfEngine=" << pfl::pulse_perf::kPerformanceEngineVersion << "\n";
+            tr << "seed=" << eng.seed()
+               << " gen=" << eng.generation()
+               << " mode=" << pfl::pulse_perf::modeName (perf.mode())
+               << " residue=" << perf.state().residueRole << "\n";
+            for (const auto& e : perf.events())
+                tr << "ppq " << e.ppq << " " << e.detail << "\n";
+            for (const auto& e : eng.traces())
+                tr << "eng beat " << e.beat << " " << e.detail << "\n";
+        };
+
+        auto processSeg = [&] (pfl::dsp::PulseColonyEngine& eng,
+                               pfl::pulse_perf::PulseColonyPerformanceController& perf,
+                               std::vector<float>& L, std::vector<float>& R,
+                               double startBeat, double numBeats,
+                               pfl::dsp::ParamSmoother* silenceSm = nullptr)
+        {
+            const double bps = (bpm / 60.0) / sr;
+            const int n = static_cast<int> (numBeats / bps);
+            const int offset = static_cast<int> (startBeat / bps);
+            for (int done = 0; done < n; done += 256)
+            {
+                const int m = std::min (256, n - done);
+                const int idx = offset + done;
+                if (idx + m > static_cast<int> (L.size())) break;
+                const double ppq = startBeat + done * bps;
+                perf.tick (ppq, true, eng);
+                eng.process (L.data() + idx, R.data() + idx, m, true, ppq, bpm);
+                if (silenceSm != nullptr)
+                {
+                    silenceSm->setTarget (perf.mode() == pfl::pulse_perf::Mode::Silenced ? 0.0f : 1.0f);
+                    for (int i = 0; i < m; ++i)
+                    {
+                        const float g = silenceSm->getNext();
+                        L[static_cast<size_t> (idx + i)] *= g;
+                        R[static_cast<size_t> (idx + i)] *= g;
+                    }
+                }
+            }
+        };
+
+        auto makeBuf = [&] (double beats)
+        {
+            const double bps = (bpm / 60.0) / sr;
+            const int n = static_cast<int> (beats / bps);
+            std::vector<float> L (static_cast<size_t> (n)), R (static_cast<size_t> (n));
+            fillTone (L, R, sr);
+            return std::make_pair (L, R);
+        };
+
+        auto setup = [&] (pfl::dsp::PulseColonyEngine& eng,
+                          pfl::pulse_perf::PulseColonyPerformanceController& perf)
+        {
+            eng.prepare (sr);
+            eng.setSeed (2002);
+            eng.setMix (1.0f);
+            eng.setDensity (0.55f);
+            eng.setMutation (0.40f);
+            eng.setMotion (0.35f);
+            eng.setOutput (0.85f);
+            eng.snapMacros();
+            eng.forceRebuild (0);
+            eng.setTraceEnabled (true);
+            perf.reset (2002);
+            perf.setTraceEnabled (true);
+        };
+
+        // freeze-density-sweep.wav
+        {
+            auto [L, R] = makeBuf (192.0);
+            pfl::dsp::PulseColonyEngine eng;
+            pfl::pulse_perf::PulseColonyPerformanceController perf;
+            setup (eng, perf);
+            processSeg (eng, perf, L, R, 0.0, 64.0);
+            perf.trigger (pfl::pulse_perf::Command::FreezeOn, 64.0, eng);
+            processSeg (eng, perf, L, R, 64.0, 32.0);
+            eng.setDensity (0.20f);
+            processSeg (eng, perf, L, R, 96.0, 32.0);
+            eng.setDensity (0.80f);
+            processSeg (eng, perf, L, R, 128.0, 32.0);
+            eng.setDensity (0.40f);
+            processSeg (eng, perf, L, R, 160.0, 32.0);
+            writeWav (d3 / "freeze-density-sweep.wav", L, R, sr);
+            writePerfTrace (d3 / "freeze-density-sweep-trace.txt", perf, eng);
+        }
+        // mutate forced roles (diagnostic solos)
+        for (int role = 0; role < 3; ++role)
+        {
+            const char* names[] = { "mutate-anchor.wav", "mutate-skitter.wav", "mutate-ghost.wav" };
+            const char* traces[] = { "mutate-anchor-trace.txt", "mutate-skitter-trace.txt", "mutate-ghost-trace.txt" };
+            auto [L, R] = makeBuf (128.0);
+            pfl::dsp::PulseColonyEngine eng;
+            pfl::pulse_perf::PulseColonyPerformanceController perf;
+            setup (eng, perf);
+            processSeg (eng, perf, L, R, 0.0, 64.0);
+            perf.trigger (pfl::pulse_perf::Command::FreezeOn, 64.0, eng);
+            eng.manualMutate (role);
+            processSeg (eng, perf, L, R, 64.0, 64.0);
+            writeWav (d3 / names[role], L, R, sr);
+            writePerfTrace (d3 / traces[role], perf, eng);
+        }
+        // collapse-vs-density-ramp.wav (B path: dens automation only)
+        {
+            auto [L, R] = makeBuf (220.0);
+            pfl::dsp::PulseColonyEngine eng;
+            pfl::pulse_perf::PulseColonyPerformanceController perf;
+            setup (eng, perf);
+            processSeg (eng, perf, L, R, 0.0, 180.0);
+            for (int i = 0; i < 40; ++i)
+            {
+                const float t = static_cast<float> (i) / 39.0f;
+                eng.setDensity (0.50f * (1.0f - t) + 0.08f * t);
+                processSeg (eng, perf, L, R, 180.0 + i, 1.0);
+            }
+            writeWav (d3 / "collapse-vs-density-ramp.wav", L, R, sr);
+            writePerfTrace (d3 / "collapse-vs-density-ramp-trace.txt", perf, eng);
+        }
+        // collapsed-residue.wav + residue-mutate.wav
+        {
+            auto [L, R] = makeBuf (256.0);
+            pfl::dsp::PulseColonyEngine eng;
+            pfl::pulse_perf::PulseColonyPerformanceController perf;
+            setup (eng, perf);
+            processSeg (eng, perf, L, R, 0.0, 64.0);
+            perf.trigger (pfl::pulse_perf::Command::Collapse, 64.0, eng);
+            processSeg (eng, perf, L, R, 64.0, 96.0); // through residue
+            writeWav (d3 / "collapsed-residue.wav", L, R, sr);
+            writePerfTrace (d3 / "collapsed-residue-trace.txt", perf, eng);
+            perf.trigger (pfl::pulse_perf::Command::Mutate, 160.0, eng);
+            processSeg (eng, perf, L, R, 160.0, 96.0);
+            writeWav (d3 / "residue-mutate.wav", L, R, sr);
+            writePerfTrace (d3 / "residue-mutate-trace.txt", perf, eng);
+        }
+        // silence.wav alias of silence-recover core mute window
+        {
+            auto [L, R] = makeBuf (128.0);
+            pfl::dsp::PulseColonyEngine eng;
+            pfl::pulse_perf::PulseColonyPerformanceController perf;
+            pfl::dsp::ParamSmoother silenceSm;
+            setup (eng, perf);
+            silenceSm.prepare (sr, 0.004f);
+            silenceSm.setCurrentAndTarget (1.0f);
+            processSeg (eng, perf, L, R, 0.0, 32.0, &silenceSm);
+            perf.trigger (pfl::pulse_perf::Command::SilenceOn, 32.0, eng);
+            processSeg (eng, perf, L, R, 32.0, 64.0, &silenceSm);
+            perf.trigger (pfl::pulse_perf::Command::SilenceOff, 96.0, eng);
+            processSeg (eng, perf, L, R, 96.0, 32.0, &silenceSm);
+            writeWav (d3 / "silence.wav", L, R, sr);
+            writePerfTrace (d3 / "silence-trace.txt", perf, eng);
+        }
+        // freeze.wav
+        {
+            auto [L, R] = makeBuf (160.0);
+            pfl::dsp::PulseColonyEngine eng;
+            pfl::pulse_perf::PulseColonyPerformanceController perf;
+            setup (eng, perf);
+            processSeg (eng, perf, L, R, 0.0, 64.0);
+            perf.trigger (pfl::pulse_perf::Command::FreezeOn, 64.0, eng);
+            processSeg (eng, perf, L, R, 64.0, 96.0);
+            writeWav (d3 / "freeze.wav", L, R, sr);
+            writePerfTrace (d3 / "freeze-trace.txt", perf, eng);
+        }
+        // freeze-mutate.wav
+        {
+            auto [L, R] = makeBuf (192.0);
+            pfl::dsp::PulseColonyEngine eng;
+            pfl::pulse_perf::PulseColonyPerformanceController perf;
+            setup (eng, perf);
+            processSeg (eng, perf, L, R, 0.0, 64.0);
+            perf.trigger (pfl::pulse_perf::Command::FreezeOn, 64.0, eng);
+            processSeg (eng, perf, L, R, 64.0, 16.0);
+            perf.trigger (pfl::pulse_perf::Command::Mutate, 80.0, eng);
+            processSeg (eng, perf, L, R, 80.0, 16.0);
+            perf.trigger (pfl::pulse_perf::Command::Mutate, 96.0, eng);
+            processSeg (eng, perf, L, R, 96.0, 16.0);
+            perf.trigger (pfl::pulse_perf::Command::FreezeOff, 112.0, eng);
+            processSeg (eng, perf, L, R, 112.0, 80.0);
+            writeWav (d3 / "freeze-mutate.wav", L, R, sr);
+            writePerfTrace (d3 / "freeze-mutate-trace.txt", perf, eng);
+        }
+        // collapse.wav
+        {
+            auto [L, R] = makeBuf (220.0);
+            pfl::dsp::PulseColonyEngine eng;
+            pfl::pulse_perf::PulseColonyPerformanceController perf;
+            setup (eng, perf);
+            processSeg (eng, perf, L, R, 0.0, 180.0);
+            perf.trigger (pfl::pulse_perf::Command::Collapse, 180.0, eng);
+            processSeg (eng, perf, L, R, 180.0, 40.0);
+            writeWav (d3 / "collapse.wav", L, R, sr);
+            writePerfTrace (d3 / "collapse-trace.txt", perf, eng);
+        }
+        // reseed.wav
+        {
+            auto [L, R] = makeBuf (256.0);
+            pfl::dsp::PulseColonyEngine eng;
+            pfl::pulse_perf::PulseColonyPerformanceController perf;
+            setup (eng, perf);
+            processSeg (eng, perf, L, R, 0.0, 128.0);
+            perf.trigger (pfl::pulse_perf::Command::Reseed, 128.0, eng);
+            processSeg (eng, perf, L, R, 128.0, 128.0);
+            writeWav (d3 / "reseed.wav", L, R, sr);
+            writePerfTrace (d3 / "reseed-trace.txt", perf, eng);
+        }
+        // silence-recover.wav
+        {
+            auto [L, R] = makeBuf (192.0);
+            pfl::dsp::PulseColonyEngine eng;
+            pfl::pulse_perf::PulseColonyPerformanceController perf;
+            pfl::dsp::ParamSmoother silenceSm;
+            setup (eng, perf);
+            silenceSm.prepare (sr, 0.004f);
+            silenceSm.setCurrentAndTarget (1.0f);
+            processSeg (eng, perf, L, R, 0.0, 64.0, &silenceSm);
+            perf.trigger (pfl::pulse_perf::Command::SilenceOn, 64.0, eng);
+            processSeg (eng, perf, L, R, 64.0, 32.0, &silenceSm);
+            perf.trigger (pfl::pulse_perf::Command::SilenceOff, 96.0, eng);
+            processSeg (eng, perf, L, R, 96.0, 96.0, &silenceSm);
+            writeWav (d3 / "silence-recover.wav", L, R, sr);
+            writePerfTrace (d3 / "silence-recover-trace.txt", perf, eng);
+        }
+        // performance-journey-wet.wav + mix
+        {
+            auto [L, R] = makeBuf (256.0);
+            auto dryL = L, dryR = R;
+            pfl::dsp::PulseColonyEngine eng;
+            pfl::pulse_perf::PulseColonyPerformanceController perf;
+            pfl::dsp::ParamSmoother silenceSm;
+            setup (eng, perf);
+            silenceSm.prepare (sr, 0.004f);
+            silenceSm.setCurrentAndTarget (1.0f);
+            processSeg (eng, perf, L, R, 0.0, 64.0, &silenceSm);
+            perf.trigger (pfl::pulse_perf::Command::FreezeOn, 64.0, eng);
+            processSeg (eng, perf, L, R, 64.0, 16.0, &silenceSm);
+            perf.trigger (pfl::pulse_perf::Command::Mutate, 80.0, eng);
+            processSeg (eng, perf, L, R, 80.0, 16.0, &silenceSm);
+            perf.trigger (pfl::pulse_perf::Command::Mutate, 96.0, eng);
+            processSeg (eng, perf, L, R, 96.0, 16.0, &silenceSm);
+            perf.trigger (pfl::pulse_perf::Command::FreezeOff, 112.0, eng);
+            processSeg (eng, perf, L, R, 112.0, 32.0, &silenceSm);
+            perf.trigger (pfl::pulse_perf::Command::Collapse, 144.0, eng);
+            processSeg (eng, perf, L, R, 144.0, 12.0, &silenceSm);
+            perf.trigger (pfl::pulse_perf::Command::SilenceOn, 156.0, eng);
+            processSeg (eng, perf, L, R, 156.0, 8.0, &silenceSm);
+            perf.trigger (pfl::pulse_perf::Command::SilenceOff, 164.0, eng);
+            processSeg (eng, perf, L, R, 164.0, 28.0, &silenceSm);
+            perf.trigger (pfl::pulse_perf::Command::Reseed, 192.0, eng);
+            processSeg (eng, perf, L, R, 192.0, 64.0, &silenceSm);
+            writeWav (d3 / "performance-journey-wet.wav", L, R, sr);
+            writePerfTrace (d3 / "performance-journey-trace.txt", perf, eng);
+            std::vector<float> mixL (L.size()), mixR (R.size());
+            for (size_t i = 0; i < L.size(); ++i)
+            {
+                mixL[i] = std::clamp (dryL[i] * 0.85f + L[i] * 0.55f, -0.99f, 0.99f);
+                mixR[i] = std::clamp (dryR[i] * 0.85f + R[i] * 0.55f, -0.99f, 0.99f);
+            }
+            writeWav (d3 / "performance-journey-mix.wav", mixL, mixR, sr);
+        }
+        std::cout << "stage3 renders written under " << d3 << "\n";
     }
 
     return 0;
