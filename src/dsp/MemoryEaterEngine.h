@@ -2,6 +2,7 @@
 
 #include "AudioHistoryRing.h"
 #include "DCBlocker.h"
+#include "MemoryEcology.h"
 #include "ParamSmoother.h"
 #include "SafetyLimiter.h"
 
@@ -9,9 +10,8 @@
 
 #include <algorithm>
 #include <cmath>
-#include <utility>
 #include <cstdint>
-#include <string>
+#include <utility>
 #include <vector>
 
 namespace pfl::dsp
@@ -27,25 +27,37 @@ struct MemoryRecallEvent
     int loops = 0;
     float hunger = 0.0f;
     float memory = 0.0f;
+    bool fromStored = false;
+    int memoryId = -1;
 };
 
 /**
- * Memory Eater Stage 1: bounded short-term audio history + one-voice microloop recall.
- * Algorithm v1. Recalled wet is NOT written back into memory.
+ * Memory Eater Stage 2: short-term ring + generative memory ecology.
+ * Algorithm v2. Recalled wet is NOT written back into memory.
+ * Send-first: MIX=1.0 on Ableton Return is the canonical workflow.
  */
 class MemoryEaterEngine
 {
 public:
-    static constexpr int kAlgorithmVersion = 1;
+    static constexpr int kAlgorithmVersion = 2;
     static constexpr float kMaxHistoryBeats = 32.0f;
     static constexpr float kMinDesignBpm = 40.0f;
-    static constexpr double kOpportunityBeats = 0.5; // eighth-note grid
+    static constexpr double kOpportunityBeats = 0.5;
 
     void prepare (double sampleRate, int maxBlockSize = 1024) noexcept
     {
-        sampleRate_ = sampleRate > 1.0 ? sampleRate : 44100.0;
+        const double sr = sampleRate > 1.0 ? sampleRate : 44100.0;
+        const bool srChanged = std::abs (sr - sampleRate_) > 1.0e-6 || history_.capacity() == 0;
+        sampleRate_ = sr;
         maxBlockSize_ = std::max (64, maxBlockSize);
-        history_.prepare (sampleRate_, maxBlockSize_, kMaxHistoryBeats, kMinDesignBpm);
+        if (srChanged)
+        {
+            history_.prepare (sampleRate_, maxBlockSize_, kMaxHistoryBeats, kMinDesignBpm);
+            ecology_.prepare (sampleRate_);
+            events_.clear();
+            events_.reserve (4096);
+            reset();
+        }
         mixSmooth_.prepare (sampleRate_, 0.05f);
         hungerSmooth_.prepare (sampleRate_, 0.08f);
         memorySmooth_.prepare (sampleRate_, 0.08f);
@@ -57,15 +69,15 @@ public:
         attackSamples_ = std::max (1, static_cast<int> (0.003 * sampleRate_));
         releaseSamples_ = std::max (1, static_cast<int> (0.008 * sampleRate_));
         xfadeSamples_ = std::max (1, static_cast<int> (0.005 * sampleRate_));
-        events_.clear();
-        events_.reserve (4096); // offline diagnostics only; no growth in processBlock
-        reset();
     }
 
     void reset() noexcept
     {
         history_.clear();
+        ecology_.clearAll();
         voiceActive_ = false;
+        sourceMode_ = 0;
+        voiceSlot_ = -1;
         lastEvalIndex_ = -1;
         lastRecallBeat_ = -1.0e9;
         lastTransportPlaying_ = false;
@@ -81,7 +93,7 @@ public:
             return;
         masterSeed_ = seed == 0 ? 1ull : seed;
         rebuildRng();
-        // Preserve audio history; stop active recall safely
+        // Preserve ring + ecology; stop active recall safely
         if (voiceActive_)
             beginRelease();
     }
@@ -106,12 +118,23 @@ public:
     bool voiceActive() const noexcept { return voiceActive_; }
     const std::vector<MemoryRecallEvent>& events() const noexcept { return events_; }
     void clearEvents() noexcept { events_.clear(); }
-    void setTraceEnabled (bool e) noexcept { traceEnabled_ = e; }
+    void setTraceEnabled (bool e) noexcept
+    {
+        traceEnabled_ = e;
+        ecology_.setTraceEnabled (e);
+    }
 
-    /** Approximate RAM bytes for stereo float history at current capacity. */
+    MemoryEcology& ecology() noexcept { return ecology_; }
+    const MemoryEcology& ecology() const noexcept { return ecology_; }
+
     size_t historyRamBytes() const noexcept
     {
         return static_cast<size_t> (history_.capacity()) * 2u * sizeof (float);
+    }
+
+    size_t totalRamBytes() const noexcept
+    {
+        return historyRamBytes() + ecology_.slotRamBytes();
     }
 
     void process (float* left, float* right, int numSamples,
@@ -123,19 +146,21 @@ public:
         const double safeBpm = bpm > 1.0 ? bpm : 120.0;
         const double beatsPerSample = (safeBpm / 60.0) / sampleRate_;
 
-        // Timeline discontinuity → clear audio memory.
-        // While stopped, hosts usually freeze PPQ; do not invent advance.
+        // Timeline discontinuity → clear Stage 1 ring only; preserve ecology.
         if (lastPpq_ > -1.0e8)
         {
             const double jump = ppqStart - lastPpq_;
             const double maxBlockBeats =
                 (static_cast<double> (maxBlockSize_) / sampleRate_) * (safeBpm / 60.0) * 2.5 + 0.05;
-            // Continuous play: jump ≈ 0 (ppqStart ≈ previous block end).
-            // Seek / loop wrap: large forward or any backward jump.
             if (jump < -0.01 || jump > maxBlockBeats)
             {
                 history_.clear();
+                if (voiceActive_)
+                    beginRelease();
                 voiceActive_ = false;
+                ecology_.resyncTimeline (ppqStart);
+                sourceMode_ = 0;
+                voiceSlot_ = -1;
                 lastEvalIndex_ = -1;
                 lastRecallBeat_ = -1.0e9;
             }
@@ -143,7 +168,6 @@ public:
 
         if (! transportPlaying && lastTransportPlaying_)
         {
-            // Stop: pause writing/scheduling; keep memory; fade voice
             if (voiceActive_)
                 beginRelease();
         }
@@ -162,7 +186,6 @@ public:
             const float memory = memorySmooth_.getNext();
             const float outG = outSmooth_.getNext();
 
-            // Activity estimate (soft)
             {
                 const float e = std::min (1.0f, (std::abs (inL) + std::abs (inR)) * 4.0f);
                 inputActivity_ += (e - inputActivity_) * 0.02f;
@@ -170,12 +193,13 @@ public:
 
             if (transportPlaying)
             {
-                history_.write (inL, inR);
+                history_.write (inL, inR); // original input only — never wet
+                ecology_.advanceLifecycle (ppq, memory);
                 advanceScheduler (ppq, hunger, memory, safeBpm);
             }
 
             float wetL = 0.0f, wetR = 0.0f;
-            renderVoice (wetL, wetR, beatsPerSample);
+            renderVoice (wetL, wetR);
 
             wetL = dcL_.processSample (wetL);
             wetR = dcR_.processSample (wetR);
@@ -192,8 +216,6 @@ public:
             right[i] = outR;
         }
 
-        // Only advance expected PPQ while playing. While stopped, latch the
-        // host-reported position so frozen PPQ does not look like a seek.
         if (transportPlaying)
             lastPpq_ = ppqStart + static_cast<double> (numSamples) * beatsPerSample;
         else
@@ -203,10 +225,11 @@ public:
 private:
     void rebuildRng() noexcept
     {
-        opportunityRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, 0x4F50504Full); // OPPO
-        lookbackRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, 0x4C4F4F4Bull); // LOOK
-        fragmentRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, 0x46524147ull); // FRAG
-        durationRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, 0x44555241ull); // DURA
+        opportunityRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, 0x4F50504Full);
+        lookbackRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, 0x4C4F4F4Bull);
+        fragmentRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, 0x46524147ull);
+        durationRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, 0x44555241ull);
+        ecology_.reseed (masterSeed_);
     }
 
     static float smoothstep01 (float x) noexcept
@@ -222,19 +245,14 @@ private:
             return;
         if (lastEvalIndex_ >= 0 && evalIndex < lastEvalIndex_)
         {
-            // Backward discontinuity already handled; resync
             lastEvalIndex_ = evalIndex;
             return;
         }
-        // Process each crossed opportunity (normally +1)
         const int from = lastEvalIndex_ < 0 ? evalIndex : lastEvalIndex_ + 1;
         for (int idx = from; idx <= evalIndex; ++idx)
         {
             if (idx - lastEvalIndex_ > 64 && lastEvalIndex_ >= 0)
-            {
-                // Large jump: don't catch up opportunities
                 break;
-            }
             tryScheduleAt (idx, hunger, memory, bpm);
         }
         lastEvalIndex_ = evalIndex;
@@ -252,7 +270,6 @@ private:
         if (beat - lastRecallBeat_ < static_cast<double> (minGap))
             return;
 
-        // Advance opportunity RNG even on miss for determinism
         const float u = opportunityRng_.nextFloat();
         const float pRaw = 0.004f + 0.10f * std::pow (hunger, 1.5f);
         const float silenceBoost = smoothstep01 (static_cast<float> ((beat - lastRecallBeat_) - minGap) / 8.0f);
@@ -260,43 +277,87 @@ private:
         if (u >= pEff)
             return;
 
-        // Need enough history
         const float beatsPerSample = static_cast<float> ((bpm / 60.0) / sampleRate_);
-        const int safeLb = history_.maxSafeLookback();
-        if (safeLb < static_cast<int> (1.0f / beatsPerSample)) // < ~1 beat
+        const bool haveRecent = history_.maxSafeLookback() >= static_cast<int> (1.0f / beatsPerSample);
+        const bool haveStored = ecology_.occupiedCount() > 0;
+
+        if (! haveRecent && ! haveStored)
+            return;
+        if (haveRecent && inputActivity_ < 0.02f && history_.filled() < static_cast<int> (2.0f / beatsPerSample)
+            && ! haveStored)
             return;
 
-        // Low activity in recent input → less likely to fire empty content
-        if (inputActivity_ < 0.02f && history_.filled() < static_cast<int> (2.0f / beatsPerSample))
-            return;
-
-        startRecall (beat, hunger, memory, bpm);
+        startRecall (beat, hunger, memory, bpm, haveRecent, haveStored);
     }
 
-    void startRecall (double beat, float hunger, float memory, double bpm) noexcept
+    void chooseFragmentDuration (float& fragBeats, float& durBeats) noexcept
     {
         static constexpr float kFrags[] = { 0.125f, 0.25f, 0.5f, 1.0f };
         static constexpr float kDurs[] = { 0.25f, 0.5f, 1.0f, 2.0f };
 
         const float uf = fragmentRng_.nextFloat();
-        float fragBeats = kFrags[1];
+        fragBeats = kFrags[1];
         if (uf < 0.28f) fragBeats = kFrags[0];
         else if (uf < 0.58f) fragBeats = kFrags[1];
         else if (uf < 0.85f) fragBeats = kFrags[2];
         else fragBeats = kFrags[3];
 
         const float ud = durationRng_.nextFloat();
-        float durBeats = kDurs[1];
+        durBeats = kDurs[1];
         if (ud < 0.30f) durBeats = kDurs[0];
         else if (ud < 0.60f) durBeats = kDurs[1];
         else if (ud < 0.88f) durBeats = kDurs[2];
         else durBeats = kDurs[3];
         if (durBeats < fragBeats)
             durBeats = fragBeats;
-        // Keep microloops as callbacks, not long stutter trains (max ~4 loops).
         if (durBeats > fragBeats * 4.0f)
             durBeats = fragBeats * 4.0f;
+    }
 
+    void startRecall (double beat, float hunger, float memory, double bpm,
+                      bool haveRecent, bool haveStored) noexcept
+    {
+        float fragBeats = 0.25f, durBeats = 0.5f;
+        chooseFragmentDuration (fragBeats, durBeats);
+        const float beatsPerSample = static_cast<float> ((bpm / 60.0) / sampleRate_);
+        const float durSamples = durBeats / beatsPerSample;
+
+        // Selection: stored vs short-term (ecology RNG isolated from opportunity timing)
+        bool useStored = false;
+        int slot = -1;
+        if (haveStored && ecology_.shouldTryStored (memory))
+        {
+            slot = ecology_.selectStoredSlot (beat, memory);
+            useStored = slot >= 0;
+        }
+
+        if (useStored)
+        {
+            const auto& s = ecology_.slot (slot);
+            sourceMode_ = 1;
+            voiceSlot_ = slot;
+            ecology_.setActiveSlot (slot);
+            voiceActive_ = true;
+            voicePhase_ = 0;
+            voiceSamplesPlayed_ = 0;
+            voiceDurationSamples_ = std::max (1, static_cast<int> (durSamples));
+            fragLenSamples_ = std::max (1, s.lengthSamples);
+            fragLookbackStart_ = 0.0f;
+            fragPos_ = 0.0f;
+            lastRecallBeat_ = beat;
+            ecology_.noteStoredRecall (slot, beat);
+
+            const int loops = std::max (1, static_cast<int> (std::ceil (
+                durBeats / std::max (0.01f, s.fragmentBeats))));
+            pushRecallEvent (beat, s.originBeat, beat - s.originBeat, s.fragmentBeats, durBeats,
+                             loops, hunger, memory, true, s.memoryId);
+            return;
+        }
+
+        if (! haveRecent)
+            return;
+
+        // Short-term ring recall (Stage 1 path)
         const float maxLbBeats = 1.0f + (kMaxHistoryBeats - 1.0f) * std::pow (memory, 1.2f);
         const float minLbBeats = 1.0f;
         const float ul = lookbackRng_.nextFloat();
@@ -304,48 +365,63 @@ private:
         float lookbackBeats = minLbBeats + (maxLbBeats - minLbBeats) * std::pow (ul, skew);
         lookbackBeats = std::clamp (lookbackBeats, minLbBeats, maxLbBeats);
 
-        const float beatsPerSample = static_cast<float> ((bpm / 60.0) / sampleRate_);
         const float lookbackSamples = lookbackBeats / beatsPerSample;
-        const float fragSamples = fragBeats / beatsPerSample;
-        const float durSamples = durBeats / beatsPerSample;
-
+        float fragSamplesF = fragBeats / beatsPerSample;
+        // Keep stored copies within ecology fragment capacity (1 beat @ 40 BPM).
+        fragSamplesF = std::min (fragSamplesF, static_cast<float> (ecology_.maxFragSamples()));
         const int safe = history_.maxSafeLookback();
-        if (lookbackSamples + fragSamples > static_cast<float> (safe))
-            return;
-        if (inputActivity_ < 0.015f)
+        if (lookbackSamples + fragSamplesF > static_cast<float> (safe))
         {
-            // Avoid recalling near-silence windows when current input is quiet and lookback recent
-            // Still allow deeper memories of past activity
-            if (lookbackBeats < 4.0f)
+            // Retry with a shallower lookback before giving up — keeps promotion possible.
+            const float maxLb = std::max (1.0f, static_cast<float> (safe) - fragSamplesF - 8.0f);
+            if (maxLb < 1.0f / beatsPerSample)
                 return;
+            lookbackBeats = std::min (lookbackBeats, maxLb * beatsPerSample);
         }
+        const float lookbackSamples2 = lookbackBeats / beatsPerSample;
+        if (lookbackSamples2 + fragSamplesF > static_cast<float> (safe))
+            return;
+        if (inputActivity_ < 0.015f && lookbackBeats < 4.0f)
+            return;
 
+        sourceMode_ = 0;
+        voiceSlot_ = -1;
+        ecology_.clearActiveSlot();
         voiceActive_ = true;
-        voiceEnv_ = 0.0f;
-        voicePhase_ = 0; // 0 attack, 1 sustain, 2 release
+        voicePhase_ = 0;
         voiceSamplesPlayed_ = 0;
         voiceDurationSamples_ = std::max (1, static_cast<int> (durSamples));
-        fragLenSamples_ = std::max (1, static_cast<int> (fragSamples));
-        fragLookbackStart_ = lookbackSamples; // lookback of fragment start (older end)
-        fragPos_ = 0.0f; // position within fragment [0, fragLen)
+        fragLenSamples_ = std::max (1, static_cast<int> (fragSamplesF));
+        fragLookbackStart_ = lookbackSamples2;
+        fragPos_ = 0.0f;
         lastRecallBeat_ = beat;
 
         const int loops = std::max (1, static_cast<int> (std::ceil (durBeats / fragBeats)));
+        const double sourceBeat = beat - lookbackBeats;
+        pushRecallEvent (beat, sourceBeat, lookbackBeats, fragBeats, durBeats, loops,
+                         hunger, memory, false, -1);
 
-        // Trace is offline/diagnostic only. Never allocate in processBlock.
-        if (traceEnabled_ && events_.size() < events_.capacity())
-        {
-            MemoryRecallEvent ev;
-            ev.eventBeat = beat;
-            ev.lookbackBeats = lookbackBeats;
-            ev.sourceBeat = beat - lookbackBeats;
-            ev.fragmentBeats = fragBeats;
-            ev.durationBeats = durBeats;
-            ev.loops = loops;
-            ev.hunger = hunger;
-            ev.memory = memory;
-            events_.push_back (ev);
-        }
+        ecology_.tryPromote (history_, beat, sourceBeat, lookbackSamples2, fragLenSamples_,
+                             fragBeats, memory, inputActivity_);
+    }
+
+    void pushRecallEvent (double beat, double sourceBeat, double lookback, float frag, float dur,
+                          int loops, float hunger, float memory, bool stored, int mid) noexcept
+    {
+        if (! traceEnabled_ || events_.size() >= events_.capacity())
+            return;
+        MemoryRecallEvent ev;
+        ev.eventBeat = beat;
+        ev.sourceBeat = sourceBeat;
+        ev.lookbackBeats = lookback;
+        ev.fragmentBeats = frag;
+        ev.durationBeats = dur;
+        ev.loops = loops;
+        ev.hunger = hunger;
+        ev.memory = memory;
+        ev.fromStored = stored;
+        ev.memoryId = mid;
+        events_.push_back (ev);
     }
 
     void beginRelease() noexcept
@@ -356,13 +432,12 @@ private:
         releasePos_ = 0;
     }
 
-    void renderVoice (float& outL, float& outR, double /*beatsPerSample*/) noexcept
+    void renderVoice (float& outL, float& outR) noexcept
     {
         outL = outR = 0.0f;
         if (! voiceActive_)
             return;
 
-        // Envelope
         float env = 1.0f;
         if (voicePhase_ == 0)
         {
@@ -377,16 +452,17 @@ private:
             if (releasePos_ >= releaseSamples_)
             {
                 voiceActive_ = false;
+                ecology_.clearActiveSlot();
+                voiceSlot_ = -1;
+                sourceMode_ = 0;
                 return;
             }
         }
 
-        // Read fragment with loop
         float pos = fragPos_;
         if (pos >= static_cast<float> (fragLenSamples_))
             pos = std::fmod (pos, static_cast<float> (fragLenSamples_));
 
-        // Equal-power wrap crossfade: fade out fragment end into fragment start.
         float gainA = 1.0f, gainB = 0.0f;
         float posB = 0.0f;
         if (pos >= static_cast<float> (fragLenSamples_ - xfadeSamples_) && fragLenSamples_ > xfadeSamples_ * 2)
@@ -396,15 +472,22 @@ private:
             const float w = 0.5f * (1.0f - std::cos (t * 3.14159265f));
             gainA = std::sqrt (1.0f - w);
             gainB = std::sqrt (w);
-            // Beginning of next loop: [0, xfade) — not older-than-fragment history.
             posB = pos - static_cast<float> (fragLenSamples_ - xfadeSamples_);
         }
 
         float aL = 0, aR = 0, bL = 0, bR = 0;
-        // Fragment starts at lookbackStart and extends toward more recent (decreasing lookback)
-        history_.readAtLookback (fragLookbackStart_ - pos, aL, aR);
-        if (gainB > 1.0e-5f)
-            history_.readAtLookback (fragLookbackStart_ - posB, bL, bR);
+        if (sourceMode_ == 1 && voiceSlot_ >= 0)
+        {
+            ecology_.readSlotSample (voiceSlot_, pos, aL, aR);
+            if (gainB > 1.0e-5f)
+                ecology_.readSlotSample (voiceSlot_, posB, bL, bR);
+        }
+        else
+        {
+            history_.readAtLookback (fragLookbackStart_ - pos, aL, aR);
+            if (gainB > 1.0e-5f)
+                history_.readAtLookback (fragLookbackStart_ - posB, bL, bR);
+        }
 
         outL = (aL * gainA + bL * gainB) * env;
         outR = (aR * gainA + bR * gainB) * env;
@@ -419,6 +502,7 @@ private:
     int maxBlockSize_ = 1024;
     uint64_t masterSeed_ = 3003;
     AudioHistoryRing history_;
+    MemoryEcology ecology_;
     ParamSmoother mixSmooth_, hungerSmooth_, memorySmooth_, outSmooth_;
     DCBlocker dcL_, dcR_;
     SafetyLimiter limL_, limR_;
@@ -431,6 +515,8 @@ private:
     float inputActivity_ = 0.0f;
 
     bool voiceActive_ = false;
+    int sourceMode_ = 0; // 0 = ring, 1 = slot
+    int voiceSlot_ = -1;
     int voicePhase_ = 0;
     int voiceSamplesPlayed_ = 0;
     int voiceDurationSamples_ = 0;
@@ -441,7 +527,6 @@ private:
     int attackSamples_ = 144;
     int releaseSamples_ = 384;
     int xfadeSamples_ = 240;
-    float voiceEnv_ = 0.0f;
 
     bool traceEnabled_ = false;
     std::vector<MemoryRecallEvent> events_;

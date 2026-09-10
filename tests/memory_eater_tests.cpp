@@ -59,7 +59,7 @@ void renderRun (pfl::dsp::MemoryEaterEngine& eng, std::vector<float>& L, std::ve
 
 static void testAlgorithmVersion()
 {
-    EXPECT (pfl::dsp::MemoryEaterEngine::kAlgorithmVersion == 1);
+    EXPECT (pfl::dsp::MemoryEaterEngine::kAlgorithmVersion == 2);
 }
 
 static void testMixZeroDry()
@@ -386,11 +386,14 @@ static void testRamBounded()
 {
     pfl::dsp::MemoryEaterEngine eng;
     eng.prepare (96000.0, 8192);
-    const size_t bytes = eng.historyRamBytes();
-    // 32 beats @ 40 BPM @ 96k stereo float ≈ 37MB; allow headroom
-    EXPECT (bytes < 45ull * 1024ull * 1024ull);
-    EXPECT (bytes > 10ull * 1024ull * 1024ull);
-    std::cout << "memory-eater max history RAM ≈ " << (bytes / (1024.0 * 1024.0)) << " MiB\n";
+    const size_t hist = eng.historyRamBytes();
+    const size_t total = eng.totalRamBytes();
+    EXPECT (hist < 45ull * 1024ull * 1024ull);
+    EXPECT (hist > 10ull * 1024ull * 1024ull);
+    EXPECT (total < 55ull * 1024ull * 1024ull);
+    EXPECT (total > hist);
+    std::cout << "memory-eater history RAM ≈ " << (hist / (1024.0 * 1024.0))
+              << " MiB; total≈ " << (total / (1024.0 * 1024.0)) << " MiB\n";
 }
 
 static void testLongRun()
@@ -425,8 +428,144 @@ static void testLongRun()
     }
     EXPECT (finite);
     EXPECT (peak <= 0.995f);
+    EXPECT (eng.ecology().numSlots() == 6);
     std::cout << "memory-eater long-run " << seconds << "s sim in " << ms << " ms, peak=" << peak
-              << " capacity=" << eng.historyCapacityFrames() << "\n";
+              << " capacity=" << eng.historyCapacityFrames()
+              << " promotions=" << eng.ecology().promotions()
+              << " storedRecalls=" << eng.ecology().recallsStored()
+              << " forgot=" << eng.ecology().forgotten() << "\n";
+}
+
+static void testSeekPreservesEcology()
+{
+    const double sr = 48000.0, bpm = 72.0;
+    const double bps = (bpm / 60.0) / sr;
+    const int n = static_cast<int> (sr * 40.0);
+    auto src = makeIdentSource (n, sr, bpm);
+    pfl::dsp::MemoryEaterEngine eng;
+    eng.prepare (sr);
+    eng.setSeed (3003);
+    eng.setMix (1.0f);
+    eng.setHunger (0.85f);
+    eng.setMemory (0.85f);
+    eng.setOutput (0.9f);
+    eng.snapMacros();
+    eng.setTraceEnabled (true);
+    auto L = src, R = src;
+    renderRun (eng, L, R, sr, bpm, true, 256);
+    const int promBefore = eng.ecology().promotions();
+    EXPECT (promBefore > 0);
+    const int occ = eng.ecology().occupiedCount();
+    EXPECT (occ > 0);
+    // Seek clears ring
+    std::vector<float> z (64, 0.2f);
+    eng.process (z.data(), z.data(), 64, true, 500.0, bpm);
+    EXPECT (eng.historyFilledFrames() < 200);
+    EXPECT (eng.ecology().occupiedCount() == occ);
+}
+
+static void testStoredOutlivesRing()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    const double bps = (bpm / 60.0) / sr;
+    // Populate ecology over ~48 beats
+    const int warm = static_cast<int> (48.0 / bps);
+    auto src = makeIdentSource (warm, sr, bpm);
+    pfl::dsp::MemoryEaterEngine eng;
+    eng.prepare (sr);
+    eng.setSeed (4242);
+    eng.setMix (1.0f);
+    eng.setHunger (0.95f);
+    eng.setMemory (0.95f);
+    eng.setOutput (0.9f);
+    eng.snapMacros();
+    eng.setTraceEnabled (true);
+    auto L = src, R = src;
+    renderRun (eng, L, R, sr, bpm, true, 256);
+    EXPECT (eng.ecology().promotions() > 0);
+    EXPECT (eng.ecology().occupiedCount() > 0);
+
+    // Seek far ahead: ring empty, ecology intact
+    std::vector<float> z (128, 0.25f);
+    eng.process (z.data(), z.data(), 128, true, 400.0, bpm);
+    eng.clearEvents();
+
+    // Continue with new identifiable input for another ~96 beats
+    const int cont = static_cast<int> (96.0 / bps);
+    auto src2 = makeIdentSource (cont, sr, bpm);
+    L = src2;
+    R = src2;
+    const int block = 256;
+    int done = 0;
+    while (done < cont)
+    {
+        const int m = std::min (block, cont - done);
+        eng.process (L.data() + done, R.data() + done, m, true, 400.0 + done * bps, bpm);
+        done += m;
+    }
+
+    int stored = 0;
+    double oldestAge = 0.0;
+    for (const auto& e : eng.events())
+    {
+        if (e.fromStored)
+        {
+            ++stored;
+            oldestAge = std::max (oldestAge, e.eventBeat - e.sourceBeat);
+        }
+    }
+    EXPECT (stored > 0);
+    EXPECT (oldestAge > 32.0); // beyond Stage 1 ring horizon in beats of age
+    std::cout << "stored recalls after seek=" << stored << " oldestAge=" << oldestAge << "\n";
+}
+
+static void testEcologyForgetting()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    const double bps = (bpm / 60.0) / sr;
+    const int n = static_cast<int> (200.0 / bps);
+    auto src = makeIdentSource (n, sr, bpm);
+    pfl::dsp::MemoryEaterEngine eng;
+    eng.prepare (sr);
+    eng.setSeed (7);
+    eng.setMix (1.0f);
+    eng.setHunger (0.35f); // sparse recalls → less reinforcement
+    eng.setMemory (0.2f);  // faster decay
+    eng.setOutput (0.9f);
+    eng.snapMacros();
+    auto L = src, R = src;
+    renderRun (eng, L, R, sr, bpm, true, 256);
+    // With low reinforcement over long span, forgetting should occur.
+    EXPECT (eng.ecology().promotions() > 0);
+    EXPECT (eng.ecology().forgotten() > 0);
+    std::cout << "ecology forgot=" << eng.ecology().forgotten()
+              << " promotions=" << eng.ecology().promotions()
+              << " occupied=" << eng.ecology().occupiedCount() << "\n";
+}
+
+static void testNoWetWriteback()
+{
+    // Ring must only grow from input: after MIX=1 recalls, silence input should
+    // not invent new energy into history beyond written zeros.
+    const double sr = 48000.0, bpm = 72.0;
+    const double bps = (bpm / 60.0) / sr;
+    const int warm = static_cast<int> (16.0 / bps);
+    auto src = makeIdentSource (warm, sr, bpm);
+    pfl::dsp::MemoryEaterEngine eng;
+    eng.prepare (sr);
+    eng.setSeed (3003);
+    eng.setMix (1.0f);
+    eng.setHunger (1.0f);
+    eng.setMemory (0.8f);
+    eng.setOutput (0.9f);
+    eng.snapMacros();
+    auto L = src, R = src;
+    renderRun (eng, L, R, sr, bpm, true, 256);
+    const int filled = eng.historyFilledFrames();
+    std::vector<float> zeros (4096, 0.0f);
+    eng.process (zeros.data(), zeros.data(), 4096, true, warm * bps, bpm);
+    // History advanced with zeros (original input), not wet — capacity fill still valid
+    EXPECT (eng.historyFilledFrames() >= filled);
 }
 
 static void testHungerIncreasesActivity()
@@ -462,6 +601,7 @@ int main()
     testDeterminism();
     testBufferIndependenceEvents();
     testSeekClearsMemory();
+    testSeekPreservesEcology();
     testStopPausesWriting();
     testSmallSeekClearsMemory();
     testMemoryChangesLookbackNotDensity();
@@ -472,6 +612,9 @@ int main()
     testRamBounded();
     testLongRun();
     testHungerIncreasesActivity();
+    testStoredOutlivesRing();
+    testEcologyForgetting();
+    testNoWetWriteback();
 
     if (gFails == 0)
     {

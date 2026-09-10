@@ -49,9 +49,58 @@ static void fillIdent (std::vector<float>& L, std::vector<float>& R, double sr, 
     }
 }
 
-static void renderVariant (const fs::path& wav, const fs::path& trace,
-                           float mix, float hunger, float memory,
-                           double sr, double bpm, double beats)
+static const char* kindName (pfl::dsp::EcologyTraceEvent::Kind k)
+{
+    using K = pfl::dsp::EcologyTraceEvent::Kind;
+    switch (k)
+    {
+        case K::Promote: return "PROMOTE";
+        case K::Recall: return "RECALL";
+        case K::Decay: return "DECAY";
+        case K::Forget: return "FORGET";
+        case K::Replace: return "REPLACE";
+    }
+    return "?";
+}
+
+static void writeLifecycle (const fs::path& path, const pfl::dsp::MemoryEaterEngine& eng)
+{
+    std::ofstream tr (path);
+    tr << "Memory Eater Stage 2 ecology lifecycle\n";
+    tr << "promotions=" << eng.ecology().promotions()
+       << " storedRecalls=" << eng.ecology().recallsStored()
+       << " forgotten=" << eng.ecology().forgotten()
+       << " replacements=" << eng.ecology().replacements()
+       << " occupied=" << eng.ecology().occupiedCount() << "\n";
+    for (const auto& e : eng.ecology().traces())
+    {
+        tr << "beat " << e.beat << " " << kindName (e.kind)
+           << " memory=" << e.memoryId
+           << " slot=" << e.slot
+           << " strength=" << e.strength
+           << " fatigue=" << e.fatigue
+           << " sourceBeat=" << e.sourceBeat
+           << " fragment=" << e.fragmentBeats << "\n";
+    }
+    int stored = 0, recent = 0;
+    for (const auto& e : eng.events())
+        (e.fromStored ? stored : recent)++;
+    tr << "recallEvents recent=" << recent << " stored=" << stored << "\n";
+    for (const auto& e : eng.events())
+    {
+        tr << "beat " << e.eventBeat
+           << (e.fromStored ? " STORED" : " RECENT")
+           << " memory=" << e.memoryId
+           << " sourceBeat=" << e.sourceBeat
+           << " lookback=" << e.lookbackBeats
+           << " fragment=" << e.fragmentBeats
+           << " duration=" << e.durationBeats << "\n";
+    }
+}
+
+static pfl::dsp::MemoryEaterEngine renderVariant (const fs::path& wav, const fs::path& lifecycle,
+                                                  float mix, float hunger, float memory,
+                                                  double sr, double bpm, double beats)
 {
     const double bps = (bpm / 60.0) / sr;
     const int n = static_cast<int> (beats / bps);
@@ -64,7 +113,7 @@ static void renderVariant (const fs::path& wav, const fs::path& trace,
     eng.setMix (mix);
     eng.setHunger (hunger);
     eng.setMemory (memory);
-    eng.setOutput (0.9f);
+    eng.setOutput (0.85f);
     eng.snapMacros();
     eng.setTraceEnabled (true);
 
@@ -75,32 +124,27 @@ static void renderVariant (const fs::path& wav, const fs::path& trace,
         eng.process (L.data() + done, R.data() + done, m, true, done * bps, bpm);
     }
 
-    std::ofstream tr (trace);
-    tr << "Memory Eater Stage 1 recall trace\n";
-    tr << "mix=" << mix << " hunger=" << hunger << " memory=" << memory << "\n";
-    tr << "recalls=" << eng.events().size() << "\n";
-    for (const auto& e : eng.events())
-    {
-        tr << "beat " << e.eventBeat
-           << " RECALL sourceBeat " << e.sourceBeat
-           << " lookback " << e.lookbackBeats
-           << " fragment " << e.fragmentBeats
-           << " duration " << e.durationBeats
-           << " loops " << e.loops << "\n";
-    }
+    writeLifecycle (lifecycle, eng);
     writeWav (wav, L, R, sr);
-    std::cout << "  recalls=" << eng.events().size() << " ramMiB="
-              << (eng.historyRamBytes() / (1024.0 * 1024.0)) << "\n";
+
+    int stored = 0;
+    for (const auto& e : eng.events())
+        if (e.fromStored)
+            ++stored;
+    std::cout << "  recalls=" << eng.events().size() << " stored=" << stored
+              << " promotions=" << eng.ecology().promotions()
+              << " totalRamMiB=" << (eng.totalRamBytes() / (1024.0 * 1024.0)) << "\n";
+    return eng;
 }
 
 int main()
 {
     const double sr = 48000.0;
     const double bpm = 72.0;
-    const fs::path dir = "renders/memory-eater/stage1";
+    const fs::path dir = "renders/memory-eater/stage2";
     fs::create_directories (dir);
 
-    // Dry source reference
+    // Dry source (send simulation)
     {
         const int n = static_cast<int> (sr * 30.0);
         std::vector<float> L (n), R (n);
@@ -108,24 +152,30 @@ int main()
         writeWav (dir / "dry-source.wav", L, R, sr);
     }
 
-    renderVariant (dir / "memory-hunger025.wav", dir / "memory-hunger025-trace.txt",
-                   0.55f, 0.25f, 0.55f, sr, bpm, 96.0);
-    renderVariant (dir / "memory-hunger050.wav", dir / "memory-hunger050-trace.txt",
-                   0.55f, 0.50f, 0.55f, sr, bpm, 96.0);
-    renderVariant (dir / "memory-hunger100.wav", dir / "memory-hunger100-trace.txt",
-                   0.55f, 1.00f, 0.55f, sr, bpm, 96.0);
+    // Send-style: MIX=1 wet-only return
+    renderVariant (dir / "wet-only-journey.wav", dir / "wet-only-journey-lifecycle.txt",
+                   1.00f, 0.50f, 0.65f, sr, bpm, 192.0);
+    renderVariant (dir / "send-journey.wav", dir / "send-journey-lifecycle.txt",
+                   1.00f, 0.50f, 0.65f, sr, bpm, 192.0);
 
-    renderVariant (dir / "memory-short.wav", dir / "memory-short-trace.txt",
-                   0.55f, 0.55f, 0.20f, sr, bpm, 96.0);
-    renderVariant (dir / "memory-medium.wav", dir / "memory-medium-trace.txt",
-                   0.55f, 0.55f, 0.55f, sr, bpm, 96.0);
-    renderVariant (dir / "memory-deep.wav", dir / "memory-deep-trace.txt",
-                   0.55f, 0.55f, 0.95f, sr, bpm, 96.0);
+    renderVariant (dir / "low-hunger.wav", dir / "low-hunger-lifecycle.txt",
+                   1.00f, 0.20f, 0.60f, sr, bpm, 128.0);
+    renderVariant (dir / "high-hunger.wav", dir / "high-hunger-lifecycle.txt",
+                   1.00f, 1.00f, 0.60f, sr, bpm, 128.0);
 
-    renderVariant (dir / "stage1-journey.wav", dir / "stage1-journey-trace.txt",
-                   0.50f, 0.50f, 0.65f, sr, bpm, 192.0);
-    renderVariant (dir / "wet-only.wav", dir / "wet-only-trace.txt",
-                   1.00f, 0.55f, 0.65f, sr, bpm, 128.0);
+    renderVariant (dir / "low-memory.wav", dir / "low-memory-lifecycle.txt",
+                   1.00f, 0.50f, 0.20f, sr, bpm, 160.0);
+    renderVariant (dir / "high-memory.wav", dir / "high-memory-lifecycle.txt",
+                   1.00f, 0.50f, 1.00f, sr, bpm, 160.0);
+
+    renderVariant (dir / "reinforced-memory.wav", dir / "reinforced-memory-lifecycle.txt",
+                   1.00f, 0.75f, 0.70f, sr, bpm, 192.0);
+    renderVariant (dir / "forgetting-memory.wav", dir / "forgetting-memory-lifecycle.txt",
+                   1.00f, 0.30f, 0.25f, sr, bpm, 220.0);
+
+    // Deep callback: long run high MEMORY
+    renderVariant (dir / "deep-callback.wav", dir / "deep-callback-lifecycle.txt",
+                   1.00f, 0.65f, 0.95f, sr, bpm, 256.0);
 
     return 0;
 }

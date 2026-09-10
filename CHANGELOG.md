@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Memory Eater — Stage 2 COMPLETE
+
+- Creative-director Ableton acceptance **PASS** (memory ecology)
+- 6 fixed slots with strength / decay / reinforcement / fatigue; algorithm **v2**
+- **SEND-FIRST** preserved (Return + MIX=1.0); insert still supported
+- Seek preserves ecology; project reload does not serialize audio
+- Tag: `memory-eater-stage2-complete`
+- PR #15 merged to `main`
+
 ### Memory Eater — Stage 1 COMPLETE
 
 - Creative-director Ableton acceptance **PASS** (short-term audio recall)
