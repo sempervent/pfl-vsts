@@ -4,11 +4,29 @@ Deterministic generative **rhythmic audio gate** — evolving PulseCell organism
 
 ## Status
 
-**Stage 1 IN PROGRESS** — single PulseCell (draft PR).
+**Stage 1 COMPLETE** — Ableton **PASS**. Tag: `pulse-colony-stage1-complete`.
 
-Memory Eater is PARKED. Do not begin Stage 2 until Stage 1 Ableton PASS.
+## CREATIVE-DIRECTOR ABLETON ACCEPTANCE: PASS (Stage 1)
 
-## Musical job
+Confirmed by human Ableton testing:
+
+- Pulse Colony operates as engineered
+- the single PulseCell rhythmic model works
+- DENSITY and MUTATION behave as intended
+- the plugin is safe and usable in Ableton
+- the Stage 1 rhythmic foundation is accepted
+
+Accepted findings:
+
+- one PulseCell can establish a recognizable rhythmic organism
+- negative space is musically useful
+- DENSITY controls activity
+- MUTATION controls evolution
+- MOTION provides bounded stereo behavior
+- Stage 1 does not need audio memory, feedback, or multiband processing
+- the concept warrants development into an actual multi-cell colony
+
+## Musical job (Stage 1)
 
 > Impose one reproducible evolving rhythmic organism on incoming audio:
 > recognizable pulse phrases, useful silence, related mutations, stereo motion —
