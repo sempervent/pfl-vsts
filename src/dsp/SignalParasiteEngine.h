@@ -286,6 +286,9 @@ public:
         frame_.fill01 = sinceReset_ >= fillSettleN_ ? fillSm_ : 0.0f;
     }
 
+    /** True once the 2 s peak follower has had time to converge after reset. */
+    bool fillSettled() const noexcept { return sinceReset_ >= fillSettleN_; }
+
     const ParasiteFeatureFrame& frame() const noexcept { return frame_; }
 
     static int msSamples (double ms, double sr) noexcept
@@ -1588,6 +1591,7 @@ public:
         samplesPerBeat_ = sampleRate_ * 0.5;
         rebuildRng();
         relationship_.reset();
+        heldFill01_ = 0.0f;
         birthDNA (0);
         seedDirty_ = false;
     }
@@ -1689,6 +1693,11 @@ public:
 
         if (playing && ! lastPlaying_)
         {
+            // Hold the last settled wall probe across the feature reset so the
+            // relationship model does not briefly see "room" (fill=0) while the
+            // peak follower reconverges — stop is a pause, not a new insert.
+            if (features_.fillSettled())
+                heldFill01_ = features_.frame().fill01;
             // Re-arm quietly: the first sample after digital silence must not be an onset.
             features_.reset();
             detector_.reset();
@@ -1700,6 +1709,8 @@ public:
             pendingActive_ = false;
             pendingSlid_ = false;
             voice_.stopSafely(); // finish/release any sounding answer; no new scheduling
+            if (features_.fillSettled())
+                heldFill01_ = features_.frame().fill01;
         }
         lastPlaying_ = playing;
 
@@ -1728,12 +1739,16 @@ public:
                 const double ppq = ppqStart + static_cast<double> (i) * beatsPerSample;
                 advanceMusical (ppq, mut);
 
-                // Relationship time only runs while the transport does, so a
-                // stop is a pause and never a wall clock.
-                relationship_.advance (samplesPerBeat_, voice_.isActive(),
-                                       features_.frame().fill01);
-
                 features_.processSample (dryL, dryR);
+
+                // Relationship uses settled fill, or the pre-stop hold while
+                // fill reconverges after transport resume / feature reset.
+                const float fillForRel = features_.fillSettled() ? features_.frame().fill01
+                                                                : heldFill01_;
+                if (features_.fillSettled())
+                    heldFill01_ = features_.frame().fill01;
+
+                relationship_.advance (samplesPerBeat_, voice_.isActive(), fillForRel);
                 if (warmupLeft_ > 0)
                 {
                     --warmupLeft_;
@@ -2200,6 +2215,7 @@ private:
         // LURKING. The DNA does not — it is reconstructed for absolute musical
         // time below, exactly as in Stage 1.
         relationship_.onDiscontinuity();
+        heldFill01_ = 0.0f;
         pendingActive_ = false;
         pendingSlid_ = false;
         voice_.stopSafely();
@@ -2505,6 +2521,7 @@ private:
     ParasiteFeatureExtractor features_;
     ParasiteStimulusDetector detector_;
     ParasiteRelationshipModel relationship_;
+    float heldFill01_ = 0.0f; // last settled fill across stop/resume feature resets
     ParasiteVoice voice_;
     DCBlocker dcL_, dcR_;
     SafetyLimiter limL_, limR_;
