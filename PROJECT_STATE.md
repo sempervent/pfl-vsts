@@ -11,7 +11,7 @@ Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 ## Branch / tags
 
-- Active: `pr/memory-eater-stage2-ecology` (draft PR)
+- Active: `pr/memory-eater-stage2-ecology` (draft PR #15)
 - Stage 1 complete: `memory-eater-stage1-complete` (PR #14)
 - Stage 4 complete: `ruin-engine-stage4-complete` (PR #13 merged)
 - Stage 3 complete: `ruin-engine-stage3-complete` (PR #12 merged)
@@ -58,7 +58,7 @@ Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 2 IN PROGRESS** (draft PR); Stage 1 COMPLETE |
+| Status | **Stage 2 IN PROGRESS** (draft PR #15); Stage 1 COMPLETE |
 | Engine | algorithm **v2** |
 | Formats | AU VST3 (`Fx`) · `Mem1` · `com.pfl.memoryeater` |
 | Params | MIX, HUNGER, MEMORY, OUTPUT, SEED |
