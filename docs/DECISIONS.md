@@ -986,3 +986,18 @@ Canonical Ableton: Return + MIX=1.0; sources via Sends. No SEND MODE parameter.
 
 Self-resampling, polyphony, reverse/pitch, performance verbs, persistent audio state, GUI, hardware
 
+
+---
+
+## 2026-09-10 — Memory Eater Stage 2 Ableton PASS
+
+### Acceptance
+
+CREATIVE-DIRECTOR ABLETON ACCEPTANCE: **PASS**.
+Tag: `memory-eater-stage2-complete`. PR #15 merged.
+
+### Product finding (preserved)
+
+**SEND-FIRST** remains canonical: Ableton Return with MIX=1.0; source via Sends.
+Insert still supported. No SEND MODE parameter.
+

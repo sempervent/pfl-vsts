@@ -6,35 +6,32 @@ Deterministic generative **audio-memory** effect.
 
 **Stage 1 COMPLETE** — Ableton **PASS**. Tag: `memory-eater-stage1-complete` · PR #14.
 
-**Stage 2 IN PROGRESS** — generative memory ecology (draft PR).
+**Stage 2 COMPLETE** — Ableton **PASS**. Tag: `memory-eater-stage2-complete` · PR #15.
+
+**Stage 3 IN PROGRESS** — generational / bounded self-resampling.
 
 Ruin Engine remains PARKED at Stage 4.
 
-## Purpose
+## CREATIVE-DIRECTOR ABLETON ACCEPTANCE: PASS (Stage 2)
 
-Listen to recent incoming audio, retain a bounded short-term history, and autonomously recall fragments — including longer-lived remembered motifs that can recur, tire, and eventually be forgotten.
+Memory ecology accepted. Recurring fragments, forgetting, and deep callbacks beyond the 32-beat ring are musically useful.
 
-## Send-first workflow (canonical)
+### SEND-FIRST (preserved)
 
 ```text
-SOURCE TRACK
-    ├── dry/main
-    └── Send ──► MEMORY EATER RETURN (MIX = 1.0)
+SOURCE TRACKS
+    ↓ Ableton Sends
+MEMORY EATER RETURN
+    MIX = 1.0
 ```
 
-- Prefer Ableton **Return** with **MIX = 1.0** (memory only).
-- Source tracks feed via Ableton Sends.
-- Insert still works; MIX retained (0=dry, 1=wet-only).
-- Do **not** send the Return back into its own Send (DAW feedback).
+Insert remains supported. Do not route the Return into its own Send.
 
-## Processing memory vs audio memory
+## Purpose
 
-| Ruin Engine WearState | Memory Eater |
-|-----------------------|--------------|
-| Processing condition history | Actual audio samples |
-| No capture / playback | Ring + ecology slots + fragment player |
+Listen to recent audio, retain bounded history, promote longer-lived memories, and (Stage 3) allow remembered fragments to occasionally become parents of descendant memories — without a continuous feedback loop.
 
-## Stage 2 architecture
+## Architecture (Stage 2)
 
 ```text
 INPUT ──► short-term ring (original only)
@@ -45,38 +42,13 @@ INPUT ──► short-term ring (original only)
          recall scheduler ──► recent ring OR stored slot
               │
               ▼
-         one-voice microloop player
-              │
-              ▼
-         DC → limiter → MIX ← DRY → OUTPUT
+         one-voice microloop → DC → limiter → MIX ← DRY → OUTPUT
 ```
-
-No self-resampling. Wet is never written back into ring or slots.
 
 ## Public controls
 
-| Control | Role |
-|---------|------|
-| MIX | dry ↔ memory (Return: use 1.0) |
-| HUNGER | recall activity / spacing |
-| MEMORY | historical depth + modest persistence bias |
-| OUTPUT | post-mix / Return gain |
-| SEED | deterministic personality |
-
-## Memory ecology (Stage 2)
-
-- **6** fixed slots; each owns ≤ **1 beat** stereo fragment (preallocated @ 40 BPM / 96 kHz design)
-- Strength, beat-based decay, reinforcement (diminishing), fatigue cooldown
-- Sparse promotion; deterministic replacement; never overwrite active playback
-- Stored memories survive seek / loop wrap; short-term ring clears
-- Project reload: controls only — ecology audio not serialized
+MIX · HUNGER · MEMORY · OUTPUT · SEED
 
 ## Algorithm
 
-Version **2**.
-
-## Ableton acceptance (Stage 2)
-
-**WAITING FOR CREATIVE-DIRECTOR ACCEPTANCE**
-
-Canonical: Return + MIX 1.0; HUNGER .50; MEMORY .65; listen 64–128 beats for recurring memories beyond the 32-beat ring.
+Stage 2: **v2**. Stage 3 will increment to **v3**.
