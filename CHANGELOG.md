@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Signal Parasite — Stage 3 COMPLETE (PARKED)
+
+- Creative-director Ableton acceptance **PASS** (performance intervention)
+- FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE; algorithm **v3** + performance-engine **v1**
+- Relationship model + Stage 1 voice preserved when performance idle
+- Ableton template interaction evaluated; no seventh plugin required now
+- **Product decision:** SIGNAL PARASITE v3 IS SUFFICIENTLY COMPLETE TO SHIP AND PARK
+- Tag: `signal-parasite-stage3-complete`
+- PR #23 merged to `main`
+- Next product effort: suite UI / release polish (not Stage 4 / tonal)
+
 ### Signal Parasite — Stage 2 COMPLETE
 
 - Creative-director Ableton acceptance **PASS** (source relationship model + editor layout)
