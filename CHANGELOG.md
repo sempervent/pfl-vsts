@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Pulse Colony — Stage 1 (draft)
+
+Single PulseCell rhythmic gate: MIX / DENSITY / MUTATION / MOTION / OUTPUT / SEED.
+Algorithm v1. Distinct from SL-2 / fixed slicers. WAITING FOR CREATIVE-DIRECTOR ACCEPTANCE.
+
 ### Memory Eater — Stage 4 COMPLETE (PARKED)
 
 - Creative-director Ableton acceptance **PASS** (performance intervention)

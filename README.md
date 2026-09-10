@@ -30,6 +30,10 @@ Deterministic generative **audio effect** (AU/VST3): degradation states, accumul
 
 Generative **audio-memory** effect: short-term ring + six-slot ecology + generational descendants + performance verbs (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE). **Send-first**: Ableton Return with MIX=1.0. Controls: MIX, HUNGER, MEMORY, OUTPUT, SEED. Algorithm v4. Ableton-accepted through Stage 4; parked as shippable. See `docs/MEMORY_EATER.md`.
 
+### PFL Pulse Colony (Stage 1 draft)
+
+Deterministic generative **rhythmic gate** (AU/VST3): one PulseCell with PulseDNA, click-safe gating, and stereo MOTION. Controls: MIX, DENSITY, MUTATION, MOTION, OUTPUT, SEED. Algorithm v1. Not an SL-2 clone. See `docs/PULSE_COLONY.md`.
+
 ## Roadmap
 
 Development order (planned unless the creative director changes priority):

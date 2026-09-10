@@ -81,8 +81,24 @@ MemoryEaterEngine (algorithm v4 — ring + 6-slot ecology + genealogy)
 recall voice → DC → limiter → MIX → OUTPUT → silenceGain → audio out
 ```
 
-Send-first Return workflow (MIX=1.0). Never writes wet into the ring. See `docs/MEMORY_EATER.md`.
+Real AU/VST3 audio effect (`Fx`). Send-first Return workflow (MIX=1.0). Never writes wet into the ring. See `docs/MEMORY_EATER.md`.
+
+## Pulse Colony (Stage 1)
+
+```text
+Host audio in (mono or stereo)
+        +
+Host tempo / transport / PPQ
+        ↓
+PulseColonyEngine (algorithm v1 — one PulseCell / PulseDNA)
+        ↓
+gate envelope → stereo motion → DC → limiter
+        ↓
+dry ‖ wet → MIX → OUTPUT
+```
+
+See `docs/PULSE_COLONY.md`.
 
 ## Audio engine (shared DSP)
 
-Filter, saturator, dirt bus, feedback delay, DC blocker, safety limiter, RuinEngine core — used by Drone Organism and Ruin Engine.
+Filter, saturator, dirt bus, feedback delay, DC blocker, safety limiter, RuinEngine core — used by Drone Organism and Ruin Engine. Memory Eater / Pulse Colony reuse DC/limiter/smoother.

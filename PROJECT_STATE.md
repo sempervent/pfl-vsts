@@ -4,14 +4,14 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**PFL Pulse Colony Stage 1 — NEXT** (single-cell rhythmic organism).
+**PFL Pulse Colony Stage 1 — IN PROGRESS** (single-cell rhythmic organism).
 Memory Eater **PARKED** at Stage 4 (Ableton PASS). Ruin Engine PARKED at Stage 4.
 
 Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 ## Branch / tags
 
-- Active (next): `pr/pulse-colony-stage1-single-cell`
+- Active: `pr/pulse-colony-stage1-single-cell`
 - Stage 4 complete: `memory-eater-stage4-complete` (PR #17)
 - Stage 3 complete: `memory-eater-stage3-complete` (PR #16)
 - Stage 2 complete: `memory-eater-stage2-complete` (PR #15)
@@ -75,7 +75,9 @@ Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 1 NEXT** — single PulseCell |
-| Engine | algorithm **v1** (planned) |
-| Formats | AU VST3 (`Fx`) — TBD unique identity |
-| Params (planned) | MIX, DENSITY, MUTATION, MOTION, OUTPUT, SEED |
+| Status | **Stage 1 IN PROGRESS** (draft PR) — single PulseCell |
+| Engine | algorithm **v1** |
+| Formats | AU VST3 (`Fx`) · `Pls1` · `com.pfl.pulsecolony` |
+| Params | MIX, DENSITY, MUTATION, MOTION, OUTPUT, SEED |
+| Branch | `pr/pulse-colony-stage1-single-cell` |
+| Next | Creative-director Ableton acceptance |

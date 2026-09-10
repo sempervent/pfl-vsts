@@ -1123,3 +1123,71 @@ personality without amnesia; SILENCE is useful on the Return (listen-while-silen
 No Stage 5 without new listening evidence or explicit creative-director direction.
 Send-first remains canonical. Short-term ring, six-slot ecology, generational memory,
 and the five performance verbs are preserved as the shipped surface.
+
+---
+
+## 2026-09-10 — Pulse Colony Stage 1 single-cell rhythmic organism
+
+### Musical job
+
+Turn incoming audio into one evolving rhythmic organism: openings, holds, gaps, and
+bounded stereo gestures that develop over musical time — not a fixed slicer preset bank.
+
+### Why not SL-2
+
+Pulse Colony must not clone SL-2 patterns/controls/modes. Justification: deterministic
+generative PulseDNA, ancestry-preserving mutation, explicit negative space, phrase-scale
+evolution, seeded reproducibility. If it reads as a generic tempo-synced slicer: FAIL.
+
+### Stage 1 scope
+
+**ONE PulseCell.** No multi-cell colony, no multiband, no performance FREEZE/MUTATE/COLLAPSE
+commands, no MIDI, no audio memory/feedback, no studio integration.
+
+### PulseDNA
+
+Window-list DNA on a **16th grid** (4/4 Stage 1): each `GateWindow` has start slot + length
+∈ {1,2,4,8} slots (onset+hold as continuous open). Closed regions are implicit gaps.
+Phrase length **1–4 bars**, birth bias **2 bars**. Soft downbeat avoidance. Derived mask
+for O(1) playback; mutate windows (not Bernoulli per slot).
+
+### DENSITY
+
+Controls wet open **occupancy** (~15–35% / 35–65% / 60–85% at 0.2 / 0.5 / 1.0 hypotheses).
+Never 100% open. Live changes adapt existing DNA at bar/phrase boundaries (small Δ) or
+reborn-density on large Δ — ancestry preserved when possible.
+
+### MUTATION
+
+Controls evolutionary hunger: lifespan ~2–8 bars at 0.5; **MUTATION 0 freezes evolution**.
+Ops: Stay, NudgeStart, Stretch, Split, Merge, SwapVoid, PhaseJog, BirthCull (one touch).
+STAY is valid. Must not sound like DENSITY.
+
+### MOTION
+
+Bounded stereo balance after the gate; MOTION 0 = unity L/R (true stereo preserved).
+Does not alter rhythmic DNA. No mono-sum-then-pan; no phase invert.
+
+### Gate envelope
+
+Raised-cosine / linear AR ~3 ms attack / 4 ms release; holds do not retrigger; short pulses
+shrink AR so 1/16 @ 180 BPM remains usable.
+
+### Host timeline
+
+Absolute PPQ reconstruct from SEED+params. Seek/loop = reconstruct. Stop → **pass-through**
+(gate open). Mid-insert ≡ warm-from-0. Exact host grid (no Stage 1 swing).
+
+### Determinism
+
+Isolated RNG: `pulse.initial`, `pulse.mutation`, `pulse.duration`, `pulse.spatial`.
+Buffer/SR/tempo matrices required.
+
+### Rejected
+
+SL-2 banks; Euclidean-as-product; constant 16ths; audio capture; feedback; multi-cell;
+performance verbs; MIDI; RATE/STEPS/PATTERN/SWING public knobs.
+
+### Future
+
+Stage 2 multi-cell colony (roles TBD by listening). Multiband later only if earned.
