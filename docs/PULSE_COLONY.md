@@ -4,11 +4,27 @@ Deterministic generative **rhythmic audio gate** — evolving PulseCell organism
 
 ## Status
 
-**Stage 3 IN PROGRESS** — performance intervention (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE).
+**PARKED** — Stages 1–3 COMPLETE (Ableton **PASS**).
 
-**Stage 2 COMPLETE** — Ableton **PASS**. Tag: `pulse-colony-stage2-complete`.
+Tag: `pulse-colony-stage3-complete` (PR #20).
 
-Stage 1 COMPLETE — Ableton **PASS**. Tag: `pulse-colony-stage1-complete`.
+**PULSE COLONY v3 IS SUFFICIENTLY COMPLETE TO SHIP AND PARK.**
+
+No Stage 4 without new listening evidence or explicit creative-director direction.
+Accepted Stage 2/3 musical behavior must NOT be silently retuned.
+
+## CREATIVE-DIRECTOR ABLETON ACCEPTANCE: PASS (Stage 3)
+
+Confirmed by human Ableton testing:
+
+- FREEZE holds a playable colony groove
+- MUTATE changes one organism without unfreezing
+- COLLAPSE is an audible population arc (≠ DENSITY fade)
+- RESIDUE is useful for breakdown/transition
+- RESEED grows a new three-cell colony
+- SILENCE mutes total plugin output safely (≠ MIX=0)
+- continuous DENSITY / MUTATION / MOTION remain distinct from performance verbs
+- Stage 2 idle autonomy remains when no performance command is active
 
 ## CREATIVE-DIRECTOR ABLETON ACCEPTANCE: PASS (Stage 2)
 
@@ -34,14 +50,14 @@ Accepted findings:
 - interaction adds value beyond independent patterns
 - Stage 2 is accepted despite known minor musical limitations such as
   occasional high-density slicer character
-- accepted Stage 2 musical tuning should NOT be silently retuned during Stage 3
 
-## Musical job (Stage 2)
+## Musical job
 
 > Three differentiated rhythmic organisms propose gestures into one bounded
 > shared audio stream, compete for limited rhythmic space, respond to one
 > another, leave intentional gaps, and evolve independently — a colony,
-> not three stacked slicers.
+> not three stacked slicers — conductible via FREEZE / MUTATE / COLLAPSE /
+> RESEED / SILENCE.
 
 ## Controls
 
@@ -68,7 +84,7 @@ Idle (no commands) preserves Stage 2 autonomous colony behavior.
 
 ```text
 in ─► dry ──────────────────────────────────────────┐
-     │                                              MIX → OUTPUT
+     │                                              MIX → OUTPUT → silenceGain
      ▼                                              │
   ANCHOR / SKITTER / GHOST proposals                │
           ↓                                         │
@@ -85,8 +101,13 @@ in ─► dry ──────────────────────
 | SKITTER | Propulsion around Anchor — short opens |
 | GHOST | Sparse gap punctuation |
 
+## Known limitations (accepted / non-blocking)
+
+- Occasional high-density slicer character (Stage 2)
+- FREEZE entry not hard-quantized to bar in all paths
+- Stay MutOp may mark DNA edited without structural change
+- Seek while paused may reset hunger counters
+
 ## Explicitly out of scope
 
-Multiband · MIDI · audio memory · feedback · parallel cell audio sum · public role knobs · studio/controllers · silent Stage 2 retunes
-
-Next after Stage 3 Ableton PASS: park.
+Multiband · MIDI · audio memory · feedback · parallel cell audio sum · public role knobs · studio/controllers · silent Stage 2/3 retunes · Stage 4

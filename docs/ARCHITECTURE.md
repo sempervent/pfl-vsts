@@ -83,7 +83,7 @@ recall voice → DC → limiter → MIX → OUTPUT → silenceGain → audio out
 
 Real AU/VST3 audio effect (`Fx`). Send-first Return workflow (MIX=1.0). Never writes wet into the ring. See `docs/MEMORY_EATER.md`.
 
-## Pulse Colony (Stage 3 IN PROGRESS)
+## Pulse Colony (PARKED — Stage 3 COMPLETE)
 
 ```text
 Host audio in (mono or stereo)
@@ -103,7 +103,8 @@ PulseColonyEngine (algorithm v3)
 dry ‖ wet → MIX → OUTPUT → silenceGain (processor)
 ```
 
-Stage 2 Ableton PASS preserved when performance idle. See `docs/PULSE_COLONY.md`.
+Ableton PASS Stages 1–3. PARKED at v3. Stage 2 idle autonomy preserved when performance idle.
+See `docs/PULSE_COLONY.md`.
 
 COLLAPSE: SWARM → STARVE → FRACTURE → RESIDUE (24 beats). FREEZE ≠ MUTATION=0; SILENCE ≠ MIX=0.
 

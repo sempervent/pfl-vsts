@@ -1403,3 +1403,35 @@ Stage 1/2 legacy loads reconstruct from SEED+controls.
 
 Silent Stage 2 retunes; knob-automation verbs; parallel wet paths; multiband;
 MIDI/studio; pattern editor; public role selector.
+
+---
+
+## 2026-09-10 — Pulse Colony Stage 3 Ableton PASS + PARK
+
+### Acceptance
+
+CREATIVE-DIRECTOR ABLETON ACCEPTANCE: **PASS**.
+Tag: `pulse-colony-stage3-complete`. PR #20 merged.
+
+Performance intervention accepted: FREEZE holds a playable colony groove;
+MUTATE while frozen is deliberate single-cell edit; COLLAPSE is an audible
+population arc ending in useful residue (≠ DENSITY fade); RESEED grows a new
+three-cell universe; SILENCE is total mute (≠ MIX=0). Stage 2 autonomous colony
+behavior remains when performance commands are idle.
+
+### Product decision
+
+**PULSE COLONY v3 IS SUFFICIENTLY COMPLETE TO SHIP AND PARK.**
+
+No Stage 4 without new listening evidence or explicit creative-director direction.
+Preserve ANCHOR / SKITTER / GHOST, ColonyArbiter, one gate/motion path, DENSITY /
+MUTATION / MOTION semantics, and the five performance verbs. Do not silently
+retune accepted Stage 2/3 behavior.
+
+Known MEDIUM/LOW limitations (seek hunger wipe while paused; Stay MutOp
+dnaEdited mark) remain documented and non-blocking.
+
+### Next product
+
+**PFL Signal Parasite Stage 1** — audio-reactive generative collaborator.
+Do not begin Pulse Colony Stage 4.
