@@ -43,6 +43,7 @@ static const PluginId kPlugins[] = {
     { "PFL Ruin Engine", "com.pfl.ruinengine", "Rui1", "PflG" },
     { "PFL Memory Eater", "com.pfl.memoryeater", "Mem1", "PflG" },
     { "PFL Pulse Colony", "com.pfl.pulsecolony", "Pls1", "PflG" },
+    { "PFL Signal Parasite", "com.pfl.signalparasite", "Sig1", "PflG" },
 };
 
 int main()

@@ -4,13 +4,15 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**PFL Signal Parasite Stage 1 — NEXT** (audio-reactive generative collaborator).
-Pulse Colony **PARKED** at Stage 3. Memory Eater **PARKED** at Stage 4. Ruin Engine PARKED at Stage 4.
+**PFL Signal Parasite Stage 2 — NEXT** (attachment / behavioral relationship + editor layout fix).
+Signal Parasite Stage 1 COMPLETE (Ableton PASS). Pulse Colony **PARKED** at Stage 3.
+Memory Eater **PARKED** at Stage 4. Ruin Engine PARKED at Stage 4.
 
 Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 ## Branch / tags
 
+- Stage 1 complete: `signal-parasite-stage1-complete` (PR #21)
 - Stage 3 complete: `pulse-colony-stage3-complete` (PR #20)
 - Stage 2 complete: `pulse-colony-stage2-complete` (PR #19)
 - Stage 1 complete: `pulse-colony-stage1-complete` (PR #18)
@@ -90,7 +92,12 @@ Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 1 NEXT** — single reactive parasite |
-| Planned | MIX, SENSITIVITY, HUNGER, MUTATION, OUTPUT, SEED |
-| Job | Listen → StimulusEvents → one generated ParasiteVoice |
-| Tag | (none yet) |
+| Status | **Stage 1 COMPLETE** (Ableton PASS) — Stage 2 NEXT |
+| Engine | algorithm **v1** (`src/dsp/SignalParasiteEngine.h`) |
+| Formats | AU VST3 (`Fx`) · `Sig1` · `com.pfl.signalparasite` |
+| Params | MIX 0.50, SENSITIVITY 0.50, HUNGER 0.35, MUTATION 0.25, OUTPUT 0.85, SEED 2002 |
+| Job | Listen → ATTACK/SHIFT stimuli → DNA + HUNGER → ONE generated ParasiteVoice |
+| Wet | Generated audio only (noise → resonant LP chirp); analysis taps original input |
+| Tag | `signal-parasite-stage1-complete` (PR #21) |
+| Deferred UI | Editor height requires scrolling for full parameter set; footer encoding artifact (`—` mojibake). Accepted for Stage 1; fix in Stage 2. |
+| Next | Stage 2: relationship model (LURKING/ATTACHED/ANSWERING/WITHDRAWN) + editor layout fix |

@@ -2,10 +2,20 @@
 
 ## Unreleased
 
-### Signal Parasite — Stage 1 NEXT
+### Signal Parasite — Stage 2 NEXT
 
-- Audio-reactive generative collaborator (listen → StimulusEvents → one ParasiteVoice)
-- Branch planned: `pr/signal-parasite-stage1-reactive`
+- Attachment / behavioral relationship + shared editor layout fix
+- Branch planned: `pr/signal-parasite-stage2-relationship`
+
+### Signal Parasite — Stage 1 COMPLETE
+
+- Creative-director Ableton acceptance **PASS** (audio-reactive generative collaborator)
+- Algorithm **v1**; listen → ATTACK/SHIFT → DNA + HUNGER → one ParasiteVoice
+- Wet is generated audio; analysis taps original input only; no self-trigger
+- SENSITIVITY / HUNGER / MUTATION orthogonality accepted
+- **Deferred UI (accepted):** editor height requires scrolling; footer encoding artifact — fix in Stage 2
+- Tag: `signal-parasite-stage1-complete`
+- PR #21 merged to `main`
 
 ### Pulse Colony — Stage 3 COMPLETE (PARKED)
 
