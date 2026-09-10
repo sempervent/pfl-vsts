@@ -4,14 +4,17 @@ Deterministic generative **audio-memory** effect.
 
 ## Status
 
-**Stage 1–3 COMPLETE** — Ableton **PASS** (tags `memory-eater-stage1-complete` … `stage3-complete`).
+**PARKED** — Stages 1–4 COMPLETE (Ableton **PASS**).
+Tag: `memory-eater-stage4-complete`.
 
-**Stage 4 IN PROGRESS** — performance intervention (final planned software stage before park).
+**MEMORY EATER v4 IS SUFFICIENTLY COMPLETE TO SHIP AND PARK.**
 
-## CREATIVE-DIRECTOR ABLETON ACCEPTANCE: PASS (Stage 3)
+No Stage 5 without new listening evidence or explicit creative-director direction.
 
-Generational memory accepted. Descendants remain useful on a Return track.
-**SEND-FIRST** remains canonical. Ready for final performance-intervention stage.
+## CREATIVE-DIRECTOR ABLETON ACCEPTANCE: PASS (Stage 4)
+
+Performance intervention accepted on the send/return workflow.
+Generational ecology + FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE are musically successful.
 
 ## SEND-FIRST (canonical)
 
@@ -19,34 +22,29 @@ Generational memory accepted. Descendants remain useful on a Return track.
 SOURCE TRACK(S) ──► Ableton Sends ──► RETURN (PFL Memory Eater, MIX=1.0)
 ```
 
-## Algorithm
+## What shipped (v4)
 
-**v4** + performance-engine **v1**.
+| Layer | Capability |
+|-------|------------|
+| Stage 1 | Bounded short-term ring + sparse microloop recall |
+| Stage 2 | Six-slot ecology (strength, decay, reinforcement, fatigue, forgetting) |
+| Stage 3 | Generational memory (gens 0…3); explicit descendant capture (no wet→ring feedback) |
+| Stage 4 | Performance verbs |
 
-Public continuous: MIX, HUNGER, MEMORY, OUTPUT, SEED.
+### Public continuous controls
 
-Performance: FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE.
+MIX · HUNGER · MEMORY · OUTPUT · SEED
 
-### FREEZE
+### Performance commands
 
-Freeze the ecology library; keep recalling from that cast. Ring write paused.
+| Verb | Meaning |
+|------|---------|
+| **FREEZE** | Freeze the ecology library; keep recalling from that cast |
+| **MUTATE** | One bounded manual descendant; works while frozen |
+| **COLLAPSE** | 24-beat REMEMBER → ERODE → DEVOUR → RESIDUE → 0–1 residue |
+| **RESEED** | New personality; preserves stored memories/genealogy |
+| **SILENCE** | Mute entire plugin output (≠ MIX=0); listen-while-silent |
 
-### MUTATE
+## Explicitly out of scope (parked)
 
-One bounded manual descendant. Works while frozen; does not unfreeze.
-
-### COLLAPSE
-
-24-beat REMEMBER → ERODE → DEVOUR → RESIDUE forgetting arc → 0–1 residue.
-
-### RESEED
-
-New personality; preserves stored memories/genealogy.
-
-### SILENCE
-
-Mute entire plugin output (≠ MIX=0). Listen-while-silent: ring keeps writing.
-
-## Out of scope (parked product)
-
-MIDI/controllers, custom GUI, audio serialization, polyphony, Stage 5, Pulse Colony.
+MIDI/controllers · custom GUI · audio serialization · polyphony · Stage 5 · continuous feedback

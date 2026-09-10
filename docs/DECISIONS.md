@@ -1102,3 +1102,24 @@ Copying Ruin mutation axes; FREEZE-as-looper; COLLAPSE-as-instant-clear; RESEED-
 - FREEZE/SILENCE pause lifecycle and `resyncTimeline` + `snapScheduler` on exit so paused musical time does not become a catch-up wipe / opportunity backlog.
 - COLLAPSE may leave FREEZE latched under the host toggle; residue re-enters Frozen if latch remains.
 - Collapsed mode pauses lifecycle so residue does not evaporate while parked.
+
+---
+
+## 2026-09-10 — Memory Eater Stage 4 Ableton PASS + PARK
+
+### Acceptance
+
+CREATIVE-DIRECTOR ABLETON ACCEPTANCE: **PASS**.
+Tag: `memory-eater-stage4-complete`. PR #17 merged.
+
+Performance intervention accepted on send/return: FREEZE holds a playable cast;
+MUTATE while frozen is deliberate; COLLAPSE forgets toward residue; RESEED changes
+personality without amnesia; SILENCE is useful on the Return (listen-while-silent).
+
+### Product decision
+
+**MEMORY EATER v4 IS SUFFICIENTLY COMPLETE TO SHIP AND PARK.**
+
+No Stage 5 without new listening evidence or explicit creative-director direction.
+Send-first remains canonical. Short-term ring, six-slot ecology, generational memory,
+and the five performance verbs are preserved as the shipped surface.
