@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include "plugins/PflGenericEditorSizing.h"
 
 RuinEngineEditor::RuinEngineEditor (RuinEngineProcessor& p)
     : AudioProcessorEditor (&p),
@@ -7,7 +8,8 @@ RuinEngineEditor::RuinEngineEditor (RuinEngineProcessor& p)
 {
     juce::ignoreUnused (processor_);
     addAndMakeVisible (genericEditor_);
-    setSize (420, 520);
+    const auto b = pfl::ui::preferredGenericEditorBounds (p, 24);
+    setSize (b.getWidth(), b.getHeight());
 }
 
 RuinEngineEditor::~RuinEngineEditor() = default;
@@ -17,7 +19,7 @@ void RuinEngineEditor::paint (juce::Graphics& g)
     g.fillAll (juce::Colours::black);
     g.setColour (juce::Colours::grey);
     g.setFont (12.0f);
-    g.drawText ("PFL Ruin Engine — Stage 4",
+    g.drawText (pfl::ui::pluginFooterLabel ("PFL Ruin Engine", "Stage 4"),
                 getLocalBounds().removeFromBottom (24).reduced (8, 2),
                 juce::Justification::centredLeft);
 }

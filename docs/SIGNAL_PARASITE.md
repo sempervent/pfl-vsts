@@ -1,27 +1,40 @@
-# PFL Signal Parasite — Stage 1
+# PFL Signal Parasite — Stage 2
 
 An audio-reactive generative collaborator. It listens to whatever you feed it,
 decides for itself when something is worth answering, and answers with its own
 generated sound. It is not a processor: the wet path never contains your input.
 
+Stage 2 gives it a *relationship* with the source: it remembers what it has
+been offered lately and how that went, and it lurks, attaches, gets into a
+conversation or backs off accordingly.
+
 - Identity: `SignalParasite`, `Sig1`, `com.pfl.signalparasite`, manufacturer `PflG`
 - Formats: AU, VST3 (Fx), stereo in / stereo out, no MIDI
-- Algorithm version: **1**
+- Algorithm version: **2**
 
 ## Status
 
-**Stage 1 COMPLETE** — Ableton **PASS**. Tag: `signal-parasite-stage1-complete` (PR #21).
+**Stage 2 COMPLETE — CREATIVE-DIRECTOR ABLETON ACCEPTANCE: PASS.**
+Tags: `signal-parasite-stage2-complete` (PR #22), `signal-parasite-stage1-complete` (PR #21).
+
+## CREATIVE-DIRECTOR ABLETON ACCEPTANCE: PASS (Stage 2)
+
+Confirmed by human Ableton testing:
+
+- Stage 2 behavioral relationship model works as engineered
+- LURKING / ATTACHED / ANSWERING / WITHDRAWN behavior is accepted
+- SENSITIVITY, HUNGER, and MUTATION remain meaningfully distinct
+- dense-source restraint works; sparse-source engagement works
+- changing sustained material works
+- editor-sizing defect is fixed; normal plugin editor use no longer requires scrolling
+- footer/mojibake defects are fixed; shared editor change is accepted
+
+**Product decision:** SIGNAL PARASITE STAGE 2 RELATIONSHIP MODEL IS ACCEPTED.
 
 ## CREATIVE-DIRECTOR ABLETON ACCEPTANCE: PASS (Stage 1)
 
 Confirmed by human Ableton testing: the audio/reactive implementation behaves
 successfully. Listening, stimulus detection, and generated responses are accepted.
-
-### Known deferred UI issue (accepted for Stage 1)
-
-Editor height/layout requires scrolling for the full parameter set; footer
-encoding/layout also requires investigation (mojibake such as `â€` from UTF-8
-em dash). Scheduled for Stage 2 before further musical work is considered complete.
 
 ## The idea
 
@@ -43,7 +56,7 @@ it answers — so a long take does not repeat itself.
 | MIX | 0.50 | Wet/dry blend. At 0 you hear only your input; the parasite still listens and still runs. |
 | SENSITIVITY | 0.50 | **How much of the source it hears.** Low: only clear, strong events. High: ghost notes and small timbre moves too. |
 | HUNGER | 0.35 | **How often it answers what it heard.** 0 is completely silent. 1 is talkative but still leaves space. |
-| MUTATION | 0.25 | **How fast its manner drifts.** 0 freezes the grammar forever. 1 evolves it every 4 bars. |
+| MUTATION | 0.25 | **How fast its manner drifts.** 0 freezes the grammar forever. 1 evolves it every 4 bars. It never drives the relationship. |
 | OUTPUT | 0.85 | Final trim. |
 | SEED | 2002 | The whole personality at fixed macros. Same seed and same input give the same performance every time. |
 
@@ -135,17 +148,101 @@ randomness at all, so changing SENSITIVITY cannot shift the response draws.
 
 ## Renders
 
-`renders/signal-parasite/stage1/` — drums and pad at dry / wet / 0.50 mix,
-SENSITIVITY and HUNGER and MUTATION sweeps, two seeds, silence, and a 64-bar
-journey. Each `.wav` has a matching `-trace.txt` with counts, suppression
-reasons, structural fingerprints and the full event lists.
+`renders/signal-parasite/stage2/` — drums, pad, sparse and busy at dry / wet /
+0.50 mix; SENSITIVITY, HUNGER and MUTATION sweeps; two seeds; silence; the
+sparse → busy → sparse relationship journey wet, at mix, and with DNA frozen so
+every difference in the trace is the state; and the 64-bar drums journey.
 
-## Stage 1 scope
+Each `.wav` has a matching `-trace.txt` with counts, suppression reasons,
+structural fingerprints and the full event lists, plus Stage 2 diagnostics:
+state occupancy, the five pressures, the history window, the transition list
+with beat positions, and the state each answer was issued from.
 
-Deliberately absent: MIDI and controllers, performance verbs, FFT or pitch
-tracking, more than one voice, and any wet path that processes the input.
+`renders/signal-parasite/stage1/` is kept for comparison.
 
-## Stage 2 (next)
+## Scope
 
-Attachment / behavioral relationship (stimulus history — not audio memory) plus
-editor layout/encoding fix. Algorithm → v2.
+Deliberately absent through Stage 2: MIDI and controllers, performance verbs,
+FFT or pitch tracking, more than one voice, any wet path that processes the
+input, and any memory of audio.
+
+## The relationship (Stage 2)
+
+Two things sit on top of Stage 1: a bounded memory of recent stimuli, and a
+state over it.
+
+The memory is a 16-slot ring of *descriptors* — when a stimulus arrived, how
+strong and how bright it was, whether it was an ATTACK or a SHIFT, whether the
+parasite answered it, and whether it arrived in the shadow of an answer. There
+is no audio in it. Memory Eater is the plugin that remembers sound; the
+parasite remembers only that things happened.
+
+From that window it derives five bounded pressures: how **busy** the source is,
+how **attachable** it looks (interesting, with room, and answering it has been
+working), whether a **conversation** is going, how **withdrawn** it wants to
+be, and how **fatigued** it is from its own answers.
+
+### The four states
+
+| State | What it means | How it answers |
+|-------|---------------|----------------|
+| **LURKING** | Present and listening. It has not committed. | Sparingly, late, a little quieter. Starts here. |
+| **ATTACHED** | It has decided this source is worth following. | Exactly as Stage 1 did. |
+| **ANSWERING** | An exchange is going. | Sooner, slightly longer, a touch louder. |
+| **WITHDRAWN** | It has backed off — a wall of sound, or its own fatigue. | Rarely, latest, shortest, quietest. |
+
+`LURKING → ATTACHED → ANSWERING / WITHDRAWN`, and `WITHDRAWN → LURKING /
+ATTACHED`. A wall of sound can also drive it straight from LURKING to
+WITHDRAWN, because attachment needs room and a wall has none.
+
+Everything runs on musical time. Every beat it takes stock and may retreat;
+bonding and stepping forward need a **major opportunity**, which comes round
+every 4 to 16 beats. Each state has a dwell floor, so nothing flickers, and
+withdrawal builds over about ten beats — backing off is a decision, not a
+reflex, so the peak of a swelling pad will not chase it away.
+
+### What the state does and does not touch
+
+It changes *manner*, inside the Stage 1 vocabularies: how likely it is to
+accept a stimulus, how much space it insists on, which half of the delay and
+duration sets it draws from, and how loud the answer is. DNA is still the
+personality; the state is a mood on top of it.
+
+It does not change what the parasite hears, and it cannot make a sound on its
+own. **No stimulus, no response — ANSWERING included.** HUNGER 0 is still
+silent, HUNGER's minimum gap is still a hard floor the state can only lengthen,
+and the 0.62 accept cap survives even the most forward state.
+
+### On the fixtures
+
+Same ears, same appetite (SENSITIVITY 0.50, HUNGER 0.70), 96 beats:
+
+| Partner | Where it spends its time | Stimuli | Answers | Answered share |
+|---------|--------------------------|---------|---------|----------------|
+| sparse hits | ANSWERING 73 %, ATTACHED 10 %, LURKING 17 % | 69 | 21 | 30 % |
+| busy sixteenths | WITHDRAWN 80 %, LURKING 20 % | 380 | 21 | 5.5 % |
+| pad | LURKING 68 %, ATTACHED 25 %, ANSWERING 7 % | 41 | 9 | 22 % |
+| silence | LURKING 100 % | 0 | 0 | — |
+
+The busy partner offers five times as much and gets the same number of answers.
+
+Over the `journey` fixture — sparse, then busy, then sparse again — it attaches
+at beat 16, gets into a conversation at 26, withdraws at 72 once the busy
+section has been going for eight beats, comes back to attached at 138 and to
+answering at 144.
+
+## Host behaviour (Stage 2 additions)
+
+A seek clears the history and drops the state to LURKING; the DNA is
+reconstructed for absolute musical time exactly as before, not reseeded.
+Transport stop **pauses** the relationship — its clock only advances on played
+samples, so there is no wall clock and nothing ages while you are parked. A
+SEED change starts a new personality with no history, so it goes back to
+LURKING. Controls and SEED are saved with the project; the history and the
+state are not, so a reload starts LURKING too.
+
+## Stage 3
+
+Performance intervention (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE) —
+authorized after Stage 2 Ableton PASS. Intended final planned software stage;
+park Signal Parasite if accepted rather than auto-continuing into tonal listening.

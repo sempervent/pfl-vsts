@@ -1586,3 +1586,168 @@ additional musical work is considered complete.
 Signal Parasite Stage 2: relationship model (LURKING / ATTACHED / ANSWERING /
 WITHDRAWN) over recent stimulus history — not audio memory — plus editor sizing
 and footer encoding fix.
+
+---
+
+## 2026-09-10 — Signal Parasite Stage 2 (algorithm v2)
+
+**PFL Signal Parasite Stage 2** — the parasite gets a relationship with its
+source. Stage 1 answered each stimulus on its own merits and had no idea what
+had happened five bars ago. Stage 2 gives it a bounded memory of *what it has
+been offered and how that went*, and a state over that memory that colours how
+readily and how forwardly it answers.
+
+Algorithm version → **2**. Saved-state version → **2**. No new public
+parameters: MIX, SENSITIVITY, HUNGER, MUTATION, OUTPUT, SEED are unchanged, and
+their Stage 1 meanings are unchanged.
+
+### Not audio memory
+
+`RecentStimulusHistory` is a 16-slot ring of descriptors — arrival time,
+strength, brightness, kind, whether it was answered, whether it arrived in the
+shadow of an answer. No PCM, no capture, no resampling. Memory Eater owns
+captured audio; the parasite remembers *that* things happened, not what they
+sounded like. The cap is fixed at construction, so `processBlock` never
+allocates (asserted by a trap around `process()` in the tests).
+
+### Pressures
+
+Five bounded 0…1 drives, recomputed from the history window (8 beats) and the
+feature frame at each evaluation:
+
+| Pressure | Reads |
+|----------|-------|
+| `source` | `max(density, wall)` — events per beat, or a source that never leaves its own peak |
+| `attachment` | interest (spread of brightness, strength, ATTACK/SHIFT mix) + space + recent success |
+| `conversation` | stimuli arriving within 2 beats of an answer, plus a healthy hit rate |
+| `withdrawal` | `0.70·source + 0.20·fatigue + 0.10·voice occupancy` |
+| `fatigue` | +0.18 per accepted answer, decaying with a 6-beat musical time constant |
+
+`source` is a **max**, not a blend, because the two readings are anti-correlated
+in practice: a genuine wall of sound produces almost no detected events
+precisely because it is a wall, and a fast sixteenth pattern produces plenty
+while sitting well below its own peak. Either one should be able to say "there
+is no room here".
+
+Withdrawal rises with its own slower inertia (0.15 per beat against 0.35 for
+everything else). Backing off is a decision, not a reflex: it takes roughly ten
+beats of sustained pressure, so the peak of a swelling pad cannot chase the
+parasite away while an actual wall can.
+
+### States and evaluation cadence
+
+`LURKING → ATTACHED → ANSWERING / WITHDRAWN`, with `WITHDRAWN → LURKING /
+ATTACHED`. It starts LURKING. Dwell floors (2 / 4 / 3 / 6 beats) and separate
+enter/exit thresholds give it inertia; nothing flickers.
+
+Minor evaluations run every beat and may only *retreat* — fall back to LURKING
+when the source goes quiet, or withdraw under pressure. Bonding and stepping
+forward into a conversation need a **major opportunity**, drawn from 4–16 beats
+on its own RNG stream.
+
+**One edge was added beyond the locked skeleton: `LURKING → WITHDRAWN`.**
+Without it a wall of sound can only ever be met with lurking, because
+attachment needs space and a wall has none — so the parasite could never
+express "this is too much" until it had first bonded with it, which it never
+would. The added edge is what makes the busy fixture read as WITHDRAWN 80 % of
+the time rather than sitting in an indifferent LURKING.
+
+### What the state actually changes
+
+Manner, never vocabulary. The state multiplies the HUNGER accept probability
+(0.80 / 1.00 / 1.20 / 0.20), stretches the DNA politeness gap (1.15 / 1.00 /
+0.85 / 1.60), trims the answer level (0.85 / 1.00 / 1.10 / 0.70), and restricts
+delay and duration draws to the half of the Stage 1 vocabulary the state
+prefers — re-rolling at most once, always from the DNA weights. ATTACHED spans
+the whole vocabulary, so it costs no extra draw and behaves exactly as Stage 1.
+
+DNA remains the personality. The state is a mood on top of it.
+
+### Rules that survived intact
+
+- **NO STIMULUS → NO NEW RESPONSE.** ANSWERING included. Nothing in Stage 2
+  schedules anything; the only entry point to a response is still a detected
+  stimulus, so silence is still silence.
+- **HUNGER 0 → no answers**, and the 0.62 accept cap survives the ANSWERING
+  gain, so the most forward state is still selective.
+- **The HUNGER minimum gap is untouched.** The state can only lengthen the DNA
+  politeness gap on top of it; it can never make the parasite denser than
+  HUNGER allows.
+- **SENSITIVITY is still detection-only.** The relationship reads the detected
+  history, so turning SENSITIVITY up does make the source *look* busier — that
+  is a listening consequence, not a response gate. Detection consumes no RNG
+  and no state.
+- **MUTATION is still DNA-only.** The major-opportunity clock has its own
+  derived stream (`parasite/relationship/clock`) rather than reading DNA, so
+  MUTATION cannot become a state transition rate. At MUTATION 0 the DNA
+  fingerprint is frozen and the state machine still runs.
+
+### Host handling
+
+| Event | Relationship |
+|-------|--------------|
+| Seek / loop wrap | History and pressures cleared, state → LURKING. DNA is reconstructed for absolute musical time exactly as in Stage 1 — not reseeded. |
+| Transport stop | **Paused.** The relationship clock only advances on played samples, so there is no wall clock; history survives the stop. |
+| SEED change | New DNA at the next bar boundary, and a new personality has no history with this source: → LURKING. |
+| Project reload | Controls and SEED restore; history and state do not persist. Reload starts LURKING. |
+
+### One Stage 1 fix carried along
+
+`fill01` divides by a 2 s peak follower that starts *at* the signal, so it read
+a hard 1.0 for the first seconds of any material at all. It is now published as
+0 until the follower has had two time constants, the same discipline Stage 1
+already applied to `attack` and `change`. Without it every freshly inserted
+source looked like a wall of sound.
+
+### Observed on the fixtures (96 beats, SENSITIVITY 0.50, HUNGER 0.70)
+
+| Partner | Occupancy | Stimuli | Answers | Accept ratio |
+|---------|-----------|---------|---------|--------------|
+| sparse | ANSWERING 73 %, ATTACHED 10 %, LURKING 17 % | 69 | 21 | 0.304 |
+| busy | WITHDRAWN 80 %, LURKING 20 % | 380 | 21 | 0.055 |
+| pad | LURKING 68 %, ATTACHED 25 %, ANSWERING 7 % | 41 | 9 | 0.220 |
+| silence | LURKING 100 % | 0 | 0 | — |
+
+The busy partner offers five times the stimuli and gets the same number of
+answers. That ratio is the whole point of the stage.
+
+The `journey` fixture (sparse → busy → sparse, 192 beats) transitions
+LURKING → ATTACHED at beat 16, → ANSWERING at 26, → WITHDRAWN at 72 (eight
+beats into the busy section), back to ATTACHED at 138 and ANSWERING at 144.
+
+### Rejected for Stage 2
+
+Audio memory of any kind; new public parameters; a second voice; performance
+verbs; FFT or pitch tracking; MIDI; persisting the history across a reload;
+letting the state drive detection or the DNA.
+
+---
+
+## 2026-09-10 — Signal Parasite Stage 2 Ableton PASS
+
+### Acceptance
+
+CREATIVE-DIRECTOR ABLETON ACCEPTANCE: **PASS**.
+Tag: `signal-parasite-stage2-complete`. PR #22 merged.
+
+Stage 2 relationship model accepted in Ableton: LURKING / ATTACHED / ANSWERING /
+WITHDRAWN behavior; SENSITIVITY / HUNGER / MUTATION remain distinct; dense-source
+restraint and sparse-source engagement; changing sustained material.
+
+### Deferred Stage 1 UI — resolved
+
+- Editor height calculated from automatable parameter count (`PflGenericEditorSizing.h`)
+- Normal desktop operation does not require scrolling
+- Performance-heavy plugin editors (Pulse Colony, Memory Eater, Ruin Engine) fit normally
+- Footer encoding corrected (ASCII-safe `Product - Stage N`)
+- Shared editor behavior accepted across the suite
+
+### Product decision
+
+**SIGNAL PARASITE STAGE 2 RELATIONSHIP MODEL IS ACCEPTED.**
+
+### Next
+
+Signal Parasite Stage 3 — performance intervention (FREEZE / MUTATE / COLLAPSE /
+RESEED / SILENCE). Intended final planned software stage; park after PASS rather
+than auto-starting tonal listening.

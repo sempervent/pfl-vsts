@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include "plugins/PflGenericEditorSizing.h"
 
 DroneOrganismEditor::DroneOrganismEditor (DroneOrganismProcessor& p)
     : AudioProcessorEditor (&p),
@@ -53,7 +54,9 @@ DroneOrganismEditor::DroneOrganismEditor (DroneOrganismProcessor& p)
         processor_.performanceTrigger (pfl::performance::Command::Reseed);
     };
 
-    setSize (420, 420);
+    // Extra chrome: performance button row (56) + "Performance" label strip (28).
+    const auto b = pfl::ui::preferredGenericEditorBounds (p, 28, 56);
+    setSize (b.getWidth(), b.getHeight());
 }
 
 DroneOrganismEditor::~DroneOrganismEditor() = default;

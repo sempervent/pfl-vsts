@@ -20,6 +20,9 @@
 | `performance_tests` | FREEZE/MUTATE/COLLAPSE/RESEED/SILENCE; scripted determinism; buffer 64–512; mutate-while-frozen; long ~50 min musical script |
 | `broken_conductor_tests` | BC Stage 1–6: MIDI determinism; buffers; tempos; projection; harmony; performance; long-run |
 | `ruin_engine_tests` | Ruin Stage 1: AGE/MIX transparency; hostile bounds; silence/impulse/sine; seed/timeline determinism; buffer independence; multi-SR; long-run |
+| `pulse_colony_tests` | Pulse Colony Stages 1–3: colony + performance; Stage 2 idle when perf idle |
+| `memory_eater_tests` | Memory Eater Stages 1–4 |
+| `signal_parasite_tests` | Signal Parasite Stages 1–2: detection, DNA, relationship states, buffer matrix |
 | `plugin_identity_tests` | Unique PLUGIN_CODE / bundle IDs across suite |
 
 ### Host acceptance (not covered by unit tests)

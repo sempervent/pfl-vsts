@@ -2,10 +2,16 @@
 
 ## Unreleased
 
-### Signal Parasite — Stage 2 NEXT
+### Signal Parasite — Stage 2 COMPLETE
 
-- Attachment / behavioral relationship + shared editor layout fix
-- Branch planned: `pr/signal-parasite-stage2-relationship`
+- Creative-director Ableton acceptance **PASS** (source relationship model + editor layout)
+- Algorithm **v2**: LURKING / ATTACHED / ANSWERING / WITHDRAWN over 16 stimulus descriptors (no audio memory)
+- Bounded pressures: source, attachment, conversation, withdrawal, response fatigue
+- Dense-source restraint and sparse-source engagement accepted; SENSITIVITY / HUNGER / MUTATION remain distinct
+- **Deferred Stage 1 UI resolved:** editor height from param count (`PflGenericEditorSizing.h`); normal desktop no scrolling; performance-heavy editors fit; footer encoding corrected; shared editor accepted
+- **Product decision:** SIGNAL PARASITE STAGE 2 RELATIONSHIP MODEL IS ACCEPTED
+- Tag: `signal-parasite-stage2-complete`
+- PR #22 merged to `main`
 
 ### Signal Parasite — Stage 1 COMPLETE
 
@@ -13,7 +19,7 @@
 - Algorithm **v1**; listen → ATTACK/SHIFT → DNA + HUNGER → one ParasiteVoice
 - Wet is generated audio; analysis taps original input only; no self-trigger
 - SENSITIVITY / HUNGER / MUTATION orthogonality accepted
-- **Deferred UI (accepted):** editor height requires scrolling; footer encoding artifact — fix in Stage 2
+- Deferred UI (editor scroll / footer mojibake) fixed in Stage 2
 - Tag: `signal-parasite-stage1-complete`
 - PR #21 merged to `main`
 
