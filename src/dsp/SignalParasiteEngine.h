@@ -1064,6 +1064,7 @@ public:
             detector_.clearQueue();
             pendingActive_ = false;
             pendingSlid_ = false;
+            voice_.stopSafely(); // finish/release any sounding answer; no new scheduling
         }
         lastPlaying_ = playing;
 
@@ -1475,14 +1476,24 @@ private:
             return;
         }
 
+        // Mid-insert / first attach / large forward jump: reconstruct DNA for absolute
+        // musical time (same policy as seek). Analyzer stays fresh — no fabricated stimuli.
+        if (lastBar_ < 0 || bar - lastBar_ > 64)
+        {
+            rebuildRng();
+            const int replayFrom = std::max (0, bar - 4096);
+            birthDNA (replayFrom);
+            prevMutation_ = -1.0f;
+            for (int b = replayFrom + 1; b <= bar; ++b)
+                evolveAtBar (b, mut);
+            lastBar_ = bar;
+            return;
+        }
+
         if (lastBar_ >= 0)
         {
             for (int b = lastBar_ + 1; b <= bar; ++b)
-            {
-                if (b - lastBar_ > 64)
-                    break;
                 evolveAtBar (b, mut);
-            }
         }
         lastBar_ = bar;
     }

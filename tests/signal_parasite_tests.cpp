@@ -663,12 +663,41 @@ static void testStopStartSafe()
     EXPECT (eng.stimulusCount() == stim);   // analysis frozen
     EXPECT (eng.dnaGeneration() == gen);    // DNA paused
     EXPECT (stopped.allFinite);
+    // After ~80 ms of stopped transport, any release ramp must finish.
+    EXPECT (! eng.voiceActive());
 
     // Restart must not invent an onset from the transport edge.
     auto steady = makeTone (static_cast<int> (sr * 0.4), sr, 220.0, 0.3f);
     const auto restarted = processRun (eng, steady, steady, sr, bpm, 16.0, true, 256);
     EXPECT (eng.stimulusCount() == stim);
     EXPECT (restarted.allFinite);
+}
+
+static void testMidInsertDnaMatchesWarmTimeline()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    Setup s;
+    s.mutation = 1.0f;
+    s.hunger = 0.0f; // DNA only — no response RNG coupling
+    s.sens = 0.5f;
+    s.trace = false;
+
+    Engine warm;
+    setupEngine (warm, s);
+    // Slightly past 400 beats so the warm path has entered absolute bar 100
+    // (floor(ppq/4) == 100), matching a mid-insert that starts at beat 400.
+    auto silence = makeSilence (beatsToSamples (404.0, sr, bpm));
+    processRun (warm, silence, silence, sr, bpm, 0.0, true, 512);
+    const auto warmFp = warm.dnaFingerprint();
+    const auto warmGen = warm.dnaGeneration();
+    EXPECT (warmGen > 0);
+
+    Engine insert;
+    setupEngine (insert, s); // forceRebuild(0) — mid-insert at beat 400 / bar 100
+    auto tail = makeSilence (beatsToSamples (4.0, sr, bpm));
+    processRun (insert, tail, tail, sr, bpm, 400.0, true, 512);
+    EXPECT (insert.dnaFingerprint() == warmFp);
+    EXPECT (insert.dnaGeneration() == warmGen);
 }
 
 static void testNoSelfTrigger()
@@ -930,6 +959,7 @@ int main()
     testSeedChangeRegeneratesAtBarBoundary();
     testSeekDoesNotCreateFalseStimulus();
     testStopStartSafe();
+    testMidInsertDnaMatchesWarmTimeline();
     testNoSelfTrigger();
     testResponseCausalityAndLatencyBand();
     testMixOutputOrthogonalToStructure();
@@ -947,3 +977,5 @@ int main()
     std::cerr << "signal_parasite_tests: " << gFails << " failure(s)\n";
     return 1;
 }
+
+// temporary - remove
