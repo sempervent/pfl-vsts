@@ -11,7 +11,7 @@ Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 ## Branch / tags
 
-- Active: `pr/memory-eater-stage3-generational`
+- Active: `pr/memory-eater-stage3-generational` (draft PR #16)
 - Stage 2 complete: `memory-eater-stage2-complete` (PR #15)
 - Stage 1 complete: `memory-eater-stage1-complete` (PR #14)
 - Stage 4 complete: `ruin-engine-stage4-complete` (PR #13 merged)
