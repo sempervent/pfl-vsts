@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Pulse Colony — Stage 2 COMPLETE
+
+- Creative-director Ableton acceptance **PASS** (multi-cell rhythmic colony)
+- ANCHOR / SKITTER / GHOST → ColonyArbiter → one gate/motion; algorithm **v2**
+- Global DENSITY prevents threefold activity inflation; interaction adds value beyond Stage 1
+- Known minor limitation: occasional high-density slicer character (accepted)
+- Tag: `pulse-colony-stage2-complete`
+- PR #19 merged to `main`
+
 ### Pulse Colony — Stage 1 COMPLETE
 
 - Creative-director Ableton acceptance **PASS** (single-cell rhythmic organism)

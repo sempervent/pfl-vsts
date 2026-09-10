@@ -1219,3 +1219,123 @@ Stage 1 rhythmic foundation accepted.
 
 Stage 2: multi-cell rhythmic colony (proposal → arbiter → one wet gate stream).
 No Stage 2 work on the Stage 1 branch; branch from updated `main` after merge.
+
+---
+
+## 2026-09-10 — Pulse Colony Stage 2 multi-cell colony
+
+### Why multi-cell is Stage 2
+
+Stage 1 Ableton PASS proved one PulseCell can establish a recognizable rhythmic
+organism with useful negative space. Stage 2 must prove **interaction between**
+rhythmic organisms — a colony — not a busier single pattern.
+
+### Why three cells
+
+Three roles create hierarchy, competition, call/response, and variation without
+making behavior impossible to reason about. Not 4/6/8 or dynamic population yet.
+
+### Role definitions (names kept)
+
+| Role | Job |
+|------|-----|
+| **ANCHOR** | Groove spine: longer opens, stable DNA, restrained mutation |
+| **SKITTER** | Propulsion/syncopation around Anchor: short opens, higher mut |
+| **GHOST** | Sparse punctuation in left gaps: rare, unusual, spatial |
+
+Aliases considered (SPINE/FLICKER/AFTERIMAGE) — rejected rename cost; functions unchanged.
+
+### Proposal representation
+
+```text
+PulseIntent { role, startAbsSlot, lengthSlots, importance, spatialTarget, kind }
+```
+
+A proposal is “I would like the wet signal open here,” not guaranteed acceptance.
+
+### Arbiter model
+
+Two-phase per absolute 16th:
+
+1. Immutable `ColonySnapshot` (accepted history, congestion, gap, hunger, budget)
+2. All three cells propose from that snapshot (independent RNG)
+3. `ColonyArbiter` commits in priority order → one accepted event stream
+
+### Global activity budget
+
+DENSITY maps to **colony-wide** wet occupancy / onset budget (ceiling ~0.65 at dens=1).
+Cells compete; activity must not triple because three cells exist.
+dens→0 ≈ Anchor only; dens→1 = busy colony with protected gaps.
+
+### Collision behavior
+
+Same open slot: remap/modify → else suppress lower priority.
+Overlap into existing hold: extend / spatial redirect / subtle accent — **never gain sum**.
+Tie-break priority: ANCHOR > SKITTER > GHOST (priority is tie-break, not sole model).
+
+### Interaction rules
+
+- Gap fill / HOLD_OUT (some gaps belong to nobody)
+- Bounded call/response tokens (probabilistic; not mandatory sequences)
+- Sparse Skitter anticipation of Anchor onsets
+- Congestion EMA suppresses decorative proposals
+- Beat-based role hunger (Ghost target ~8–32 beats between contributions at defaults)
+- Suppression is first-class interaction
+
+### DENSITY / MUTATION / MOTION
+
+- **DENSITY**: global colony activity budget (not per-cell Stage 1 dens)
+- **MUTATION**: role-scaled evolution hunger; MUTATION 0 freezes all DNA; async lifespans
+  Anchor ~0.30×, Skitter ~0.90×, Ghost ~1.25× (identity preserved at mut=1)
+- **MOTION**: global stereo strength; role spatial tendencies (Anchor center, Skitter lateral,
+  Ghost widest). MOTION 0 = source image; MOTION must not alter rhythm decisions
+
+### Negative-space protection
+
+Colony `voidMin(dens)` + GAP_PRESERVE + budget ceiling. High dens never continuous-open
+or constant-sixteenth spam.
+
+### Rejected
+
+- Parallel cell audio paths summed
+- Multiband / crossovers
+- Public role / cell-count / balance / swing knobs
+- Performance FREEZE/MUTATE/COLLAPSE (later stage)
+- MIDI / studio controllers
+- Shared single RNG walked in cell order
+
+### Future questions
+
+Performance intervention vs ecology deepening after Stage 2 listening. Default lean:
+performance verbs, then park. Multiband only if earned.
+
+---
+
+## 2026-09-10 — Pulse Colony Stage 2 Ableton PASS
+
+### Acceptance
+
+CREATIVE-DIRECTOR ABLETON ACCEPTANCE: **PASS**.
+Tag: `pulse-colony-stage2-complete`. PR #19 merged.
+
+Confirmed: three-cell colony works musically; ANCHOR / SKITTER / GHOST interaction
+accepted; ColonyArbiter architecture accepted; global DENSITY remains useful;
+MUTATION remains distinct from DENSITY; MOTION remains useful; multi-cell adds
+value beyond Stage 1.
+
+### Accepted findings
+
+- Pulse Colony is now genuinely multi-cell
+- ANCHOR establishes rhythmic structure
+- SKITTER contributes propulsion/syncopation
+- GHOST provides sparse gap-oriented punctuation
+- Proposals feed one ColonyArbiter; one final audio gate/motion path
+- Global DENSITY prevents threefold activity inflation
+- Interaction adds value beyond independent patterns
+- Accepted despite known minor musical limitations (occasional high-density slicer character)
+- **Accepted Stage 2 musical tuning must NOT be silently retuned during Stage 3**
+
+### Next
+
+Stage 3: performance intervention (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE),
+then park. Branch from updated `main` after merge.

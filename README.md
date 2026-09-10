@@ -30,9 +30,9 @@ Deterministic generative **audio effect** (AU/VST3): degradation states, accumul
 
 Generative **audio-memory** effect: short-term ring + six-slot ecology + generational descendants + performance verbs (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE). **Send-first**: Ableton Return with MIX=1.0. Controls: MIX, HUNGER, MEMORY, OUTPUT, SEED. Algorithm v4. Ableton-accepted through Stage 4; parked as shippable. See `docs/MEMORY_EATER.md`.
 
-### PFL Pulse Colony (Stage 1 COMPLETE)
+### PFL Pulse Colony (Stage 2 COMPLETE)
 
-Deterministic generative **rhythmic gate** (AU/VST3): one PulseCell with PulseDNA, click-safe gating, and stereo MOTION. Controls: MIX, DENSITY, MUTATION, MOTION, OUTPUT, SEED. Algorithm v1. Ableton-accepted Stage 1 foundation; not an SL-2 clone. See `docs/PULSE_COLONY.md`.
+Deterministic generative **rhythmic gate** (AU/VST3): three PulseCells (ANCHOR / SKITTER / GHOST) propose into one ColonyArbiter → one gate/motion stream. Controls: MIX, DENSITY, MUTATION, MOTION, OUTPUT, SEED. Algorithm v2. Ableton-accepted Stage 2 colony. See `docs/PULSE_COLONY.md`.
 
 ## Roadmap
 
@@ -42,7 +42,7 @@ Development order (planned unless the creative director changes priority):
 2. **PFL Broken Conductor** — Stage 6 complete (software). Stage 7 = physical rig.
 3. **PFL Ruin Engine** — PARKED at Stage 4 (shippable). Generative transformation of incoming audio.
 4. **PFL Memory Eater** — **PARKED** at v4 (Ableton PASS). Send-first Return + performance verbs.
-5. **PFL Pulse Colony** — Stage 1 COMPLETE (Ableton PASS). Next: Stage 2 multi-cell colony.
+5. **PFL Pulse Colony** — Stage 2 COMPLETE (Ableton PASS). Next: Stage 3 performance intervention, then park.
 6. **PFL Signal Parasite** — Later: audio-reactive generative collaborator (deterministic analysis, not ML-by-default).
 
 ## Shared Architecture

@@ -4,13 +4,14 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**PFL Pulse Colony Stage 1 — COMPLETE** (Ableton PASS). Next: Stage 2 multi-cell colony.
-Memory Eater **PARKED** at Stage 4 (Ableton PASS). Ruin Engine PARKED at Stage 4.
+**PFL Pulse Colony Stage 2 — COMPLETE** (Ableton PASS). Next: Stage 3 performance intervention.
+Stage 1 COMPLETE. Memory Eater **PARKED** at Stage 4. Ruin Engine PARKED at Stage 4.
 
 Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 ## Branch / tags
 
+- Stage 2 complete: `pulse-colony-stage2-complete` (PR #19)
 - Stage 1 complete: `pulse-colony-stage1-complete` (PR #18)
 - Stage 4 complete: `memory-eater-stage4-complete` (PR #17)
 - Stage 3 complete: `memory-eater-stage3-complete` (PR #16)
@@ -75,10 +76,11 @@ Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 1 COMPLETE** (Ableton PASS) — single PulseCell foundation |
-| Engine | algorithm **v1** |
+| Status | **Stage 2 COMPLETE** (Ableton PASS) — 3-cell colony + arbiter |
+| Engine | algorithm **v2** (Stage 1: v1, tag `pulse-colony-stage1-complete`) |
 | Formats | AU VST3 (`Fx`) · `Pls1` · `com.pfl.pulsecolony` |
 | Params | MIX, DENSITY, MUTATION, MOTION, OUTPUT, SEED |
-| Tag | `pulse-colony-stage1-complete` (PR #18) |
-| Acceptance | One PulseCell establishes a recognizable rhythmic organism; negative space useful; DENSITY/MUTATION/MOTION distinct; no audio memory/feedback/multiband required; warrants multi-cell colony |
-| Next | Stage 2 — multi-cell rhythmic colony |
+| Roles | ANCHOR · SKITTER · GHOST → ColonyArbiter → one gate/motion |
+| Tag | `pulse-colony-stage2-complete` (PR #19) |
+| Acceptance | Multi-cell colony accepted; interaction adds value beyond Stage 1; occasional high-dens slicer character is a known minor limitation; Stage 2 tuning must not be silently retuned in Stage 3 |
+| Next | Stage 3 — performance intervention (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE), then park |
