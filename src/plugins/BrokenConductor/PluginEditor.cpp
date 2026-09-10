@@ -1,11 +1,13 @@
 #include "PluginEditor.h"
+#include "plugins/PflGenericEditorSizing.h"
 
 BrokenConductorEditor::BrokenConductorEditor (BrokenConductorProcessor& p)
     : AudioProcessorEditor (&p),
       genericEditor_ (p)
 {
     addAndMakeVisible (genericEditor_);
-    setSize (400, 420);
+    const auto b = pfl::ui::preferredGenericEditorBounds (p, 24);
+    setSize (b.getWidth(), b.getHeight());
 }
 
 BrokenConductorEditor::~BrokenConductorEditor() = default;
@@ -15,11 +17,14 @@ void BrokenConductorEditor::paint (juce::Graphics& g)
     g.fillAll (juce::Colours::black);
     g.setColour (juce::Colours::grey);
     g.setFont (12.0f);
-    g.drawText ("PFL Broken Conductor — Stage 6", getLocalBounds().removeFromBottom (22).reduced (8, 2),
+    g.drawText (pfl::ui::pluginFooterLabel ("PFL Broken Conductor", "Stage 6"),
+                getLocalBounds().removeFromBottom (24).reduced (8, 2),
                 juce::Justification::centredLeft);
 }
 
 void BrokenConductorEditor::resized()
 {
-    genericEditor_.setBounds (getLocalBounds());
+    auto area = getLocalBounds();
+    area.removeFromBottom (24);
+    genericEditor_.setBounds (area);
 }
