@@ -4,13 +4,14 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**PFL Pulse Colony Stage 1 — COMPLETE** (Ableton PASS). Next: Stage 2 multi-cell colony.
-Memory Eater **PARKED** at Stage 4 (Ableton PASS). Ruin Engine PARKED at Stage 4.
+**PFL Pulse Colony Stage 2 — IN PROGRESS** (multi-cell colony, draft PR).
+Stage 1 COMPLETE (Ableton PASS). Memory Eater **PARKED** at Stage 4. Ruin Engine PARKED at Stage 4.
 
 Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 ## Branch / tags
 
+- Active: `pr/pulse-colony-stage2-colony`
 - Stage 1 complete: `pulse-colony-stage1-complete` (PR #18)
 - Stage 4 complete: `memory-eater-stage4-complete` (PR #17)
 - Stage 3 complete: `memory-eater-stage3-complete` (PR #16)
@@ -75,10 +76,10 @@ Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 1 COMPLETE** (Ableton PASS) — single PulseCell foundation |
-| Engine | algorithm **v1** |
+| Status | **Stage 2 IN PROGRESS** (draft PR) — 3-cell colony + arbiter |
+| Engine | algorithm **v2** (Stage 1 foundation: v1, tag `pulse-colony-stage1-complete`) |
 | Formats | AU VST3 (`Fx`) · `Pls1` · `com.pfl.pulsecolony` |
 | Params | MIX, DENSITY, MUTATION, MOTION, OUTPUT, SEED |
-| Tag | `pulse-colony-stage1-complete` (PR #18) |
-| Acceptance | One PulseCell establishes a recognizable rhythmic organism; negative space useful; DENSITY/MUTATION/MOTION distinct; no audio memory/feedback/multiband required; warrants multi-cell colony |
-| Next | Stage 2 — multi-cell rhythmic colony |
+| Roles | ANCHOR · SKITTER · GHOST → ColonyArbiter → one gate/motion |
+| Branch | `pr/pulse-colony-stage2-colony` |
+| Next | Creative-director Ableton acceptance |

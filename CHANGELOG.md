@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Pulse Colony — Stage 2 (draft)
+
+Three PulseCells (ANCHOR / SKITTER / GHOST) propose into one ColonyArbiter → one gate/motion wet path.
+Algorithm **v2**. DENSITY = colony activity budget. WAITING FOR CREATIVE-DIRECTOR ACCEPTANCE.
+
 ### Pulse Colony — Stage 1 COMPLETE
 
 - Creative-director Ableton acceptance **PASS** (single-cell rhythmic organism)

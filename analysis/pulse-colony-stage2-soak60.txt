@@ -1,0 +1,1 @@
+soak60min bad=0 peak=0.379278 occ=0.1875 A=1467 S=2502 G=778 gen=5

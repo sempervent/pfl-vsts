@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -54,6 +55,38 @@ struct PulseDNA
     }
 };
 
+enum class PulseRole : int8_t
+{
+    Anchor = 0,
+    Skitter = 1,
+    Ghost = 2,
+    Count = 3
+};
+
+enum class PulseSuppressReason : uint8_t
+{
+    None = 0,
+    Accept,
+    Collision,
+    GlobalBudget,
+    Congestion,
+    GapPreserve,
+    RoleCooldown,
+    RedundantOpen,
+    SoloFilter,
+    InteractionOff
+};
+
+struct PulseIntent
+{
+    int8_t role = -1;
+    int startAbsSlot = 0;
+    uint8_t lengthSlots = 1;
+    float importance = 0.5f;
+    float spatialTarget = 0.0f;
+    uint8_t kind = 0; // 0 OPEN, 1 ANSWER, 2 ANTICIPATE, 3 HUNGER
+};
+
 struct PulseTraceEvent
 {
     double beat = 0.0;
@@ -66,17 +99,21 @@ struct PulseOpenEvent
     float durationBeats = 0.0f;
     float gain = 1.0f;
     float pan = 0.0f;
+    int8_t role = -1;
 };
 
 /**
- * Pulse Colony Stage 1 — one PulseCell rhythmic gate + stereo motion.
- * Algorithm v1. No audio memory, no feedback, no multi-cell.
+ * Pulse Colony Stage 2 — three PulseCells propose; ColonyArbiter accepts
+ * into ONE gate/motion wet path. Algorithm v2.
  */
 class PulseColonyEngine
 {
 public:
-    static constexpr int kAlgorithmVersion = 1;
+    static constexpr int kAlgorithmVersion = 2;
     static constexpr double kSlotBeats = 0.25; // sixteenth
+    static constexpr int kNumRoles = static_cast<int> (PulseRole::Count);
+    static constexpr int kMaxProposals = 8;
+    static constexpr int kOccRingSlots = 64; // 16 beats
 
     void prepare (double sampleRate, int maxBlockSize = 1024) noexcept
     {
@@ -99,20 +136,22 @@ public:
 
     void reset() noexcept
     {
-        gateEnv_ = 1.0f; // pass-through until DNA schedules
-        gatePhase_ = 2; // hold-open until first musical decision while playing
+        gateEnv_ = 1.0f;
+        gatePhase_ = 2;
         holdLeft_ = 0;
         lastPpq_ = -1.0e9;
         lastTransportPlaying_ = false;
         lastBar_ = -1;
         lastSlot_ = -1;
         lastPanBar_ = -1;
-        prevDensity_ = -1.0f;
-        prevMutation_ = -1.0f;
-        events_.clear();
-        opens_.clear();
+        resetColonyRuntime();
         rebuildRng();
-        regenerateDNA (0);
+        for (int r = 0; r < kNumRoles; ++r)
+        {
+            cells_[static_cast<size_t> (r)].prevDensity = -1.0f;
+            cells_[static_cast<size_t> (r)].prevMutation = -1.0f;
+            regenerateDNA (r, 0);
+        }
         snapScheduler (0.0);
     }
 
@@ -122,7 +161,7 @@ public:
         if (s == masterSeed_)
             return;
         masterSeed_ = s;
-        seedDirty_ = true; // apply at next bar
+        seedDirty_ = true;
         rebuildRng();
     }
 
@@ -144,21 +183,67 @@ public:
         panSm_.setCurrentAndTarget (panSm_.target());
     }
 
-    const PulseDNA& dna() const noexcept { return dna_; }
-    int generation() const noexcept { return dna_.generation; }
+    /** Stage 1 compat: Anchor DNA. */
+    const PulseDNA& dna() const noexcept { return cells_[0].dna; }
+    const PulseDNA& cellDna (int role) const noexcept
+    {
+        const int r = std::clamp (role, 0, kNumRoles - 1);
+        return cells_[static_cast<size_t> (r)].dna;
+    }
+
+    int generation() const noexcept
+    {
+        int g = 0;
+        for (int r = 0; r < kNumRoles; ++r)
+            g += cells_[static_cast<size_t> (r)].dna.generation;
+        return g;
+    }
+
     float gateEnv() const noexcept { return gateEnv_; }
+
+    /** Diagnostic: enable call/response, congestion, gap-preserve, hunger (default true). */
+    void setInteractionEnabled (bool e) noexcept { interactionEnabled_ = e; }
+    bool interactionEnabled() const noexcept { return interactionEnabled_; }
+
+    /** Diagnostic: -1 = all roles, 0/1/2 = solo Anchor/Skitter/Ghost. */
+    void setSoloRole (int roleOrNegativeForAll) noexcept
+    {
+        soloRole_ = (roleOrNegativeForAll < 0) ? -1 : std::clamp (roleOrNegativeForAll, 0, kNumRoles - 1);
+    }
+    int soloRole() const noexcept { return soloRole_; }
+
+    int roleAcceptCount (int role) const noexcept
+    {
+        if (role < 0 || role >= kNumRoles) return 0;
+        return roleAcceptCount_[static_cast<size_t> (role)];
+    }
+
+    float colonyOpenOccupancy() const noexcept
+    {
+        return static_cast<float> (occOpenCount_) / static_cast<float> (kOccRingSlots);
+    }
+
+    float ghostMedianGapBeats() const noexcept
+    {
+        if (ghostGapCount_ <= 0) return 0.0f;
+        return ghostGapSum_ / static_cast<float> (ghostGapCount_);
+    }
 
     void setTraceEnabled (bool e) noexcept { traceEnabled_ = e; }
     const std::vector<PulseTraceEvent>& traces() const noexcept { return events_; }
     const std::vector<PulseOpenEvent>& opens() const noexcept { return opens_; }
     void clearTraces() noexcept { events_.clear(); opens_.clear(); }
 
-    /** Rebuild PulseDNA at current params (call after prepare + param sync). */
     void forceRebuild (int bar = 0) noexcept
     {
-        prevDensity_ = -1.0f;
-        prevMutation_ = -1.0f;
-        regenerateDNA (bar);
+        rebuildRng();
+        for (int r = 0; r < kNumRoles; ++r)
+        {
+            cells_[static_cast<size_t> (r)].prevDensity = -1.0f;
+            cells_[static_cast<size_t> (r)].prevMutation = -1.0f;
+            regenerateDNA (r, bar);
+        }
+        resetColonyRuntime();
         snapScheduler (static_cast<double> (bar) * 4.0);
     }
 
@@ -171,7 +256,6 @@ public:
         const double safeBpm = bpm > 1.0 ? bpm : 120.0;
         const double beatsPerSample = (safeBpm / 60.0) / sampleRate_;
 
-        // Seek / discontinuity → reconstruct from absolute PPQ
         if (lastPpq_ > -1.0e8)
         {
             const double jump = ppqStart - lastPpq_;
@@ -180,18 +264,23 @@ public:
             if (jump < -0.01 || jump > maxBlockBeats)
             {
                 reconstructAt (ppqStart, densSm_.current(), mutSm_.current());
-                // Align gate to DNA at landing slot without flash-open
                 syncGateToPpq (ppqStart);
             }
         }
 
         if (! transportPlaying && lastTransportPlaying_)
-            beginPassThroughRamp(); // stop → pass-through with click-safe open
+            beginPassThroughRamp();
         if (transportPlaying && ! lastTransportPlaying_)
         {
-            // Resume: leave pass-through; next slot edges drive the gate
-            if (gatePhase_ == 2 && holdLeft_ <= 0)
-                holdLeft_ = std::max (1, static_cast<int> (0.05 * sampleRate_));
+            // Leave pass-through: arbiter owns the gate again.
+            holdOwnerRole_ = -1;
+            holdEndAbsSlot_ = -1;
+            if (gatePhase_ == 1 || gatePhase_ == 2)
+            {
+                gatePhase_ = 3;
+                gatePos_ = 0;
+                pulseRelN_ = std::max (1, attN_);
+            }
         }
         lastTransportPlaying_ = transportPlaying;
 
@@ -216,7 +305,6 @@ public:
             }
             else
             {
-                // Pass-through while stopped (ramp handled on stop edge)
                 if (gateEnv_ < 0.999f)
                 {
                     tickGate();
@@ -238,7 +326,6 @@ public:
             float wetL = inL * gateEnv_;
             float wetR = inR * gateEnv_;
 
-            // Stereo motion (true stereo balance; MOTION 0 = unity)
             const float pan = panSm_.getNext();
             applyMotion (wetL, wetR, motion, pan);
 
@@ -264,26 +351,172 @@ public:
     }
 
 private:
+    struct PulseCell
+    {
+        PulseDNA dna {};
+        int nextWindowId = 1;
+        float prevDensity = -1.0f;
+        float prevMutation = -1.0f;
+        pfl::generative::DeterministicRNG initialRng {}, mutateRng {}, durationRng {}, spatialRng {};
+    };
+
+    struct ColonySnapshot
+    {
+        float dens = 0.5f;
+        float mut = 0.35f;
+        float congestion01 = 0.0f;
+        int gapLengthSlots = 0;
+        float budgetRemaining = 1.0f;
+        int lastAcceptedRole = -1;
+        std::array<float, kNumRoles> beatsSinceRole {};
+        bool holding = false;
+        int holdOwner = -1;
+        int holdEndSlot = -1;
+        bool interaction = true;
+        int solo = -1;
+        bool callLive = false;
+        int callKind = 0;
+        int callExpireSlot = -1;
+        int callCaller = -1;
+    };
+
+    static uint64_t hashTag (const char* s) noexcept
+    {
+        uint64_t h = 0xcbf29ce484222325ull;
+        for (const char* p = s; *p; ++p)
+        {
+            h ^= static_cast<uint64_t> (static_cast<uint8_t> (*p));
+            h *= 0x100000001b3ull;
+        }
+        return h;
+    }
+
+    static const char* roleName (int role) noexcept
+    {
+        switch (role)
+        {
+            case 0: return "ANCHOR";
+            case 1: return "SKITTER";
+            case 2: return "GHOST";
+            default: return "?";
+        }
+    }
+
+    static const char* suppressName (PulseSuppressReason r) noexcept
+    {
+        switch (r)
+        {
+            case PulseSuppressReason::None: return "NONE";
+            case PulseSuppressReason::Accept: return "ACCEPT";
+            case PulseSuppressReason::Collision: return "COLLISION";
+            case PulseSuppressReason::GlobalBudget: return "GLOBAL_BUDGET";
+            case PulseSuppressReason::Congestion: return "CONGESTION";
+            case PulseSuppressReason::GapPreserve: return "GAP_PRESERVE";
+            case PulseSuppressReason::RoleCooldown: return "ROLE_COOLDOWN";
+            case PulseSuppressReason::RedundantOpen: return "REDUNDANT_OPEN";
+            case PulseSuppressReason::SoloFilter: return "SOLO_FILTER";
+            case PulseSuppressReason::InteractionOff: return "INTERACTION_OFF";
+        }
+        return "NONE";
+    }
+
+    static float mutScale (int role) noexcept
+    {
+        switch (role)
+        {
+            case 0: return 0.30f;
+            case 1: return 0.90f;
+            case 2: return 1.25f;
+            default: return 1.0f;
+        }
+    }
+
+    static float colonyBudgetMid (float dens) noexcept
+    {
+        dens = std::clamp (dens, 0.0f, 1.0f);
+        const float x[] = { 0.0f, 0.25f, 0.50f, 0.75f, 1.0f };
+        const float y[] = { 0.12f, 0.22f, 0.38f, 0.52f, 0.60f };
+        for (int i = 0; i < 4; ++i)
+        {
+            if (dens <= x[i + 1])
+            {
+                const float t = (dens - x[i]) / (x[i + 1] - x[i]);
+                return y[i] + (y[i + 1] - y[i]) * t;
+            }
+        }
+        return y[4];
+    }
+
+    static void roleShares (float dens, float& a, float& s, float& g) noexcept
+    {
+        dens = std::clamp (dens, 0.0f, 1.0f);
+        // Anchor keeps majority share at mid dens; Skitter ramps; Ghost stays minority.
+        a = 0.92f + (0.45f - 0.92f) * dens;
+        s = 0.05f + (0.40f - 0.05f) * dens;
+        g = 0.03f + (0.15f - 0.03f) * dens;
+        const float sum = a + s + g;
+        a /= sum; s /= sum; g /= sum;
+    }
+
+    static int voidMinSlots (float dens) noexcept
+    {
+        if (dens <= 0.25f) return 4;
+        if (dens <= 0.50f) return 3;
+        if (dens <= 0.75f) return 2;
+        return 1;
+    }
+
     void rebuildRng() noexcept
     {
-        initialRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, 0x50494E49ull); // PINI
-        mutateRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, 0x504D5554ull); // PMUT
-        durationRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, 0x50445552ull); // PDUR
-        spatialRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, 0x50535041ull); // PSPA
+        static constexpr const char* roles[] = { "anchor", "skitter", "ghost" };
+        static constexpr const char* purposes[] = { "initial", "mutation", "duration", "spatial" };
+        for (int r = 0; r < kNumRoles; ++r)
+        {
+            auto& c = cells_[static_cast<size_t> (r)];
+            char tag[64];
+            std::snprintf (tag, sizeof (tag), "%s/%s", roles[r], purposes[0]);
+            c.initialRng = pfl::generative::DeterministicRNG::derived (masterSeed_, hashTag (tag));
+            std::snprintf (tag, sizeof (tag), "%s/%s", roles[r], purposes[1]);
+            c.mutateRng = pfl::generative::DeterministicRNG::derived (masterSeed_, hashTag (tag));
+            std::snprintf (tag, sizeof (tag), "%s/%s", roles[r], purposes[2]);
+            c.durationRng = pfl::generative::DeterministicRNG::derived (masterSeed_, hashTag (tag));
+            std::snprintf (tag, sizeof (tag), "%s/%s", roles[r], purposes[3]);
+            c.spatialRng = pfl::generative::DeterministicRNG::derived (masterSeed_, hashTag (tag));
+        }
+        arbiterRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, hashTag ("colony/arbitrate"));
+    }
+
+    void resetColonyRuntime() noexcept
+    {
+        congestionEma_ = 0.0f;
+        gapLengthSlots_ = 0;
+        // Start not artificially hungry (esp. Ghost); pressure accumulates in beats.
+        beatsSinceRole_.fill (0.0f);
+        beatsSinceRole_[2] = 4.0f;
+        budgetRemaining_ = 1.0f;
+        lastAcceptedRole_ = -1;
+        holdOwnerRole_ = -1;
+        holdEndAbsSlot_ = -1;
+        callLive_ = false;
+        callKind_ = 0;
+        callExpireSlot_ = -1;
+        callCaller_ = -1;
+        occRing_.fill (0);
+        occRingPos_ = 0;
+        occOpenCount_ = 0;
+        roleAcceptCount_.fill (0);
+        roleProposeCount_.fill (0);
+        ghostGapSum_ = 0.0f;
+        ghostGapCount_ = 0;
+        lastGhostAcceptBeat_ = -1.0f;
+        events_.clear();
+        opens_.clear();
     }
 
     void snapScheduler (double ppq) noexcept
     {
-        // Land before current slot so advanceMusical applies the landing slot once.
         lastSlot_ = static_cast<int> (std::floor (ppq / kSlotBeats)) - 1;
         lastBar_ = static_cast<int> (std::floor (ppq / 4.0)) - 1;
-    }
-
-    void beginSafeOpen() noexcept
-    {
-        gatePhase_ = 2;
-        gateEnv_ = 1.0f;
-        holdLeft_ = std::max (1, static_cast<int> (0.25 * sampleRate_));
     }
 
     void beginPassThroughRamp() noexcept
@@ -295,129 +528,97 @@ private:
         holdLeft_ = std::max (1, static_cast<int> (0.5 * sampleRate_));
     }
 
-    void syncGateToPpq (double ppq) noexcept
+    void syncGateToPpq (double /*ppq*/) noexcept
     {
-        const int n = dna_.lengthCells();
-        if (n <= 0)
-        {
-            gatePhase_ = 0;
-            gateEnv_ = 0.0f;
-            return;
-        }
-        const int absSlot = static_cast<int> (std::floor (ppq / kSlotBeats));
-        int local = (absSlot + dna_.phaseShiftSlots) % n;
-        if (local < 0) local += n;
-        const uint8_t m = dna_.mask[static_cast<size_t> (local)];
-        if (m == 0)
-        {
-            gatePhase_ = 0;
-            gateEnv_ = 0.0f;
-            holdLeft_ = 0;
-        }
-        else
-        {
-            gatePhase_ = 2;
-            gateEnv_ = 1.0f;
-            holdLeft_ = std::max (1, static_cast<int> (0.25 * sampleRate_));
-        }
+        // After reconstruct, land closed unless mid-hold would require full replay.
+        // Safe: idle until next accepted onset.
+        gatePhase_ = 0;
+        gateEnv_ = 0.0f;
+        holdLeft_ = 0;
+        holdOwnerRole_ = -1;
+        holdEndAbsSlot_ = -1;
     }
 
-    static void occupancyBand (float dens, float& lo, float& hi) noexcept
+    int lifespanBarsFor (int role, float mut) noexcept
     {
-        dens = std::clamp (dens, 0.0f, 1.0f);
-        if (dens <= 0.2f)
-        {
-            const float t = dens / 0.2f;
-            lo = 0.08f + (0.15f - 0.08f) * t;
-            hi = 0.20f + (0.35f - 0.20f) * t;
-        }
-        else if (dens <= 0.5f)
-        {
-            const float t = (dens - 0.2f) / 0.3f;
-            lo = 0.15f + (0.35f - 0.15f) * t;
-            hi = 0.35f + (0.65f - 0.35f) * t;
-        }
-        else
-        {
-            const float t = (dens - 0.5f) / 0.5f;
-            lo = 0.35f + (0.60f - 0.35f) * t;
-            hi = 0.65f + (0.85f - 0.65f) * t;
-        }
-    }
-
-    static int voidMin (float dens) noexcept
-    {
-        if (dens <= 0.3f) return 4;
-        if (dens <= 0.7f) return 2;
-        return 1;
-    }
-
-    int lifespanBarsFor (float mut) noexcept
-    {
+        auto& rng = cells_[static_cast<size_t> (role)].mutateRng;
         if (mut <= 1.0e-4f)
             return 1000000;
-        const float t = std::clamp (mut, 0.0f, 1.0f);
-        const int lo = std::max (1, static_cast<int> (std::lround (2.0 - t)));
-        const int hi = std::max (lo, static_cast<int> (std::lround (3.0 + 10.0 * (1.0 - t))));
-        const float u = mutateRng_.nextFloat();
+        const float scaled = std::clamp (mut * mutScale (role), 0.0f, 1.0f);
+        const int lo = std::max (1, static_cast<int> (std::lround (2.0 - scaled)));
+        const int hi = std::max (lo, static_cast<int> (std::lround (3.0 + 10.0 * (1.0 - scaled))));
+        const float u = rng.nextFloat();
         return lo + static_cast<int> (u * static_cast<float> (hi - lo + 1));
     }
 
-    void rebuildMask() noexcept
+    void rebuildMask (int role) noexcept
     {
-        const int n = dna_.lengthCells();
-        dna_.mask.fill (0);
-        for (int w = 0; w < dna_.windowCount; ++w)
+        auto& dna = cells_[static_cast<size_t> (role)].dna;
+        const int n = dna.lengthCells();
+        dna.mask.fill (0);
+        for (int w = 0; w < dna.windowCount; ++w)
         {
-            const auto& win = dna_.windows[static_cast<size_t> (w)];
+            const auto& win = dna.windows[static_cast<size_t> (w)];
             for (int k = 0; k < win.lengthSlots; ++k)
             {
                 int s = (win.startSlot + k) % n;
                 if (s < 0) s += n;
-                dna_.mask[static_cast<size_t> (s)] = (k == 0) ? 1 : 2;
+                dna.mask[static_cast<size_t> (s)] = (k == 0) ? 1 : 2;
             }
         }
     }
 
-    int drawLength (float dens) noexcept
+    int drawLength (int role, float dens) noexcept
     {
+        auto& rng = cells_[static_cast<size_t> (role)].durationRng;
         static constexpr int lens[] = { 1, 2, 4, 8 };
         float w[4];
-        if (dens < 0.35f) { w[0]=0.15f; w[1]=0.35f; w[2]=0.40f; w[3]=0.10f; }
-        else if (dens < 0.7f) { w[0]=0.25f; w[1]=0.35f; w[2]=0.30f; w[3]=0.10f; }
-        else { w[0]=0.35f; w[1]=0.30f; w[2]=0.25f; w[3]=0.10f; }
-        float u = durationRng_.nextFloat();
+        if (role == 0) // Anchor: {4,8} primary
+        {
+            w[0] = 0.00f; w[1] = 0.12f; w[2] = 0.48f; w[3] = 0.40f;
+        }
+        else if (role == 1) // Skitter: {1,2}
+        {
+            w[0] = 0.55f; w[1] = 0.35f; w[2] = 0.10f; w[3] = 0.00f;
+            if (dens < 0.35f) { w[0] = 0.45f; w[1] = 0.45f; w[2] = 0.10f; }
+        }
+        else // Ghost: {2,4} primary, occasional 8, rare 1
+        {
+            w[0] = 0.08f; w[1] = 0.42f; w[2] = 0.40f; w[3] = 0.10f;
+        }
+        float u = rng.nextFloat();
         for (int i = 0; i < 4; ++i)
         {
             u -= w[i];
             if (u <= 0.0f) return lens[i];
         }
-        return 2;
+        return role == 0 ? 4 : 2;
     }
 
-    int preferredStart (float dens) noexcept
+    int preferredStart (int role, float dens) noexcept
     {
-        // Soft downbeat avoidance: prefer off-16ths
+        auto& rng = cells_[static_cast<size_t> (role)].initialRng;
         static constexpr int prefs[] = { 2, 3, 6, 7, 10, 11, 14, 15, 4, 12, 1, 5, 9, 13, 8, 0 };
-        const float allowDown = dens > 0.85f ? 0.35f : 0.12f;
+        const float allowDown = dens > 0.85f ? 0.35f : (role == 0 ? 0.12f : 0.06f);
         for (int attempt = 0; attempt < 16; ++attempt)
         {
-            const int idx = static_cast<int> (initialRng_.nextFloat() * 16.0f) % 16;
+            const int idx = static_cast<int> (rng.nextFloat() * 16.0f) % 16;
             const int s = prefs[idx];
-            if (s % 16 == 0 && initialRng_.nextFloat() > allowDown)
+            if (s % 16 == 0 && rng.nextFloat() > allowDown)
                 continue;
             return s;
         }
-        return 6;
+        return role == 1 ? 3 : 6;
     }
 
-    bool overlaps (int start, int len, int ignore = -1) const noexcept
+    bool overlaps (int role, int start, int len, int ignore = -1) const noexcept
     {
-        const int n = dna_.lengthCells();
-        for (int w = 0; w < dna_.windowCount; ++w)
+        const auto& dna = cells_[static_cast<size_t> (role)].dna;
+        const int n = dna.lengthCells();
+        for (int w = 0; w < dna.windowCount; ++w)
         {
             if (w == ignore) continue;
-            const auto& o = dna_.windows[static_cast<size_t> (w)];
+            const auto& o = dna.windows[static_cast<size_t> (w)];
             for (int a = 0; a < len; ++a)
             {
                 const int sa = (start + a) % n;
@@ -431,46 +632,70 @@ private:
         return false;
     }
 
-    void regenerateDNA (int bar) noexcept
+    int pickPhraseBars (int role) noexcept
+    {
+        auto& rng = cells_[static_cast<size_t> (role)].initialRng;
+        const float ub = rng.nextFloat();
+        if (role == 0) // Anchor 2–4 bias 2–3
+        {
+            if (ub < 0.08f) return 1;
+            if (ub < 0.55f) return 2;
+            if (ub < 0.85f) return 3;
+            return 4;
+        }
+        if (role == 1) // Skitter 1–2 bias 1
+        {
+            if (ub < 0.65f) return 1;
+            if (ub < 0.95f) return 2;
+            return 3;
+        }
+        // Ghost 2–4 bias 2, sparse
+        if (ub < 0.10f) return 1;
+        if (ub < 0.55f) return 2;
+        if (ub < 0.85f) return 3;
+        return 4;
+    }
+
+    void regenerateDNA (int role, int bar) noexcept
     {
         float dens = densSm_.current();
         if (dens < 0.0f) dens = densSm_.target();
-        float lo = 0.2f, hi = 0.5f;
-        occupancyBand (dens, lo, hi);
-        const float targetOcc = lo + (hi - lo) * 0.5f;
+        float shareA, shareS, shareG;
+        roleShares (dens, shareA, shareS, shareG);
+        const float shares[] = { shareA, shareS, shareG };
+        const float targetOcc = std::max (0.02f, colonyBudgetMid (dens) * shares[role]);
 
-        dna_ = {};
-        // Phrase length bias toward 2 bars
-        const float ub = initialRng_.nextFloat();
-        if (ub < 0.15f) dna_.lengthBars = 1;
-        else if (ub < 0.70f) dna_.lengthBars = 2;
-        else if (ub < 0.90f) dna_.lengthBars = 3;
-        else dna_.lengthBars = 4;
+        auto& cell = cells_[static_cast<size_t> (role)];
+        auto& dna = cell.dna;
+        dna = {};
+        dna.lengthBars = pickPhraseBars (role);
+        dna.phaseShiftSlots = static_cast<int> (cell.initialRng.nextFloat() * 16.0f) % 16;
+        dna.generation = 0;
+        dna.birthBar = bar;
+        const float mut = mutSm_.current() >= 0.0f ? mutSm_.current() : mutSm_.target();
+        dna.lifespanBars = lifespanBarsFor (role, mut);
+        cell.nextWindowId = 1;
 
-        dna_.phaseShiftSlots = static_cast<int> (initialRng_.nextFloat() * 16.0f) % 16;
-        dna_.generation = 0;
-        dna_.birthBar = bar;
-        dna_.lifespanBars = lifespanBarsFor (mutSm_.current() >= 0.0f ? mutSm_.current() : mutSm_.target());
-        nextWindowId_ = 1;
-
-        const int n = dna_.lengthCells();
+        const int n = dna.lengthCells();
         int budget = std::max (1, static_cast<int> (std::lround (targetOcc * static_cast<float> (n))));
+        if (role == 2) // Ghost: keep DNA sparse
+            budget = std::max (1, std::min (budget, std::max (1, n / 12)));
+
         int guard = 0;
-        while (budget > 0 && dna_.windowCount < PulseDNA::kMaxWindows && guard++ < 64)
+        while (budget > 0 && dna.windowCount < PulseDNA::kMaxWindows && guard++ < 64)
         {
-            int len = drawLength (dens);
+            int len = drawLength (role, dens);
             len = std::min (len, budget);
             len = std::max (1, len);
-            int start = preferredStart (dens) % n;
-            // try a few starts
+            int start = preferredStart (role, dens) % n;
             bool placed = false;
             for (int t = 0; t < 12; ++t)
             {
                 const int s = (start + t * 3) % n;
-                if (! overlaps (s, len))
+                if (! overlaps (role, s, len))
                 {
-                    auto& w = dna_.windows[static_cast<size_t> (dna_.windowCount++)];
-                    w.id = static_cast<uint16_t> (nextWindowId_++);
+                    auto& w = dna.windows[static_cast<size_t> (dna.windowCount++)];
+                    w.id = static_cast<uint16_t> (cell.nextWindowId++);
                     w.startSlot = static_cast<int16_t> (s);
                     w.lengthSlots = static_cast<uint8_t> (len);
                     budget -= len;
@@ -481,27 +706,52 @@ private:
             if (! placed)
                 break;
         }
-        rebuildMask();
-        // Ensure void exists
-        if (dna_.occupancy() > 0.90f && dna_.windowCount > 1)
+        rebuildMask (role);
+        if (dna.occupancy() > 0.90f && dna.windowCount > 1)
         {
-            --dna_.windowCount;
-            rebuildMask();
+            --dna.windowCount;
+            rebuildMask (role);
         }
-        pushTrace (static_cast<double> (bar) * 4.0, "DNA_BIRTH");
+        pushTrace (static_cast<double> (bar) * 4.0,
+                   role, PulseSuppressReason::None, "DNA_BIRTH");
     }
 
     void reconstructAt (double ppq, float dens, float mut) noexcept
     {
         densSm_.setCurrentAndTarget (dens);
         mutSm_.setCurrentAndTarget (mut);
-        prevDensity_ = -1.0f;
-        prevMutation_ = -1.0f;
         rebuildRng();
-        const int bar = std::max (0, static_cast<int> (std::floor (ppq / 4.0)));
-        regenerateDNA (0);
-        for (int b = 0; b <= bar; ++b)
-            evolveAtBar (b, dens, mut, true);
+        const int endSlot = std::max (0, static_cast<int> (std::floor (ppq / kSlotBeats)));
+        for (int r = 0; r < kNumRoles; ++r)
+        {
+            cells_[static_cast<size_t> (r)].prevDensity = -1.0f;
+            cells_[static_cast<size_t> (r)].prevMutation = -1.0f;
+            regenerateDNA (r, 0);
+        }
+
+        // Replay bar evolution + arbitration so colony snapshot matches absolute PPQ.
+        const bool prevTrace = traceEnabled_;
+        traceEnabled_ = false;
+        resetColonyRuntime();
+        int simLastBar = -1;
+        // Replay slots strictly before landing PPQ; snapScheduler lands before current slot.
+        for (int s = 0; s < endSlot; ++s)
+        {
+            const int b = s / PulseDNA::kStepsPerBar;
+            if (b != simLastBar)
+            {
+                if (simLastBar >= 0)
+                {
+                    for (int bb = simLastBar + 1; bb <= b; ++bb)
+                        for (int r = 0; r < kNumRoles; ++r)
+                            evolveAtBar (r, bb, dens, mut, true);
+                }
+                simLastBar = b;
+            }
+            applySlot (s, dens, mut, 120.0);
+        }
+        traceEnabled_ = prevTrace;
+
         snapScheduler (ppq);
         seedDirty_ = false;
     }
@@ -511,39 +761,60 @@ private:
         Stay = 0, NudgeStart, Stretch, Split, Merge, SwapVoid, PhaseJog, BirthCull
     };
 
-    MutOp drawMutOp (float mut) noexcept
+    MutOp drawMutOp (int role, float mut) noexcept
     {
+        auto& rng = cells_[static_cast<size_t> (role)].mutateRng;
         if (mut <= 1.0e-4f)
             return MutOp::Stay;
-        const float u = mutateRng_.nextFloat();
-        // Stay more common at low mut
-        const float stayP = 0.15f + 0.35f * (1.0f - mut);
+        const float scaled = std::clamp (mut * mutScale (role), 0.0f, 1.0f);
+        const float u = rng.nextFloat();
+        const float stayP = 0.15f + 0.40f * (1.0f - scaled);
         if (u < stayP) return MutOp::Stay;
         const float v = (u - stayP) / std::max (1.0e-4f, 1.0f - stayP);
-        if (v < 0.28f) return MutOp::NudgeStart;
-        if (v < 0.48f) return MutOp::Stretch;
-        if (v < 0.62f) return MutOp::SwapVoid;
-        if (v < 0.74f) return MutOp::Split;
-        if (v < 0.84f) return MutOp::Merge;
-        if (v < 0.92f) return MutOp::PhaseJog;
-        return MutOp::BirthCull;
+        if (role == 0)
+        {
+            if (v < 0.35f) return MutOp::NudgeStart;
+            if (v < 0.65f) return MutOp::Stretch;
+            if (v < 0.80f) return MutOp::SwapVoid;
+            if (v < 0.90f) return MutOp::PhaseJog;
+            return MutOp::BirthCull;
+        }
+        if (role == 1)
+        {
+            if (v < 0.28f) return MutOp::NudgeStart;
+            if (v < 0.48f) return MutOp::Split;
+            if (v < 0.68f) return MutOp::SwapVoid;
+            if (v < 0.82f) return MutOp::Stretch;
+            if (v < 0.92f) return MutOp::Merge;
+            return MutOp::BirthCull;
+        }
+        if (v < 0.30f) return MutOp::NudgeStart;
+        if (v < 0.50f) return MutOp::PhaseJog;
+        if (v < 0.70f) return MutOp::SwapVoid;
+        if (v < 0.85f) return MutOp::BirthCull;
+        return MutOp::Stretch;
     }
 
-    bool applyMutOp (MutOp op) noexcept
+    bool applyMutOp (int role, MutOp op) noexcept
     {
-        if (op == MutOp::Stay || dna_.windowCount <= 0)
+        auto& cell = cells_[static_cast<size_t> (role)];
+        auto& dna = cell.dna;
+        auto& rng = cell.mutateRng;
+        if (op == MutOp::Stay || dna.windowCount <= 0)
             return false;
-        const int n = dna_.lengthCells();
-        const int wi = static_cast<int> (mutateRng_.nextFloat() * static_cast<float> (dna_.windowCount))
-                       % dna_.windowCount;
-        auto& w = dna_.windows[static_cast<size_t> (wi)];
+        const int n = dna.lengthCells();
+        const int wi = static_cast<int> (rng.nextFloat() * static_cast<float> (dna.windowCount))
+                       % dna.windowCount;
+        auto& w = dna.windows[static_cast<size_t> (wi)];
         switch (op)
         {
+            case MutOp::Stay:
+                return false;
             case MutOp::NudgeStart:
             {
-                const int d = mutateRng_.nextFloat() < 0.5f ? -1 : 1;
+                const int d = rng.nextFloat() < 0.5f ? -1 : 1;
                 const int ns = (w.startSlot + d + n) % n;
-                if (! overlaps (ns, w.lengthSlots, wi))
+                if (! overlaps (role, ns, w.lengthSlots, wi))
                     w.startSlot = static_cast<int16_t> (ns);
                 break;
             }
@@ -553,138 +824,148 @@ private:
                 int idx = 0;
                 for (int i = 0; i < 4; ++i)
                     if (lens[i] == w.lengthSlots) idx = i;
-                idx = std::clamp (idx + (mutateRng_.nextFloat() < 0.5f ? -1 : 1), 0, 3);
+                // Ghost prefers placement over duration change
+                if (role == 2 && rng.nextFloat() < 0.55f)
+                    return applyMutOp (role, MutOp::NudgeStart);
+                idx = std::clamp (idx + (rng.nextFloat() < 0.5f ? -1 : 1), 0, 3);
+                if (role == 0 && lens[idx] == 1) idx = 1;
+                if (role == 1 && lens[idx] == 8) idx = 2;
                 const int nl = lens[idx];
-                if (! overlaps (w.startSlot, nl, wi))
+                if (! overlaps (role, w.startSlot, nl, wi))
                     w.lengthSlots = static_cast<uint8_t> (nl);
                 break;
             }
             case MutOp::Split:
             {
-                if (w.lengthSlots < 2 || dna_.windowCount >= PulseDNA::kMaxWindows)
+                if (w.lengthSlots < 2 || dna.windowCount >= PulseDNA::kMaxWindows)
                     return false;
                 const int left = std::max (1, w.lengthSlots / 2);
                 const int right = w.lengthSlots - left;
                 w.lengthSlots = static_cast<uint8_t> (left);
-                auto& nw = dna_.windows[static_cast<size_t> (dna_.windowCount++)];
-                nw.id = static_cast<uint16_t> (nextWindowId_++);
+                auto& nw = dna.windows[static_cast<size_t> (dna.windowCount++)];
+                nw.id = static_cast<uint16_t> (cell.nextWindowId++);
                 nw.startSlot = static_cast<int16_t> ((w.startSlot + left) % n);
                 nw.lengthSlots = static_cast<uint8_t> (right);
                 break;
             }
             case MutOp::Merge:
             {
-                if (dna_.windowCount < 2) return false;
-                int other = (wi + 1) % dna_.windowCount;
-                auto& o = dna_.windows[static_cast<size_t> (other)];
+                if (dna.windowCount < 2) return false;
+                int other = (wi + 1) % dna.windowCount;
+                auto& o = dna.windows[static_cast<size_t> (other)];
                 const int gap = (o.startSlot - (w.startSlot + w.lengthSlots) + n) % n;
                 if (gap > 2) return false;
                 w.lengthSlots = static_cast<uint8_t> (
                     std::min (8, w.lengthSlots + gap + o.lengthSlots));
-                // remove other
-                dna_.windows[static_cast<size_t> (other)] = dna_.windows[static_cast<size_t> (dna_.windowCount - 1)];
-                --dna_.windowCount;
+                dna.windows[static_cast<size_t> (other)] = dna.windows[static_cast<size_t> (dna.windowCount - 1)];
+                --dna.windowCount;
                 break;
             }
             case MutOp::SwapVoid:
             {
-                const int d = mutateRng_.nextFloat() < 0.5f ? -2 : 2;
+                const int d = rng.nextFloat() < 0.5f ? -2 : 2;
                 const int ns = (w.startSlot + d + n) % n;
-                if (! overlaps (ns, w.lengthSlots, wi))
+                if (! overlaps (role, ns, w.lengthSlots, wi))
                     w.startSlot = static_cast<int16_t> (ns);
                 break;
             }
             case MutOp::PhaseJog:
-                dna_.phaseShiftSlots = (dna_.phaseShiftSlots + (mutateRng_.nextFloat() < 0.5f ? -1 : 1) + 16) % 16;
+                dna.phaseShiftSlots = (dna.phaseShiftSlots + (rng.nextFloat() < 0.5f ? -1 : 1) + 16) % 16;
                 break;
             case MutOp::BirthCull:
             {
-                float lo, hi;
-                occupancyBand (densSm_.current(), lo, hi);
-                if (dna_.occupancy() > hi && dna_.windowCount > 1)
+                float shareA, shareS, shareG;
+                roleShares (densSm_.current(), shareA, shareS, shareG);
+                const float shares[] = { shareA, shareS, shareG };
+                const float mid = colonyBudgetMid (densSm_.current());
+                const float lo = mid * shares[role] * 0.70f;
+                const float hi = mid * shares[role] * 1.35f;
+                if (dna.occupancy() > hi && dna.windowCount > 1)
                 {
-                    // cull shortest
                     int best = 0;
-                    for (int i = 1; i < dna_.windowCount; ++i)
-                        if (dna_.windows[static_cast<size_t> (i)].lengthSlots
-                            < dna_.windows[static_cast<size_t> (best)].lengthSlots)
+                    for (int i = 1; i < dna.windowCount; ++i)
+                        if (dna.windows[static_cast<size_t> (i)].lengthSlots
+                            < dna.windows[static_cast<size_t> (best)].lengthSlots)
                             best = i;
-                    dna_.windows[static_cast<size_t> (best)] =
-                        dna_.windows[static_cast<size_t> (dna_.windowCount - 1)];
-                    --dna_.windowCount;
+                    dna.windows[static_cast<size_t> (best)] =
+                        dna.windows[static_cast<size_t> (dna.windowCount - 1)];
+                    --dna.windowCount;
                 }
-                else if (dna_.occupancy() < lo && dna_.windowCount < PulseDNA::kMaxWindows)
+                else if (dna.occupancy() < lo && dna.windowCount < PulseDNA::kMaxWindows)
                 {
-                    const int len = drawLength (densSm_.current());
-                    const int s = preferredStart (densSm_.current()) % n;
-                    if (! overlaps (s, len))
+                    const int len = drawLength (role, densSm_.current());
+                    const int s = preferredStart (role, densSm_.current()) % n;
+                    if (! overlaps (role, s, len))
                     {
-                        auto& nw = dna_.windows[static_cast<size_t> (dna_.windowCount++)];
-                        nw.id = static_cast<uint16_t> (nextWindowId_++);
+                        auto& nw = dna.windows[static_cast<size_t> (dna.windowCount++)];
+                        nw.id = static_cast<uint16_t> (cell.nextWindowId++);
                         nw.startSlot = static_cast<int16_t> (s);
                         nw.lengthSlots = static_cast<uint8_t> (len);
                     }
                 }
                 break;
             }
-            default:
-                return false;
         }
-        rebuildMask();
-        dna_.lastOp = static_cast<uint32_t> (op);
+        rebuildMask (role);
+        dna.lastOp = static_cast<uint32_t> (op);
         return true;
     }
 
-    void evolveAtBar (int bar, float dens, float mut, bool silent) noexcept
+    void evolveAtBar (int role, int bar, float dens, float mut, bool silent) noexcept
     {
-        // Density live adapt
-        if (prevDensity_ >= 0.0f)
+        auto& cell = cells_[static_cast<size_t> (role)];
+        auto& dna = cell.dna;
+
+        if (cell.prevDensity >= 0.0f)
         {
-            const float dd = dens - prevDensity_;
+            const float dd = dens - cell.prevDensity;
             if (std::abs (dd) >= 0.30f)
             {
-                regenerateDNA (bar);
+                regenerateDNA (role, bar);
                 if (! silent)
-                    pushTrace (static_cast<double> (bar) * 4.0, "DENSITY_REBORN");
+                    pushTrace (static_cast<double> (bar) * 4.0, role,
+                               PulseSuppressReason::None, "DENSITY_REBORN");
             }
             else if (std::abs (dd) >= 0.15f)
             {
-                applyMutOp (MutOp::BirthCull);
-                applyMutOp (MutOp::Stretch);
+                applyMutOp (role, MutOp::BirthCull);
+                applyMutOp (role, MutOp::Stretch);
                 if (! silent)
-                    pushTrace (static_cast<double> (bar) * 4.0, "DENSITY_ADAPT");
+                    pushTrace (static_cast<double> (bar) * 4.0, role,
+                               PulseSuppressReason::None, "DENSITY_ADAPT");
             }
         }
-        prevDensity_ = dens;
+        cell.prevDensity = dens;
 
-        // Mutation lifespan
         if (mut <= 1.0e-4f)
         {
-            dna_.lifespanBars = 1000000;
-            prevMutation_ = mut;
+            dna.lifespanBars = 1000000;
+            cell.prevMutation = mut;
             return;
         }
-        if (prevMutation_ >= 0.0f && mut > prevMutation_ + 0.2f)
-            dna_.lifespanBars = std::min (dna_.lifespanBars, 3);
-        prevMutation_ = mut;
+        if (cell.prevMutation >= 0.0f && mut > cell.prevMutation + 0.2f)
+            dna.lifespanBars = std::min (dna.lifespanBars, 3);
+        cell.prevMutation = mut;
 
-        if (bar - dna_.birthBar < dna_.lifespanBars)
+        if (bar - dna.birthBar < dna.lifespanBars)
             return;
 
-        const MutOp op = drawMutOp (mut);
-        if (op == MutOp::Stay || ! applyMutOp (op))
+        const MutOp op = drawMutOp (role, mut);
+        if (op == MutOp::Stay || ! applyMutOp (role, op))
         {
-            dna_.birthBar = bar;
-            dna_.lifespanBars = lifespanBarsFor (mut);
+            dna.birthBar = bar;
+            dna.lifespanBars = lifespanBarsFor (role, mut);
             if (! silent)
-                pushTrace (static_cast<double> (bar) * 4.0, "STAY");
+                pushTrace (static_cast<double> (bar) * 4.0, role,
+                           PulseSuppressReason::None, "STAY");
             return;
         }
-        ++dna_.generation;
-        dna_.birthBar = bar;
-        dna_.lifespanBars = lifespanBarsFor (mut);
+        ++dna.generation;
+        dna.birthBar = bar;
+        dna.lifespanBars = lifespanBarsFor (role, mut);
         if (! silent)
-            pushTrace (static_cast<double> (bar) * 4.0, "MUTATE");
+            pushTrace (static_cast<double> (bar) * 4.0, role,
+                       PulseSuppressReason::None, "MUTATE");
     }
 
     void advanceMusical (double ppq, float dens, float mut, double bpm) noexcept
@@ -694,7 +975,9 @@ private:
             const int bar = static_cast<int> (std::floor (ppq / 4.0));
             if (bar != lastBar_)
             {
-                regenerateDNA (bar);
+                for (int r = 0; r < kNumRoles; ++r)
+                    regenerateDNA (r, bar);
+                resetColonyRuntime();
                 seedDirty_ = false;
             }
         }
@@ -709,7 +992,8 @@ private:
                 {
                     if (b - lastBar_ > 64)
                         break;
-                    evolveAtBar (b, dens, mut, false);
+                    for (int r = 0; r < kNumRoles; ++r)
+                        evolveAtBar (r, b, dens, mut, false);
                 }
             }
             lastBar_ = bar;
@@ -728,49 +1012,379 @@ private:
         {
             if (lastSlot_ >= 0 && s - lastSlot_ > 64)
                 break;
-            applySlot (s, dens, bpm);
+            applySlot (s, dens, mut, bpm);
         }
         lastSlot_ = slot;
-
-        // Spatial target updates slowly with DNA
         updatePanTarget (ppq);
     }
 
-    void applySlot (int absSlot, float /*dens*/, double bpm) noexcept
+    ColonySnapshot makeSnapshot (int absSlot, float dens, float mut) const noexcept
     {
-        const int n = dna_.lengthCells();
-        if (n <= 0) return;
-        int local = (absSlot + dna_.phaseShiftSlots) % n;
-        if (local < 0) local += n;
-        const uint8_t m = dna_.mask[static_cast<size_t> (local)];
-
-        if (m == 1) // onset
-        {
-            // Find window length for this onset
-            int len = 1;
-            for (int w = 0; w < dna_.windowCount; ++w)
-            {
-                const auto& win = dna_.windows[static_cast<size_t> (w)];
-                if ((win.startSlot % n + n) % n == local)
-                {
-                    len = win.lengthSlots;
-                    break;
-                }
-            }
-            startPulse (len, bpm, static_cast<double> (absSlot) * kSlotBeats);
-        }
-        else if (m == 0)
-        {
-            if (gatePhase_ == 1 || gatePhase_ == 2)
-                gatePhase_ = 3; // release
-        }
-        // m==2 hold: stay open, no retrigger
+        ColonySnapshot snap;
+        snap.dens = dens;
+        snap.mut = mut;
+        snap.congestion01 = congestionEma_;
+        snap.gapLengthSlots = gapLengthSlots_;
+        snap.budgetRemaining = budgetRemaining_;
+        snap.lastAcceptedRole = lastAcceptedRole_;
+        snap.beatsSinceRole = beatsSinceRole_;
+        snap.holding = (holdEndAbsSlot_ >= absSlot && holdOwnerRole_ >= 0);
+        snap.holdOwner = holdOwnerRole_;
+        snap.holdEndSlot = holdEndAbsSlot_;
+        snap.interaction = interactionEnabled_;
+        snap.solo = soloRole_;
+        snap.callLive = callLive_ && absSlot <= callExpireSlot_;
+        snap.callKind = callKind_;
+        snap.callExpireSlot = callExpireSlot_;
+        snap.callCaller = callCaller_;
+        return snap;
     }
 
-    void startPulse (int lengthSlots, double bpm, double beat) noexcept
+    float roleSpatialTarget (int role) noexcept
     {
-        if (gatePhase_ == 1 || gatePhase_ == 2)
-            return; // no mid-hold retrigger
+        auto& rng = cells_[static_cast<size_t> (role)].spatialRng;
+        if (role == 0)
+            return (rng.nextFloat() * 2.0f - 1.0f) * 0.25f;
+        if (role == 1)
+            return (rng.nextFloat() < 0.5f ? -1.0f : 1.0f) * (0.35f + rng.nextFloat() * 0.35f);
+        return (rng.nextFloat() < 0.5f ? -1.0f : 1.0f) * (0.55f + rng.nextFloat() * 0.40f);
+    }
+
+    void proposeFromDna (int role, int absSlot, const ColonySnapshot& snap,
+                         std::array<PulseIntent, kMaxProposals>& props, int& nProp) noexcept
+    {
+        if (snap.solo >= 0 && snap.solo != role)
+            return;
+        const auto& dna = cells_[static_cast<size_t> (role)].dna;
+        const int n = dna.lengthCells();
+        if (n <= 0) return;
+        int local = (absSlot + dna.phaseShiftSlots) % n;
+        if (local < 0) local += n;
+        if (dna.mask[static_cast<size_t> (local)] != 1)
+            return;
+
+        // Soft dens presence after onset: Skitter/Ghost are not full Stage-1 streams at low dens.
+        if (role == 1)
+        {
+            const float p = std::clamp ((snap.dens - 0.10f) / 0.55f, 0.08f, 1.0f);
+            if (arbiterRng_.nextFloat() > p)
+                return;
+        }
+        else if (role == 2)
+        {
+            const float p = std::clamp ((snap.dens - 0.25f) / 0.60f, 0.05f, 0.85f);
+            if (arbiterRng_.nextFloat() > p)
+                return;
+        }
+
+        int len = 1;
+        for (int w = 0; w < dna.windowCount; ++w)
+        {
+            const auto& win = dna.windows[static_cast<size_t> (w)];
+            if ((win.startSlot % n + n) % n == local)
+            {
+                len = win.lengthSlots;
+                break;
+            }
+        }
+
+        if (nProp >= kMaxProposals)
+            return;
+
+        PulseIntent intent;
+        intent.role = static_cast<int8_t> (role);
+        intent.startAbsSlot = absSlot;
+        intent.lengthSlots = static_cast<uint8_t> (len);
+        intent.importance = (role == 0) ? 0.90f : (role == 1 ? 0.55f : 0.35f);
+        intent.spatialTarget = roleSpatialTarget (role);
+        intent.kind = 0;
+        props[static_cast<size_t> (nProp++)] = intent;
+        ++roleProposeCount_[static_cast<size_t> (role)];
+    }
+
+    void proposeInteraction (int absSlot, const ColonySnapshot& snap,
+                             std::array<PulseIntent, kMaxProposals>& props, int& nProp) noexcept
+    {
+        if (! snap.interaction || nProp >= kMaxProposals)
+            return;
+
+        // After Anchor accept: probabilistic Skitter answer window
+        if (snap.callLive && snap.callKind == 1 && snap.callCaller == 0
+            && (snap.solo < 0 || snap.solo == 1))
+        {
+            if (arbiterRng_.nextFloat() < (0.35f + 0.20f * snap.dens))
+            {
+                PulseIntent intent;
+                intent.role = 1;
+                intent.startAbsSlot = absSlot;
+                intent.lengthSlots = arbiterRng_.nextFloat() < 0.55f ? 1 : 2;
+                intent.importance = 0.45f;
+                intent.spatialTarget = roleSpatialTarget (1);
+                intent.kind = 1;
+                props[static_cast<size_t> (nProp++)] = intent;
+                ++roleProposeCount_[1];
+            }
+        }
+
+        // Ghost after long gaps / hunger
+        if ((snap.solo < 0 || snap.solo == 2) && nProp < kMaxProposals)
+        {
+            const float hungerLo = 8.0f + 16.0f * (1.0f - snap.dens);
+            const float hungerHi = 16.0f + 32.0f * (1.0f - snap.dens);
+            const float since = snap.beatsSinceRole[2];
+            const bool hungry = since >= hungerLo;
+            const bool longGap = snap.gapLengthSlots >= 4;
+            float p = 0.0f;
+            if (hungry && longGap)
+                p = 0.35f + 0.35f * std::clamp ((since - hungerLo) / std::max (1.0f, hungerHi - hungerLo), 0.0f, 1.0f);
+            else if (hungry)
+                p = 0.12f;
+            if (snap.callLive && snap.callKind == 2)
+                p = std::max (p, 0.25f);
+            if (p > 0.0f && arbiterRng_.nextFloat() < p)
+            {
+                PulseIntent intent;
+                intent.role = 2;
+                intent.startAbsSlot = absSlot;
+                intent.lengthSlots = arbiterRng_.nextFloat() < 0.7f ? 2 : 1;
+                intent.importance = 0.40f + 0.2f * std::min (1.0f, since / hungerHi);
+                intent.spatialTarget = roleSpatialTarget (2);
+                intent.kind = 3;
+                props[static_cast<size_t> (nProp++)] = intent;
+                ++roleProposeCount_[2];
+            }
+        }
+    }
+
+    PulseSuppressReason evaluateIntent (const PulseIntent& intent, const ColonySnapshot& snap) noexcept
+    {
+        const int role = intent.role;
+        if (snap.solo >= 0 && snap.solo != role)
+            return PulseSuppressReason::SoloFilter;
+
+        if (snap.holding)
+        {
+            if (intent.startAbsSlot <= snap.holdEndSlot)
+                return PulseSuppressReason::RedundantOpen;
+        }
+
+        // Budget: estimated occupancy if we accept
+        const float mid = colonyBudgetMid (snap.dens);
+        const float proj = colonyOpenOccupancy() + static_cast<float> (intent.lengthSlots)
+                           / static_cast<float> (kOccRingSlots);
+        if (proj > mid + 0.12f && role != 0)
+            return PulseSuppressReason::GlobalBudget;
+        if (proj > 0.78f)
+            return PulseSuppressReason::GlobalBudget;
+
+        if (snap.interaction)
+        {
+            if (snap.congestion01 > 0.65f && role == 2 && snap.beatsSinceRole[2] < 12.0f)
+                return PulseSuppressReason::Congestion;
+            if (snap.congestion01 > 0.75f && role == 1 && intent.kind == 0
+                && intent.lengthSlots > 2)
+                return PulseSuppressReason::Congestion;
+
+            // Gap preserve: decorative roles shouldn't erase large voids entirely
+            if (role != 0 && snap.gapLengthSlots >= voidMinSlots (snap.dens) + 4
+                && intent.lengthSlots >= snap.gapLengthSlots
+                && intent.kind == 0)
+                return PulseSuppressReason::GapPreserve;
+
+            // Skitter cooldown vs Anchor onset pile-up (incl. answer gestures)
+            if (role == 1 && snap.lastAcceptedRole == 0
+                && snap.beatsSinceRole[0] < 0.30f)
+                return PulseSuppressReason::RoleCooldown;
+            // Prevent Skitter sixteenth spam stacks
+            if (role == 1 && snap.beatsSinceRole[1] < 0.45f)
+                return PulseSuppressReason::RoleCooldown;
+            // Prefer Anchor structure when Skitter is already busy vs budget
+            if (role == 1 && snap.congestion01 > 0.55f && intent.kind == 0
+                && snap.beatsSinceRole[0] > 2.0f)
+                return PulseSuppressReason::Congestion;
+        }
+
+        return PulseSuppressReason::Accept;
+    }
+
+    void applySlot (int absSlot, float dens, float mut, double bpm) noexcept
+    {
+        const ColonySnapshot snap = makeSnapshot (absSlot, dens, mut);
+
+        std::array<PulseIntent, kMaxProposals> props {};
+        int nProp = 0;
+
+        // Phase 1: all roles propose from immutable snapshot
+        for (int r = 0; r < kNumRoles; ++r)
+            proposeFromDna (r, absSlot, snap, props, nProp);
+        proposeInteraction (absSlot, snap, props, nProp);
+
+        // Phase 2: commit in priority order ANCHOR > SKITTER > GHOST (one accept/slot)
+        int winner = -1;
+        std::array<PulseSuppressReason, kMaxProposals> reasons {};
+        reasons.fill (PulseSuppressReason::None);
+
+        if (! snap.holding)
+        {
+            for (int pri = 0; pri < kNumRoles; ++pri)
+            {
+                for (int i = 0; i < nProp; ++i)
+                {
+                    if (props[static_cast<size_t> (i)].role != pri)
+                        continue;
+                    const auto reason = evaluateIntent (props[static_cast<size_t> (i)], snap);
+                    reasons[static_cast<size_t> (i)] = reason;
+                    if (reason == PulseSuppressReason::Accept && winner < 0)
+                        winner = i;
+                    else if (reason != PulseSuppressReason::Accept)
+                    {
+                        pushTrace (static_cast<double> (absSlot) * kSlotBeats,
+                                   props[static_cast<size_t> (i)].role, reason, "SUPPRESS");
+                    }
+                }
+                if (winner >= 0)
+                    break;
+            }
+        }
+        else
+        {
+            for (int i = 0; i < nProp; ++i)
+            {
+                reasons[static_cast<size_t> (i)] = PulseSuppressReason::RedundantOpen;
+                pushTrace (static_cast<double> (absSlot) * kSlotBeats,
+                           props[static_cast<size_t> (i)].role,
+                           PulseSuppressReason::RedundantOpen, "SUPPRESS");
+            }
+        }
+
+        bool slotOpen = snap.holding;
+        if (winner >= 0)
+        {
+            for (int i = 0; i < nProp; ++i)
+            {
+                if (i == winner) continue;
+                if (reasons[static_cast<size_t> (i)] == PulseSuppressReason::Accept
+                    || reasons[static_cast<size_t> (i)] == PulseSuppressReason::None)
+                {
+                    pushTrace (static_cast<double> (absSlot) * kSlotBeats,
+                               props[static_cast<size_t> (i)].role,
+                               PulseSuppressReason::Collision, "SUPPRESS");
+                }
+            }
+
+            commitAccept (props[static_cast<size_t> (winner)], absSlot, bpm);
+            slotOpen = true;
+        }
+        else if (snap.holding)
+        {
+            markOccupancy (true);
+            gapLengthSlots_ = 0;
+            congestionEma_ = congestionEma_ * 0.92f + 0.08f;
+            if (absSlot >= holdEndAbsSlot_)
+            {
+                holdOwnerRole_ = -1;
+                holdEndAbsSlot_ = -1;
+                // release begins next closed slot via gate hold countdown
+            }
+        }
+        else
+        {
+            if (holdEndAbsSlot_ >= 0 && absSlot > holdEndAbsSlot_)
+            {
+                holdOwnerRole_ = -1;
+                holdEndAbsSlot_ = -1;
+            }
+            if (gatePhase_ == 1 || gatePhase_ == 2)
+                gatePhase_ = 3;
+            markOccupancy (false);
+            ++gapLengthSlots_;
+            slotOpen = false;
+        }
+
+        (void) slotOpen;
+
+        // Advance hunger (musical beats only)
+        for (int r = 0; r < kNumRoles; ++r)
+            beatsSinceRole_[static_cast<size_t> (r)] += static_cast<float> (kSlotBeats);
+
+        if (callLive_ && absSlot > callExpireSlot_)
+            callLive_ = false;
+
+        budgetRemaining_ = std::min (1.0f, budgetRemaining_ + 0.02f);
+    }
+
+    void commitAccept (const PulseIntent& intent, int absSlot, double bpm) noexcept
+    {
+        const int role = intent.role;
+        const int len = std::max (1, static_cast<int> (intent.lengthSlots));
+
+        startPulse (len, bpm, static_cast<double> (absSlot) * kSlotBeats, role, intent.spatialTarget);
+
+        holdOwnerRole_ = role;
+        holdEndAbsSlot_ = absSlot + len - 1;
+        lastAcceptedRole_ = role;
+        beatsSinceRole_[static_cast<size_t> (role)] = 0.0f;
+        ++roleAcceptCount_[static_cast<size_t> (role)];
+        gapLengthSlots_ = 0;
+        budgetRemaining_ = std::max (0.0f, budgetRemaining_ - static_cast<float> (len) * 0.04f);
+
+        markOccupancy (true);
+        congestionEma_ = congestionEma_ * 0.92f + 0.08f;
+
+        // Call tokens after Anchor
+        if (interactionEnabled_ && role == 0 && len >= 4)
+        {
+            callLive_ = true;
+            callKind_ = 1; // CALL_SPINE → Skitter
+            callCaller_ = 0;
+            callExpireSlot_ = absSlot + static_cast<int> (2.0 / kSlotBeats)
+                              + static_cast<int> (arbiterRng_.nextFloat() * (4.0 / kSlotBeats));
+        }
+        else if (interactionEnabled_ && role == 0 && gapLengthSlots_ == 0)
+        {
+            // release hole call is emitted when gap grows; light CALL_HOLE on short Anchor
+            if (len >= 2 && arbiterRng_.nextFloat() < 0.35f)
+            {
+                callLive_ = true;
+                callKind_ = 2;
+                callCaller_ = 0;
+                callExpireSlot_ = absSlot + len + static_cast<int> (4.0 / kSlotBeats);
+            }
+        }
+
+        if (role == 2)
+        {
+            const float beat = static_cast<float> (absSlot) * static_cast<float> (kSlotBeats);
+            if (lastGhostAcceptBeat_ >= 0.0f)
+            {
+                ghostGapSum_ += beat - lastGhostAcceptBeat_;
+                ++ghostGapCount_;
+            }
+            lastGhostAcceptBeat_ = beat;
+        }
+
+        panRoleBias_ = intent.spatialTarget;
+        pushTrace (static_cast<double> (absSlot) * kSlotBeats, role,
+                   PulseSuppressReason::Accept, "ACCEPT");
+    }
+
+    void markOccupancy (bool open) noexcept
+    {
+        const uint8_t prev = occRing_[static_cast<size_t> (occRingPos_)];
+        const uint8_t next = open ? 1 : 0;
+        if (prev) --occOpenCount_;
+        if (next) ++occOpenCount_;
+        occRing_[static_cast<size_t> (occRingPos_)] = next;
+        occRingPos_ = (occRingPos_ + 1) % kOccRingSlots;
+        if (! open)
+            congestionEma_ = congestionEma_ * 0.97f;
+    }
+
+    void startPulse (int lengthSlots, double bpm, double beat, int role, float spatial) noexcept
+    {
+        // Protect true mid-hold rearticulation; allow interrupting pass-through (no owner).
+        if ((gatePhase_ == 1 || gatePhase_ == 2) && holdOwnerRole_ >= 0)
+            return;
 
         const double beatsPerSample = (bpm / 60.0) / sampleRate_;
         int pulseSamples = std::max (8, static_cast<int> (
@@ -787,8 +1401,10 @@ private:
         pulseAttN_ = att;
         pulseRelN_ = rel;
         holdLeft_ = std::max (1, pulseSamples - att - rel);
-        gatePhase_ = 1; // attack
+        gatePhase_ = 1;
         gatePos_ = 0;
+
+        panSm_.setTarget (std::clamp (spatial, -1.0f, 1.0f));
 
         if (traceEnabled_ && opens_.size() < 8192)
         {
@@ -797,13 +1413,14 @@ private:
             e.durationBeats = static_cast<float> (lengthSlots) * static_cast<float> (kSlotBeats);
             e.gain = 1.0f;
             e.pan = panSm_.current();
+            e.role = static_cast<int8_t> (role);
             opens_.push_back (e);
         }
     }
 
     void tickGate() noexcept
     {
-        if (gatePhase_ == 1) // attack raised-cosine
+        if (gatePhase_ == 1)
         {
             ++gatePos_;
             const float t = static_cast<float> (gatePos_) / static_cast<float> (std::max (1, pulseAttN_));
@@ -815,13 +1432,13 @@ private:
                 gatePos_ = 0;
             }
         }
-        else if (gatePhase_ == 2) // hold
+        else if (gatePhase_ == 2)
         {
             gateEnv_ = 1.0f;
             if (--holdLeft_ <= 0)
                 gatePhase_ = 3;
         }
-        else if (gatePhase_ == 3) // release
+        else if (gatePhase_ == 3)
         {
             ++gatePos_;
             const float t = static_cast<float> (gatePos_) / static_cast<float> (std::max (1, pulseRelN_));
@@ -845,11 +1462,13 @@ private:
         if (bar != lastPanBar_)
         {
             lastPanBar_ = bar;
-            panAnchor_ = (spatialRng_.nextFloat() * 2.0f - 1.0f) * 0.85f;
+            // Mild LFO around last role bias; uses Anchor spatial stream only for continuity
+            panAnchor_ = panRoleBias_ * 0.65f
+                         + cells_[0].spatialRng.nextFloat() * 0.15f - 0.075f;
         }
         const double phase = std::fmod (ppq / 8.0, 1.0);
         const float base = std::sin (static_cast<float> (phase * 2.0 * 3.14159265));
-        panSm_.setTarget (std::clamp (base * 0.65f + panAnchor_ * 0.35f, -1.0f, 1.0f));
+        panSm_.setTarget (std::clamp (base * 0.35f + panAnchor_ * 0.65f, -1.0f, 1.0f));
     }
 
     static void applyMotion (float& l, float& r, float motion, float pan) noexcept
@@ -860,25 +1479,30 @@ private:
         constexpr float kMaxAngle = 0.85f * 1.5707963f;
         const float x = std::clamp (m * pan, -1.0f, 1.0f);
         if (x >= 0.0f)
-        {
             l *= std::cos (x * kMaxAngle);
-        }
         else
-        {
             r *= std::cos ((-x) * kMaxAngle);
-        }
     }
 
-    void pushTrace (double beat, const char* detail) noexcept
+    void pushTrace (double beat, int role, PulseSuppressReason reason, const char* detail) noexcept
     {
         if (! traceEnabled_ || events_.size() >= 4096)
             return;
         PulseTraceEvent e;
         e.beat = beat;
-        e.detail = detail;
-        char buf[128];
-        std::snprintf (buf, sizeof (buf), "%s gen=%d occ=%.2f bars=%d",
-                       detail, dna_.generation, dna_.occupancy(), dna_.lengthBars);
+        char buf[192];
+        if (reason == PulseSuppressReason::None)
+        {
+            std::snprintf (buf, sizeof (buf), "%s role=%s gen=%d occ=%.2f",
+                           detail, roleName (role),
+                           cells_[static_cast<size_t> (std::clamp (role, 0, kNumRoles - 1))].dna.generation,
+                           colonyOpenOccupancy());
+        }
+        else
+        {
+            std::snprintf (buf, sizeof (buf), "%s role=%s reason=%s colonyOcc=%.2f",
+                           detail, roleName (role), suppressName (reason), colonyOpenOccupancy());
+        }
         e.detail = buf;
         events_.push_back (e);
     }
@@ -888,28 +1512,52 @@ private:
     uint64_t masterSeed_ = 2002;
     bool seedDirty_ = false;
 
-    PulseDNA dna_;
-    int nextWindowId_ = 1;
+    std::array<PulseCell, kNumRoles> cells_ {};
+    pfl::generative::DeterministicRNG arbiterRng_ {};
+
+    bool interactionEnabled_ = true;
+    int soloRole_ = -1;
+
+    float congestionEma_ = 0.0f;
+    int gapLengthSlots_ = 0;
+    std::array<float, kNumRoles> beatsSinceRole_ {};
+    float budgetRemaining_ = 1.0f;
+    int lastAcceptedRole_ = -1;
+    int holdOwnerRole_ = -1;
+    int holdEndAbsSlot_ = -1;
+    bool callLive_ = false;
+    int callKind_ = 0;
+    int callExpireSlot_ = -1;
+    int callCaller_ = -1;
+
+    std::array<uint8_t, kOccRingSlots> occRing_ {};
+    int occRingPos_ = 0;
+    int occOpenCount_ = 0;
+
+    std::array<int, kNumRoles> roleAcceptCount_ {};
+    std::array<int, kNumRoles> roleProposeCount_ {};
+    float ghostGapSum_ = 0.0f;
+    int ghostGapCount_ = 0;
+    float lastGhostAcceptBeat_ = -1.0f;
+
     ParamSmoother mixSm_, densSm_, mutSm_, motionSm_, outSm_, panSm_;
     DCBlocker dcL_, dcR_;
     SafetyLimiter limL_, limR_;
-    pfl::generative::DeterministicRNG initialRng_, mutateRng_, durationRng_, spatialRng_;
 
     float gateEnv_ = 1.0f;
-    int gatePhase_ = 2; // 0 idle 1 attack 2 hold 3 release
+    int gatePhase_ = 2;
     int gatePos_ = 0;
     int holdLeft_ = 0;
     int attN_ = 144, relN_ = 192;
     int pulseAttN_ = 144, pulseRelN_ = 192;
     float panAnchor_ = 0.0f;
+    float panRoleBias_ = 0.0f;
 
     double lastPpq_ = -1.0e9;
     bool lastTransportPlaying_ = false;
     int lastBar_ = -1;
     int lastSlot_ = -1;
     int lastPanBar_ = -1;
-    float prevDensity_ = -1.0f;
-    float prevMutation_ = -1.0f;
 
     bool traceEnabled_ = false;
     std::vector<PulseTraceEvent> events_;
