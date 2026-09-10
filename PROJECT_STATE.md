@@ -4,21 +4,18 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**Ruin Engine Stage 3 — COMPLETE** (Ableton PASS). Closing and merging PR #12.
+**Ruin Engine — PARKED** (Stage 4 COMPLETE, Ableton PASS).  
+Next active product: **PFL Memory Eater Stage 1**.
 
 Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 ## Branch / tags
 
-- Stage 3 complete: `ruin-engine-stage3-complete` (PR #12)
+- Stage 4 complete: `ruin-engine-stage4-complete` (PR #13)
+- Stage 3 complete: `ruin-engine-stage3-complete` (PR #12 merged)
 - Stage 2 complete: `ruin-engine-stage2-complete` (PR #11 merged)
 - Stage 1 complete: `ruin-engine-stage1-complete` (PR #10 merged)
 - Stage 6 complete: `broken-conductor-stage6-complete`
-- Stage 6 PR: #9 `pr/broken-conductor-stage6-harmonic-form` (merged)
-- Stage 5 complete: `broken-conductor-stage5-complete` (PR #8 merged)
-- Stage 4 complete: `broken-conductor-stage4-complete`
-- Stage 3 complete: `broken-conductor-stage3-complete` @ `dc68bb7`
-- Stage 2 complete: `broken-conductor-stage2-complete` @ `0f42d56`
 
 ## Build / test
 
@@ -26,7 +23,6 @@ Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 ./scripts/configure.sh
 ./scripts/build.sh
 ./scripts/test.sh
-./build/tests/pfl_ruin_engine_render
 ```
 
 ## Drone Organism
@@ -48,13 +44,17 @@ Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 3 COMPLETE** (Ableton PASS) |
-| Engine | algorithm **v3** (WearState processing memory) |
+| Status | **PARKED** — Stage 4 COMPLETE (Ableton PASS) |
+| Engine | algorithm **v4** + performance-engine **v1** |
 | Formats | AU VST3 (`Fx`) |
 | Params | MIX, AGE, INSTABILITY, OUTPUT, SEED |
-| States | INTACT / WEATHERED / FRACTURED / RUINED / RECOVERING |
-| Wear | spectral / nonlinear / temporal (internal, persisted) |
-| Stage 3 | `ruin-engine-stage3-complete` (PR #12) |
-| Stage 2 | `ruin-engine-stage2-complete` (PR #11 merged) |
-| Stage 1 | `ruin-engine-stage1-complete` (PR #10 merged) |
-| Next | Stage 4 — performance intervention (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE) |
+| Performance | FREEZE, MUTATE, COLLAPSE, RESEED, SILENCE |
+| Tag | `ruin-engine-stage4-complete` (PR #13) |
+| Product decision | v4 sufficiently complete to ship/park; Stage 5 requires new listening evidence |
+
+## Memory Eater
+
+| Field | Value |
+|-------|--------|
+| Status | **Stage 1 STARTING** |
+| Next | Short-term audio memory / microloop recall |

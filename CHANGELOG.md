@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Ruin Engine — Stage 4 COMPLETE (PARKED)
+
+- Creative-director Ableton acceptance **PASS** (performance intervention)
+- FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE; algorithm **v4** + performance-engine **v1**
+- Product decision: Ruin Engine v4 sufficiently complete to park (no Stage 5 without new direction)
+- Tag: `ruin-engine-stage4-complete`
+- PR #13 merged to `main`
+
 ### Ruin Engine — Stage 3 COMPLETE
 
 - Creative-director Ableton acceptance **PASS** (accumulated processing wear)
