@@ -8,6 +8,7 @@ Authoritative unique IDs for PFL plugins. Assign new codes deliberately before a
 | PFL Broken Conductor | `BrokenConductor` | `Brk1` | `PflG` | `com.pfl.brokenconductor` | AU VST3 |
 | PFL Ruin Engine | `RuinEngine` | `Rui1` | `PflG` | `com.pfl.ruinengine` | AU VST3 |
 | PFL Memory Eater | `MemoryEater` | `Mem1` | `PflG` | `com.pfl.memoryeater` | AU VST3 |
+| PFL Pulse Colony | `PulseColony` | `Pls1` | `PflG` | `com.pfl.pulsecolony` | AU VST3 |
 
 ## VST3 CIDs (from installed `moduleinfo.json`)
 

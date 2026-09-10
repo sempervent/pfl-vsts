@@ -36,6 +36,7 @@ add_subdirectory(src/plugins/DroneOrganism)
 add_subdirectory(src/plugins/BrokenConductor)
 add_subdirectory(src/plugins/RuinEngine)
 add_subdirectory(src/plugins/MemoryEater)
+add_subdirectory(src/plugins/PulseColony)
 
 if(PFL_BUILD_TESTS)
     add_subdirectory(tests)
