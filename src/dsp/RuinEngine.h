@@ -11,6 +11,7 @@
 #include "WearAccumulator.h"
 
 #include "generative/DeterministicRNG.h"
+#include "performance/RuinEnginePerformanceTypes.h"
 
 #include <algorithm>
 #include <cmath>
@@ -20,14 +21,14 @@ namespace pfl::dsp
 {
 
 /**
- * Ruin Engine Stage 3: Stage 2 states + bounded WearState processing history.
+ * Ruin Engine Stage 4: Stage 3 wear + performance intervention hooks.
  * Wear is exposure memory (not audio memory). Musical-time structural decisions
  * remain buffer-independent on a 4-beat eval grid.
  */
 class RuinEngine
 {
 public:
-    static constexpr int kAlgorithmVersion = 3;
+    static constexpr int kAlgorithmVersion = 4;
     static constexpr float kMaxFeedback = 0.72f;
 
     void prepare (double sampleRate) noexcept
@@ -50,6 +51,8 @@ public:
         delaySecSmooth_.prepare (sampleRate_, 0.08f);
         fbSmooth_.prepare (sampleRate_, 0.05f);
         noiseSmooth_.prepare (sampleRate_, 0.05f);
+        silenceCoeff_ = 1.0f - std::exp (-1.0f / std::max (1.0f, 0.005f * static_cast<float> (sampleRate_)));
+        reseedFadeCoeff_ = 1.0f - std::exp (-1.0f / std::max (1.0f, 0.02f * static_cast<float> (sampleRate_)));
 
         delay_.setInternalWet (1.0f);
         delay_.setFullWetMode (true);
@@ -169,11 +172,115 @@ public:
             evolutionPaused_ = true;
             wear_.setPaused (true);
         }
-        else
+        else if (! wearPausedExt_ && ! performanceLock_ && ! silenceActive_)
         {
             wear_.setPaused (false);
         }
         bypassed_ = b;
+    }
+
+    void discardPendingStructure() noexcept { discardPendingEvals_ = true; }
+
+    void setPerformanceLock (bool on) noexcept
+    {
+        if (on && ! performanceLock_)
+            discardPendingEvals_ = true;
+        performanceLock_ = on;
+    }
+
+    void setWearPaused (bool on) noexcept
+    {
+        wearPausedExt_ = on;
+        wear_.setPaused (on || bypassed_ || ! lastTransportPlaying_);
+    }
+
+    void setSilenceActive (bool on) noexcept
+    {
+        silenceActive_ = on;
+        silenceGainT_ = on ? 0.0f : 1.0f;
+        if (on)
+            fbSmooth_.setTarget (0.0f);
+    }
+
+    void beginUnsilenceFade() noexcept
+    {
+        silenceActive_ = false;
+        silenceGainT_ = 1.0f;
+    }
+
+    void beginReseedFade() noexcept
+    {
+        reseedFade_ = 0.0f;
+        reseedFadeT_ = 1.0f;
+    }
+
+    void softClearDelay() noexcept { delay_.reset(); }
+
+    void setCollapsePhase (pfl::ruin_perf::CollapsePhase phase, float phaseT) noexcept
+    {
+        using CP = pfl::ruin_perf::CollapsePhase;
+        collapsePhase_ = phase;
+        collapsePhaseT_ = std::clamp (phaseT, 0.0f, 1.0f);
+        if (phase == CP::None)
+        {
+            if (collapseForced_)
+            {
+                stateMachine_.setForcedState (false, RuinProcessingState::Intact);
+                collapseForced_ = false;
+                syncTargetsFromState (true);
+            }
+            return;
+        }
+
+        RuinProcessingState s = RuinProcessingState::Fractured;
+        if (phase == CP::Devour || phase == CP::Residue)
+            s = RuinProcessingState::Ruined;
+        stateMachine_.setForcedState (true, s);
+        collapseForced_ = true;
+        syncTargetsFromState (false);
+        mapDspTargets (ageSmooth_.current(), instSmooth_.current(), false);
+    }
+
+    /** Bounded wear bump during collapse (does not use autonomous WearAccumulator rates). */
+    void addCollapseWear (float deltaBeats, float intensity) noexcept
+    {
+        if (deltaBeats <= 0.0f)
+            return;
+        auto w = wear_.wear();
+        const float k = std::clamp (intensity, 0.0f, 1.0f) * deltaBeats;
+        w.spectral = std::min (1.0f, w.spectral + 0.0035f * k);
+        w.nonlinear = std::min (1.0f, w.nonlinear + 0.0040f * k);
+        w.temporal = std::min (1.0f, w.temporal + 0.0045f * k);
+        auto floor = wear_.scarFloor();
+        floor.spectral = std::max (floor.spectral, w.spectral * 0.50f);
+        floor.nonlinear = std::max (floor.nonlinear, w.nonlinear * 0.50f);
+        floor.temporal = std::max (floor.temporal, w.temporal * 0.55f);
+        wear_.setWearAndFloor (w, floor);
+        syncTargetsFromState (false);
+    }
+
+    /**
+     * One bounded within-neighborhood profile nudge. Does not rewrite WearState.
+     * Returns axis index 0..3 (tone/grit/wobble/smear).
+     * Offsets persist across syncTargetsFromState until cleared (reseed/collapse end).
+     */
+    int applyBoundedMutation (pfl::generative::DeterministicRNG& rng) noexcept
+    {
+        const int axis = static_cast<int> (rng.nextFloat() * 4.0f) % 4;
+        const float mag = rng.nextFloat (0.06f, 0.14f);
+        const float delta = (rng.nextFloat() < 0.5f ? -mag : mag);
+        if (axis == 0) mutTone_ = std::clamp (mutTone_ + delta, -0.35f, 0.35f);
+        else if (axis == 1) mutGrit_ = std::clamp (mutGrit_ + delta, -0.35f, 0.35f);
+        else if (axis == 2) mutWobble_ = std::clamp (mutWobble_ + delta, -0.35f, 0.35f);
+        else mutSmear_ = std::clamp (mutSmear_ + delta, -0.35f, 0.35f);
+        syncTargetsFromState (true);
+        mapDspTargets (ageSmooth_.current(), instSmooth_.current(), false);
+        return axis;
+    }
+
+    void clearMutationOffsets() noexcept
+    {
+        mutTone_ = mutGrit_ = mutWobble_ = mutSmear_ = 0.0f;
     }
 
     /** Offline / diagnostic only — not a public plugin parameter. */
@@ -188,12 +295,14 @@ public:
     float grit() const noexcept { return grit_; }
     float wobble() const noexcept { return wobble_; }
     float smear() const noexcept { return smear_; }
+    float silenceGain() const noexcept { return silenceGain_; }
 
     RuinProcessingState processingState() const noexcept { return stateMachine_.state(); }
     RuinProcessingState previousProcessingState() const noexcept { return stateMachine_.previousState(); }
     float damagePressure() const noexcept { return stateMachine_.damagePressure(); }
     float recoveryPressure() const noexcept { return stateMachine_.recoveryPressure(); }
     float fractureAmount() const noexcept { return fractureAmt_; }
+    pfl::ruin_perf::CollapsePhase collapsePhase() const noexcept { return collapsePhase_; }
 
     void process (float* left, float* right, int numSamples,
                   bool transportPlaying, double ppqStart, double bpm) noexcept
@@ -201,8 +310,10 @@ public:
         if (left == nullptr || right == nullptr || numSamples <= 0)
             return;
 
-        setEvolutionPaused (! transportPlaying || bypassed_);
-        wear_.setPaused (! transportPlaying || bypassed_);
+        lastTransportPlaying_ = transportPlaying;
+        const bool structPause = ! transportPlaying || bypassed_ || performanceLock_;
+        setEvolutionPaused (structPause);
+        wear_.setPaused (! transportPlaying || bypassed_ || wearPausedExt_ || performanceLock_ || silenceActive_);
 
         const double safeBpm = bpm > 1.0 ? bpm : 120.0;
         const double beatsPerSample = (safeBpm / 60.0) / sampleRate_;
@@ -223,6 +334,9 @@ public:
             wobble_ += (wobbleT_ - wobble_) * morph;
             smear_ += (smearT_ - smear_) * morph;
             fractureAmt_ += (fractureAmtT_ - fractureAmt_) * morph;
+
+            // Collapse phase bias on top of state profile
+            applyCollapseBias (age, inst);
 
             mapDspTargets (age, inst, false);
             updateMicroMotion (age, inst);
@@ -293,6 +407,13 @@ public:
             float outR = dryR * (1.0f - mix) + wetR * mix;
             outL = std::clamp (outL * outG, -0.99f, 0.99f);
             outR = std::clamp (outR * outG, -0.99f, 0.99f);
+
+            silenceGain_ += (silenceGainT_ - silenceGain_) * silenceCoeff_;
+            reseedFade_ += (reseedFadeT_ - reseedFade_) * reseedFadeCoeff_;
+            const float fade = silenceGain_ * reseedFade_;
+            outL *= fade;
+            outR *= fade;
+
             if (! std::isfinite (outL)) outL = 0.0f;
             if (! std::isfinite (outR)) outR = 0.0f;
 
@@ -302,6 +423,41 @@ public:
     }
 
 private:
+    void applyCollapseBias (float age, float inst) noexcept
+    {
+        using CP = pfl::ruin_perf::CollapsePhase;
+        if (collapsePhase_ == CP::None)
+            return;
+        (void) age;
+        const float t = collapsePhaseT_;
+        switch (collapsePhase_)
+        {
+            case CP::Destabilize:
+                wobbleT_ = std::clamp (wobbleT_ + 0.25f + 0.20f * t, 0.0f, 1.0f);
+                fractureAmtT_ = std::clamp (fractureAmtT_ + 0.35f + 0.25f * t, 0.0f, 1.0f);
+                break;
+            case CP::Fracture:
+                fractureAmtT_ = std::clamp (0.70f + 0.25f * t, 0.0f, 1.0f);
+                smearT_ = std::clamp (smearT_ * (0.85f - 0.25f * t), 0.0f, 1.0f);
+                break;
+            case CP::Devour:
+                gritT_ = std::clamp (0.75f + 0.20f * t, 0.0f, 1.0f);
+                smearT_ = std::clamp (0.80f + 0.15f * t, 0.0f, 1.0f);
+                toneT_ = std::clamp (0.70f + 0.20f * t, 0.0f, 1.0f);
+                fractureAmtT_ = std::clamp (0.25f + 0.20f * (1.0f - t), 0.0f, 1.0f);
+                break;
+            case CP::Residue:
+                gritT_ = std::clamp (0.62f, 0.0f, 1.0f);
+                smearT_ = std::clamp (0.55f, 0.0f, 1.0f);
+                toneT_ = std::clamp (0.58f, 0.0f, 1.0f);
+                wobbleT_ = std::clamp (0.18f * inst, 0.0f, 1.0f);
+                fractureAmtT_ = std::clamp (0.12f, 0.0f, 1.0f);
+                break;
+            default:
+                break;
+        }
+    }
+
     void rebuildRng() noexcept
     {
         noiseRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, 0x4E4F4953ull); // NOIS
@@ -311,19 +467,19 @@ private:
     void syncTargetsFromState (bool snap) noexcept
     {
         const auto& t = stateMachine_.targets();
-        float tone = t.tone;
-        float grit = t.grit;
-        float wobble = t.wobble;
-        float smear = t.smear;
+        float tone = std::clamp (t.tone + mutTone_, 0.0f, 1.0f);
+        float grit = std::clamp (t.grit + mutGrit_, 0.0f, 1.0f);
+        float wobble = std::clamp (t.wobble + mutWobble_, 0.0f, 1.0f);
+        float smear = std::clamp (t.smear + mutSmear_, 0.0f, 1.0f);
         float frac = t.fractureAmount;
         wear_.applyToProfile (stateMachine_.state(), tone, grit, smear, frac);
-        (void) wobble; // wobble remains state/inst only — wear does not redefine restlessness
+        // wobble includes mutation; wear does not redefine restlessness beyond state
 
         if (snap)
         {
             toneT_ = tone_ = tone;
             gritT_ = grit_ = grit;
-            wobbleT_ = wobble_ = t.wobble;
+            wobbleT_ = wobble_ = wobble;
             smearT_ = smear_ = smear;
             fractureAmtT_ = fractureAmt_ = frac;
         }
@@ -331,7 +487,7 @@ private:
         {
             toneT_ = tone;
             gritT_ = grit;
-            wobbleT_ = t.wobble;
+            wobbleT_ = wobble;
             smearT_ = smear;
             fractureAmtT_ = frac;
         }
@@ -432,7 +588,13 @@ private:
                                       : (0.002f + 0.06f * std::pow ((a - 0.15f) / 0.85f, 1.3f) * g);
         const float delaySec = 0.03f + 0.55f * s * s;
         // Wear may color feedback character but never exceeds Stage 1 hard cap.
-        const float fb = a < 1.0e-4f ? 0.0f : std::min (kMaxFeedback, 0.12f + 0.55f * s);
+        float fb = a < 1.0e-4f ? 0.0f : std::min (kMaxFeedback, 0.12f + 0.55f * s);
+        if (silenceActive_)
+            fb = 0.0f;
+        if (collapsePhase_ == pfl::ruin_perf::CollapsePhase::Fracture)
+            fb = std::min (fb, 0.35f);
+        if (collapsePhase_ == pfl::ruin_perf::CollapsePhase::Residue)
+            fb = std::min (fb, 0.28f);
 
         if (snap)
         {
@@ -487,6 +649,11 @@ private:
     bool evolutionPaused_ = false;
     bool discardPendingEvals_ = false;
     bool bypassed_ = false;
+    bool performanceLock_ = false;
+    bool wearPausedExt_ = false;
+    bool silenceActive_ = false;
+    bool lastTransportPlaying_ = false;
+    bool collapseForced_ = false;
     int lastEvalIndex_ = -1;
 
     Filter filterL_, filterR_;
@@ -507,6 +674,17 @@ private:
 
     float tone_ = 0, grit_ = 0, wobble_ = 0, smear_ = 0, fractureAmt_ = 0;
     float toneT_ = 0, gritT_ = 0, wobbleT_ = 0, smearT_ = 0, fractureAmtT_ = 0;
+
+    float mutTone_ = 0, mutGrit_ = 0, mutWobble_ = 0, mutSmear_ = 0;
+
+    pfl::ruin_perf::CollapsePhase collapsePhase_ = pfl::ruin_perf::CollapsePhase::None;
+    float collapsePhaseT_ = 0.0f;
+    float silenceGain_ = 1.0f;
+    float silenceGainT_ = 1.0f;
+    float silenceCoeff_ = 0.1f;
+    float reseedFade_ = 1.0f;
+    float reseedFadeT_ = 1.0f;
+    float reseedFadeCoeff_ = 0.05f;
 
     double lfoPhase_ = 0.0;
     float walk_ = 0.0f;

@@ -7,7 +7,7 @@ RuinEngineEditor::RuinEngineEditor (RuinEngineProcessor& p)
 {
     juce::ignoreUnused (processor_);
     addAndMakeVisible (genericEditor_);
-    setSize (400, 320);
+    setSize (420, 520);
 }
 
 RuinEngineEditor::~RuinEngineEditor() = default;
@@ -17,7 +17,7 @@ void RuinEngineEditor::paint (juce::Graphics& g)
     g.fillAll (juce::Colours::black);
     g.setColour (juce::Colours::grey);
     g.setFont (12.0f);
-    g.drawText ("PFL Ruin Engine — Stage 1",
+    g.drawText ("PFL Ruin Engine — Stage 4",
                 getLocalBounds().removeFromBottom (24).reduced (8, 2),
                 juce::Justification::centredLeft);
 }

@@ -1,4 +1,5 @@
 #include "dsp/RuinEngine.h"
+#include "performance/RuinEnginePerformanceController.h"
 
 #include <chrono>
 #include <cmath>
@@ -119,7 +120,7 @@ bool nearlyEqual (const RenderResult& a, const RenderResult& b, float tol = 1.0e
 
 static void testAlgorithmVersion()
 {
-    EXPECT (pfl::dsp::RuinEngine::kAlgorithmVersion == 3);
+    EXPECT (pfl::dsp::RuinEngine::kAlgorithmVersion == 4);
 }
 
 static void testAgeZeroTransparent()
@@ -853,6 +854,259 @@ static void testStage3MixZeroStillDry()
     EXPECT (maxDiff < 0.005f);
 }
 
+static void processWithPerf (pfl::dsp::RuinEngine& eng,
+                             pfl::ruin_perf::RuinEnginePerformanceController& perf,
+                             std::vector<float>& L, std::vector<float>& R,
+                             double sr, double bpm, double startBeat, double numBeats,
+                             bool playing, int block = 256)
+{
+    const double bps = (bpm / 60.0) / sr;
+    const int n = std::max (1, static_cast<int> (numBeats / bps));
+    if (static_cast<int> (L.size()) < n)
+    {
+        L.resize (static_cast<size_t> (n));
+        R.resize (static_cast<size_t> (n));
+        for (int i = 0; i < n; ++i)
+        {
+            const double t = static_cast<double> (i) / sr;
+            L[static_cast<size_t> (i)] = 0.4f * std::sin (2.0 * 3.141592653589793 * 110.0 * t);
+            R[static_cast<size_t> (i)] = L[static_cast<size_t> (i)] * 0.97f;
+        }
+    }
+    int done = 0;
+    while (done < n)
+    {
+        const int m = std::min (block, n - done);
+        const double ppq = startBeat + static_cast<double> (done) * bps;
+        perf.tick (ppq, playing, eng);
+        eng.process (L.data() + done, R.data() + done, m, playing, ppq, bpm);
+        done += m;
+    }
+}
+
+static void testStage4FreezePausesWearAndState()
+{
+    const double sr = 48000.0, bpm = 72.0;
+    pfl::dsp::RuinEngine eng;
+    pfl::ruin_perf::RuinEnginePerformanceController perf;
+    eng.prepare (sr);
+    eng.setSeed (2002);
+    eng.setMix (0.7f);
+    eng.setAge (0.85f);
+    eng.setInstability (0.55f);
+    eng.setOutput (0.9f);
+    eng.snapMacros();
+    eng.forceProcessingState (true, pfl::dsp::RuinProcessingState::Weathered);
+    perf.reset (2002);
+    std::vector<float> L, R;
+    processWithPerf (eng, perf, L, R, sr, bpm, 0.0, 64.0, true);
+    const auto wearBefore = eng.wearState();
+    const auto stateBefore = eng.processingState();
+    perf.trigger (pfl::ruin_perf::Command::FreezeOn, 64.0, eng);
+    EXPECT (perf.mode() == pfl::ruin_perf::Mode::Frozen);
+    processWithPerf (eng, perf, L, R, sr, bpm, 64.0, 64.0, true);
+    EXPECT (eng.processingState() == stateBefore);
+    EXPECT (std::abs (eng.wearState().mean() - wearBefore.mean()) < 1.0e-5f);
+}
+
+static void testStage4MutateWhileFrozen()
+{
+    const double sr = 48000.0, bpm = 72.0;
+    pfl::dsp::RuinEngine eng;
+    pfl::ruin_perf::RuinEnginePerformanceController perf;
+    eng.prepare (sr);
+    eng.setSeed (2002);
+    eng.setMix (0.7f);
+    eng.setAge (0.55f);
+    eng.setInstability (0.45f);
+    eng.setOutput (0.9f);
+    eng.snapMacros();
+    eng.forceProcessingState (true, pfl::dsp::RuinProcessingState::Weathered);
+    perf.reset (2002);
+    perf.trigger (pfl::ruin_perf::Command::FreezeOn, 0.0, eng);
+    const float tone0 = eng.tone();
+    const auto wear0 = eng.wearState().mean();
+    perf.trigger (pfl::ruin_perf::Command::Mutate, 1.0, eng);
+    EXPECT (perf.mode() == pfl::ruin_perf::Mode::Frozen);
+    EXPECT (std::abs (eng.wearState().mean() - wear0) < 1.0e-5f);
+    // Profile should move on at least one axis eventually after snap
+    eng.snapMacros();
+    // Mutation applied to targets; tone/grit/wobble/smear may change
+    const bool changed = std::abs (eng.tone() - tone0) > 1.0e-4f
+                      || std::abs (eng.grit() - tone0) > 1.0e-4f
+                      || std::abs (eng.wobble() - tone0) > 1.0e-4f
+                      || std::abs (eng.smear() - tone0) > 1.0e-4f
+                      || perf.state().lastMutateAxis >= 0;
+    EXPECT (changed);
+    EXPECT (perf.state().lastMutateAxis >= 0);
+}
+
+static void testStage4CollapsePhasesAndWear()
+{
+    const double sr = 48000.0, bpm = 72.0;
+    pfl::dsp::RuinEngine eng;
+    pfl::ruin_perf::RuinEnginePerformanceController perf;
+    eng.prepare (sr);
+    eng.setSeed (2002);
+    eng.setMix (0.7f);
+    eng.setAge (0.40f);
+    eng.setInstability (0.40f);
+    eng.setOutput (0.9f);
+    eng.snapMacros();
+    eng.forceProcessingState (true, pfl::dsp::RuinProcessingState::Intact);
+    perf.reset (2002);
+    perf.setTraceEnabled (true);
+    const auto wear0 = eng.wearState().mean();
+    perf.trigger (pfl::ruin_perf::Command::Collapse, 0.0, eng);
+    std::vector<float> L, R;
+    processWithPerf (eng, perf, L, R, sr, bpm, 0.0, 28.0, true);
+    EXPECT (perf.mode() == pfl::ruin_perf::Mode::Collapsed
+            || perf.mode() == pfl::ruin_perf::Mode::Collapsing);
+    EXPECT (eng.wearState().mean() > wear0);
+    // Re-trigger ignored
+    const auto mode = perf.mode();
+    perf.trigger (pfl::ruin_perf::Command::Collapse, 28.0, eng);
+    EXPECT (perf.mode() == mode);
+}
+
+static void testStage4ReseedPreservesWear()
+{
+    const double sr = 48000.0, bpm = 72.0;
+    pfl::dsp::RuinEngine eng;
+    pfl::ruin_perf::RuinEnginePerformanceController perf;
+    eng.prepare (sr);
+    eng.setSeed (2002);
+    eng.setMix (0.7f);
+    eng.setAge (0.9f);
+    eng.setInstability (0.5f);
+    eng.setOutput (0.9f);
+    eng.snapMacros();
+    eng.forceProcessingState (true, pfl::dsp::RuinProcessingState::Ruined);
+    perf.reset (2002);
+    std::vector<float> L, R;
+    processWithPerf (eng, perf, L, R, sr, bpm, 0.0, 96.0, true);
+    const auto wear = eng.wearState();
+    const auto oldSeed = eng.seed();
+    perf.trigger (pfl::ruin_perf::Command::Reseed, 96.0, eng);
+    EXPECT (eng.seed() != oldSeed);
+    EXPECT (std::abs (eng.wearState().spectral - wear.spectral) < 1.0e-5f);
+    EXPECT (std::abs (eng.wearState().nonlinear - wear.nonlinear) < 1.0e-5f);
+    EXPECT (std::abs (eng.wearState().temporal - wear.temporal) < 1.0e-5f);
+}
+
+static void testStage4SilenceMutesDryAndWet()
+{
+    const double sr = 48000.0, bpm = 72.0;
+    pfl::dsp::RuinEngine eng;
+    pfl::ruin_perf::RuinEnginePerformanceController perf;
+    eng.prepare (sr);
+    eng.setSeed (2002);
+    eng.setMix (0.0f); // dry would normally pass — silence must still mute
+    eng.setAge (0.8f);
+    eng.setInstability (0.5f);
+    eng.setOutput (1.0f);
+    eng.snapMacros();
+    perf.reset (2002);
+    perf.trigger (pfl::ruin_perf::Command::SilenceOn, 0.0, eng);
+    const int n = 4800;
+    auto in = makeSine (n, sr, 220.0, 0.5f);
+    float peak = 0.0f;
+    for (int iter = 0; iter < 10; ++iter)
+    {
+        auto outL = in, outR = in;
+        perf.tick (0.0, true, eng);
+        eng.process (outL.data(), outR.data(), n, true, 0.0, bpm);
+        peak = 0.0f;
+        for (int s = 0; s < n; ++s)
+            peak = std::max (peak, std::max (std::abs (outL[static_cast<size_t> (s)]),
+                                             std::abs (outR[static_cast<size_t> (s)])));
+    }
+    EXPECT (peak < 0.02f);
+    EXPECT (eng.silenceGain() < 0.05f);
+}
+
+static void testStage4CommandScriptDeterminism()
+{
+    const double sr = 48000.0, bpm = 72.0;
+    auto run = [&] ()
+    {
+        pfl::dsp::RuinEngine eng;
+        pfl::ruin_perf::RuinEnginePerformanceController perf;
+        eng.prepare (sr);
+        eng.setSeed (2002);
+        eng.setMix (0.7f);
+        eng.setAge (0.55f);
+        eng.setInstability (0.50f);
+        eng.setOutput (0.9f);
+        eng.snapMacros();
+        perf.reset (2002);
+        perf.setTraceEnabled (true);
+        std::vector<float> L, R;
+        processWithPerf (eng, perf, L, R, sr, bpm, 0.0, 32.0, true);
+        perf.trigger (pfl::ruin_perf::Command::FreezeOn, 32.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 32.0, 16.0, true);
+        perf.trigger (pfl::ruin_perf::Command::Mutate, 48.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 48.0, 16.0, true);
+        perf.trigger (pfl::ruin_perf::Command::Mutate, 64.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 64.0, 16.0, true);
+        perf.trigger (pfl::ruin_perf::Command::FreezeOff, 80.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 80.0, 32.0, true);
+        perf.trigger (pfl::ruin_perf::Command::Collapse, 112.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 112.0, 24.0, true);
+        perf.trigger (pfl::ruin_perf::Command::SilenceOn, 136.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 136.0, 8.0, true);
+        perf.trigger (pfl::ruin_perf::Command::SilenceOff, 144.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 144.0, 32.0, true);
+        perf.trigger (pfl::ruin_perf::Command::Reseed, 176.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 176.0, 80.0, true);
+
+        struct Finger
+        {
+            pfl::ruin_perf::Mode mode;
+            uint64_t seed;
+            float wear;
+            int nEvents;
+            int lastAxis;
+        };
+        return Finger { perf.mode(), eng.seed(), eng.wearState().mean(),
+                        static_cast<int> (perf.events().size()), perf.state().lastMutateAxis };
+    };
+    const auto a = run();
+    const auto b = run();
+    EXPECT (a.mode == b.mode);
+    EXPECT (a.seed == b.seed);
+    EXPECT (std::abs (a.wear - b.wear) < 1.0e-4f);
+    EXPECT (a.nEvents == b.nEvents);
+    EXPECT (a.lastAxis == b.lastAxis);
+}
+
+static void testStage4CollapseOverridesFreeze()
+{
+    pfl::dsp::RuinEngine eng;
+    pfl::ruin_perf::RuinEnginePerformanceController perf;
+    eng.prepare (48000.0);
+    eng.setSeed (2002);
+    eng.snapMacros();
+    perf.reset (2002);
+    perf.trigger (pfl::ruin_perf::Command::FreezeOn, 0.0, eng);
+    EXPECT (perf.mode() == pfl::ruin_perf::Mode::Frozen);
+    perf.trigger (pfl::ruin_perf::Command::Collapse, 1.0, eng);
+    EXPECT (perf.mode() == pfl::ruin_perf::Mode::Collapsing);
+}
+
+static void testStage4MutateIgnoredDuringCollapse()
+{
+    pfl::dsp::RuinEngine eng;
+    pfl::ruin_perf::RuinEnginePerformanceController perf;
+    eng.prepare (48000.0);
+    eng.setSeed (2002);
+    eng.snapMacros();
+    perf.reset (2002);
+    perf.trigger (pfl::ruin_perf::Command::Collapse, 0.0, eng);
+    perf.trigger (pfl::ruin_perf::Command::Mutate, 1.0, eng);
+    EXPECT (perf.state().lastMutateAxis < 0);
+}
+
 int main()
 {
     testAlgorithmVersion();
@@ -884,6 +1138,14 @@ int main()
     testStage3MaxWearSafety();
     testStage3PreparePreservesWear();
     testStage3MixZeroStillDry();
+    testStage4FreezePausesWearAndState();
+    testStage4MutateWhileFrozen();
+    testStage4CollapsePhasesAndWear();
+    testStage4ReseedPreservesWear();
+    testStage4SilenceMutesDryAndWet();
+    testStage4CommandScriptDeterminism();
+    testStage4CollapseOverridesFreeze();
+    testStage4MutateIgnoredDuringCollapse();
 
     if (gFails == 0)
     {

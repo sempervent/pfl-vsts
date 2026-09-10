@@ -1,4 +1,5 @@
 #include "dsp/RuinEngine.h"
+#include "performance/RuinEnginePerformanceController.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_core/juce_core.h>
@@ -268,6 +269,122 @@ int main (int argc, char** argv)
     const std::string arg = argc > 1 ? argv[1] : "";
     const double sr = 48000.0;
     const double bpm = 72.0;
+
+    if (arg == "--stage4")
+    {
+        const fs::path dir = "renders/ruin-engine/stage4";
+        fs::create_directories (dir);
+        using Cmd = pfl::ruin_perf::Command;
+        auto renderPerf = [&] (const fs::path& wav, const fs::path& trace,
+                               auto script)
+        {
+            const double seconds = 90.0;
+            const int n = static_cast<int> (sr * seconds);
+            std::vector<float> L (static_cast<size_t> (n)), R (static_cast<size_t> (n));
+            fillSource (L, R, sr);
+            pfl::dsp::RuinEngine eng;
+            pfl::ruin_perf::RuinEnginePerformanceController perf;
+            eng.prepare (sr);
+            eng.setSeed (2002);
+            eng.setMix (0.70f);
+            eng.setAge (0.55f);
+            eng.setInstability (0.50f);
+            eng.setOutput (0.90f);
+            eng.snapMacros();
+            perf.reset (2002);
+            perf.setTraceEnabled (true);
+            std::ofstream tr (trace);
+            const int block = 256;
+            const double bps = (bpm / 60.0) / sr;
+            for (int done = 0; done < n; done += block)
+            {
+                const double beat = static_cast<double> (done) * bps;
+                script (perf, eng, beat);
+                perf.tick (beat, true, eng);
+                const int m = std::min (block, n - done);
+                eng.process (L.data() + done, R.data() + done, m, true, beat, bpm);
+            }
+            for (const auto& e : perf.events())
+                tr << "beat " << e.ppq << " " << pfl::ruin_perf::commandName (e.command)
+                   << " " << e.detail << " mode=" << pfl::ruin_perf::modeName (perf.mode()) << "\n";
+            writeWearLine (tr, static_cast<double> (n) * bps, eng);
+            writeWav (wav, L, R, sr);
+        };
+
+        renderPerf (dir / "performance-journey.wav", dir / "performance-journey-trace.txt",
+                    [] (auto& perf, auto& eng, double beat)
+                    {
+                        using Cmd = pfl::ruin_perf::Command;
+                        if (std::abs (beat - 32.0) < 0.02) perf.trigger (Cmd::FreezeOn, beat, eng);
+                        if (std::abs (beat - 48.0) < 0.02) perf.trigger (Cmd::Mutate, beat, eng);
+                        if (std::abs (beat - 64.0) < 0.02) perf.trigger (Cmd::Mutate, beat, eng);
+                        if (std::abs (beat - 80.0) < 0.02) perf.trigger (Cmd::FreezeOff, beat, eng);
+                        if (std::abs (beat - 112.0) < 0.02) perf.trigger (Cmd::Collapse, beat, eng);
+                        if (std::abs (beat - 136.0) < 0.02) perf.trigger (Cmd::SilenceOn, beat, eng);
+                        if (std::abs (beat - 144.0) < 0.02) perf.trigger (Cmd::SilenceOff, beat, eng);
+                        if (std::abs (beat - 176.0) < 0.02) perf.trigger (Cmd::Reseed, beat, eng);
+                    });
+
+        // freeze-weathered
+        {
+            const int n = static_cast<int> (sr * 20.0);
+            std::vector<float> L (n), R (n); fillSource (L, R, sr);
+            pfl::dsp::RuinEngine eng; pfl::ruin_perf::RuinEnginePerformanceController perf;
+            eng.prepare (sr); eng.setSeed (2002); eng.setMix (0.7f); eng.setAge (0.55f); eng.setInstability (0.45f); eng.setOutput (0.9f); eng.snapMacros();
+            eng.forceProcessingState (true, pfl::dsp::RuinProcessingState::Weathered);
+            perf.reset (2002);
+            const double bps = (bpm / 60.0) / sr;
+            for (int done = 0; done < n; done += 256) {
+                const double beat = done * bps;
+                if (beat >= 8.0 && beat < 8.0 + bps * 256) perf.trigger (Cmd::FreezeOn, beat, eng);
+                perf.tick (beat, true, eng);
+                eng.process (L.data()+done, R.data()+done, std::min(256, n-done), true, beat, bpm);
+            }
+            writeWav (dir / "freeze-weathered.wav", L, R, sr);
+        }
+        {
+            const int n = static_cast<int> (sr * 30.0);
+            std::vector<float> L (n), R (n); fillSource (L, R, sr);
+            pfl::dsp::RuinEngine eng; pfl::ruin_perf::RuinEnginePerformanceController perf;
+            eng.prepare (sr); eng.setSeed (2002); eng.setMix (0.7f); eng.setAge (0.45f); eng.setInstability (0.45f); eng.setOutput (0.9f); eng.snapMacros();
+            eng.forceProcessingState (true, pfl::dsp::RuinProcessingState::Intact);
+            perf.reset (2002);
+            const double bps = (bpm / 60.0) / sr;
+            for (int done = 0; done < n; done += 256) {
+                const double beat = done * bps;
+                if (beat >= 4.0 && beat < 4.0 + bps * 256) perf.trigger (Cmd::Collapse, beat, eng);
+                perf.tick (beat, true, eng);
+                eng.process (L.data()+done, R.data()+done, std::min(256, n-done), true, beat, bpm);
+            }
+            writeWav (dir / "collapse-from-intact.wav", L, R, sr);
+        }
+        {
+            // reseed-scarred
+            const double bps = (bpm / 60.0) / sr;
+            const int abuse = (int)(128.0 / bps), listen = (int)(sr * 12.0), n = abuse + listen;
+            std::vector<float> L (n), R (n); fillSource (L, R, sr);
+            pfl::dsp::RuinEngine eng; pfl::ruin_perf::RuinEnginePerformanceController perf;
+            eng.prepare (sr); eng.setSeed (2002); eng.setMix (0.7f); eng.setAge (0.95f); eng.setInstability (0.55f); eng.setOutput (0.9f); eng.snapMacros();
+            eng.forceProcessingState (true, pfl::dsp::RuinProcessingState::Ruined);
+            perf.reset (2002);
+            int done = 0;
+            for (; done < abuse; done += 256) {
+                const double beat = done * bps;
+                perf.tick (beat, true, eng);
+                eng.process (L.data()+done, R.data()+done, std::min(256, abuse-done), true, beat, bpm);
+            }
+            perf.trigger (Cmd::Reseed, done * bps, eng);
+            for (; done < n; done += 256) {
+                const double beat = done * bps;
+                perf.tick (beat, true, eng);
+                eng.process (L.data()+done, R.data()+done, std::min(256, n-done), true, beat, bpm);
+            }
+            writeWav (dir / "reseed-scarred.wav", L, R, sr);
+            std::cout << "reseed-scarred wear=" << eng.wearState().mean() << " seed=" << eng.seed() << "\n";
+        }
+        std::cout << "stage4 renders done\n";
+        return 0;
+    }
 
     if (arg == "--stage3")
     {

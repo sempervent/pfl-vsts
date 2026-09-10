@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Ruin Engine — Stage 4 (IN PROGRESS)
+
+- Performance intervention: FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE
+- Algorithm **v4** + performance-engine **v1**; Stage 3 WearState preserved across RESEED
+- SILENCE mutes dry+wet (not MIX=0); COLLAPSE = 24-beat Destabilize→Fracture→Devour→Residue
+- Draft PR — waiting for creative-director Ableton acceptance
+
 ### Ruin Engine — Stage 3 COMPLETE
 
 - Creative-director Ableton acceptance **PASS** (accumulated processing wear)

@@ -4,9 +4,11 @@ Deterministic generative audio-transformation effect.
 
 ## Status
 
-**Stage 3 COMPLETE** — creative-director Ableton acceptance **PASS**.
-Tag: `ruin-engine-stage3-complete` · PR #12 merged.
-Stage 2: `ruin-engine-stage2-complete` (PR #11). Stage 1: `ruin-engine-stage1-complete` (PR #10).
+**Stage 4 IN PROGRESS** — draft PR (`pr/ruin-engine-stage4-performance`).
+Waiting for creative-director Ableton acceptance.
+
+Stage 3 COMPLETE — tag `ruin-engine-stage3-complete` · PR #12 merged.
+Stage 2: `ruin-engine-stage2-complete`. Stage 1: `ruin-engine-stage1-complete`.
 
 Broken Conductor software development remains paused (Stage 7 = physical-rig integration).
 
@@ -68,13 +70,47 @@ Wear **modifies** state profiles; it does not replace the state machine.
 
 ## Algorithm
 
-Version **3** (accumulated processing wear). Version 2 = explicit-state ecology. Version 1 = continuous profile nudges.
+Version **4** (performance intervention). Version 3 = WearState. Version 2 = states. Version 1 = continuous nudges.
 
 ## Determinism
 
 - 4-beat PPQ eval grid; absolute rebuild of **structural** state on seek/insert
 - WearState is **exposure history**, not reconstructed from absolute PPQ
 - Sample-rate noise/micro RNG is **not** reset on seek
+
+## Stage 4 performance
+
+| Command | Kind | Meaning |
+|---------|------|---------|
+| FREEZE | toggle | Lock ecology; wet stays alive; wear paused |
+| MUTATE | edge | One bounded profile nudge; works while frozen |
+| COLLAPSE | edge | 24-beat Destabilize→Fracture→Devour→Residue |
+| RESEED | edge | New SEED personality; **preserves WearState** |
+| SILENCE | toggle | Mute dry+wet (≠ MIX=0); pause evolution/wear |
+
+Priority: SILENCE > COLLAPSE > FREEZE > MUTATE.
+
+```bash
+./build/tests/pfl_ruin_engine_render --stage4
+# → renders/ruin-engine/stage4/
+```
+
+## Ableton acceptance (Stage 4)
+
+**WAITING FOR CREATIVE-DIRECTOR ACCEPTANCE**
+
+1. Evolve normally (MIX .70 / AGE .55 / INST .50)
+2. FREEZE — condition holds, still alive
+3. MUTATE ×2 while frozen — bounded changes
+4. Unfreeze — no catch-up burst
+5. COLLAPSE — multi-phase destruction → residue
+6. RESEED — new personality, scars remain
+7. SILENCE on/off — clean mute, no blast
+8. Save/reload — toggles/wear as documented
+
+## Explicitly out of Stage 4
+
+Memory Eater · audio capture · custom GUI · hardware mapping · next plugin
 
 ## Explicitly out of Stage 3
 

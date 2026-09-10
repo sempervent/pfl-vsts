@@ -822,3 +822,61 @@ Wear cannot bypass feedback cap, AGE=0 wet identity, MIX=0 dry, limiter, or DC.
 
 Wear = slow AGE; INST = wear speed; PPQ-fabricated aging; audio buffers; public WEAR knob; performance commands; Memory Eater.
 
+
+---
+
+## 2026-09-09 — Ruin Engine Stage 4 performance intervention
+
+### Why
+
+Stage 3 PASS established processing memory. Stage 4 makes the ecology playable via five structural verbs without new continuous knobs.
+
+### Shared contract
+
+Reuse DO/BC vocabulary and host pattern: Bool FREEZE/SILENCE, Float 0→1 edge MUTATE/COLLAPSE/RESEED.
+Own `RuinEnginePerformanceController` (not BC MIDI / DO composer controllers).
+
+### Priority
+
+SILENCE > COLLAPSE > FREEZE > MUTATE.
+COLLAPSE overrides FREEZE. MUTATE ignored while Collapsing/Silenced.
+RESEED is structural reset: preserves WearState; clears collapse residue.
+
+### FREEZE
+
+Locks autonomous state transitions, wear accumulate/recover, new fracture schedules.
+Continues: wet DSP, feedback tails, micro-motion, in-flight fracture finish.
+Wear paused while frozen. Unfreeze: no catch-up.
+
+### MUTATE
+
+One bounded within-neighborhood profile nudge (isolated `manualMutation` RNG).
+Does not rewrite WearState, SEED, or dry path. Allowed while frozen (stays frozen).
+
+### COLLAPSE
+
+24 beats, 4×6: Destabilize → Fracture → Devour → Residue.
+Owns trajectory; suspends autonomous transitions. Increases wear boundedly.
+Ignores re-trigger while active. Ends Collapsed until RESEED.
+Musical-time elapsed (seek does not fabricate collapse progress).
+
+### RESEED
+
+New deterministic seed; preserves WearState; soft-clears delay with short fade.
+Does not heal scars.
+
+### SILENCE
+
+Mutes dry+wet via ~5 ms silenceGain (not MIX=0). Pauses evolution + wear.
+Soft-clears delay on enter. Pauses collapse elapsed; resumes residue/prior mode on exit.
+No catch-up. No unsilence blast.
+
+### Persistence
+
+FREEZE/SILENCE toggles via APVTS. WearState + SEED persist.
+Mid-collapse not journaled — prepare restores toggles, cancels transient collapse.
+
+### Rejected
+
+SILENCE=MIX=0; COLLAPSE=AGE=1; RESEED clears wear; FREEZE=static snapshot; MUTATE=randomize-all.
+
