@@ -2,6 +2,7 @@
 
 #include "DeterministicRNG.h"
 #include "EnsembleTypes.h"
+#include "HarmonicField.h"
 #include "MidiNoteTracker.h"
 #include "MidiTrace.h"
 #include "MusicalClock.h"
@@ -34,7 +35,7 @@ struct ConductorParams
 class ConductorEngine
 {
 public:
-    static constexpr int kAlgorithmVersion = 5;
+    static constexpr int kAlgorithmVersion = 6;
     static constexpr int kMidiChannel = 1;
     static constexpr int kNumVoices = static_cast<int> (VoiceRole::Count);
     static constexpr int kVoice = 0; // Foundation (compat)
@@ -93,7 +94,14 @@ public:
         silenceActive_ = silenceActive;
         hungerPaused_ = hungerPaused;
         collapsePhase_ = std::clamp (collapsePhase, 0, 4);
+        journey_.setLocked (evolutionLocked);
+        journey_.setPressurePaused (silenceActive || hungerPaused);
+        journey_.setCollapseSuspend (collapsePhase_ > 0);
     }
+
+    HarmonicJourney& journey() noexcept { return journey_; }
+    const HarmonicJourney& journey() const noexcept { return journey_; }
+    const HarmonicField& harmonicField() const noexcept { return journey_.field(); }
 
     bool evolutionLocked() const noexcept { return evolutionLocked_; }
     bool silenceActive() const noexcept { return silenceActive_; }
@@ -105,6 +113,14 @@ public:
      */
     int applyManualMutation (DeterministicRNG& manualRng, int barIndex, char* detailOut, size_t detailCap) noexcept
     {
+        // Occasional bounded harmonic nearby hop (same manual stream)
+        if (journey_.tryManualNearbyHop (manualRng, static_cast<double> (barIndex) * 4.0))
+        {
+            if (detailOut != nullptr && detailCap > 0)
+                std::snprintf (detailOut, detailCap, "HARMONY→%s", journey_.field().name);
+            return -2; // harmonic mutate marker
+        }
+
         // Role weights: Foundation low, Pulse mid, Wanderer high, Accent low/mid
         const float r = manualRng.nextFloat();
         VoiceRole role = VoiceRole::Wanderer;
@@ -160,6 +176,11 @@ public:
         paramsDirty_ = false;
         pendingPrevDensity_ = params_.density;
         pendingPrevMutation_ = params_.mutation;
+
+        journey_.reset (masterSeed);
+        journey_.setLocked (evolutionLocked_);
+        journey_.setPressurePaused (silenceActive_ || hungerPaused_);
+        journey_.setCollapseSuspend (collapsePhase_ > 0);
 
         for (int i = 0; i < kNumVoices; ++i)
             initVoice (static_cast<VoiceRole> (i), masterSeed);
@@ -235,10 +256,20 @@ public:
         }
 
         const double slot = kSlotBeats;
+        // Advance harmony in lockstep with slots so field changes are not applied
+        // early inside a large processBlock (buffer independence).
+        double harmT = fromPpq;
         const std::int64_t first = static_cast<std::int64_t> (std::floor (fromPpq / slot + 1.0e-9)) + 1;
         const std::int64_t last = static_cast<std::int64_t> (std::floor (toPpq / slot + 1.0e-9));
         for (std::int64_t i = first; i <= last; ++i)
-            onSlot (i, static_cast<double> (i) * slot);
+        {
+            const double slotPpq = static_cast<double> (i) * slot;
+            journey_.advance (harmT, slotPpq, params_.mutation, params_.density);
+            harmT = slotPpq;
+            onSlot (i, slotPpq);
+        }
+        if (harmT < toPpq - 1.0e-12)
+            journey_.advance (harmT, toPpq, params_.mutation, params_.density);
 
         lastProcessedPpq_ = toPpq;
         emitOutput_ = true;
@@ -461,10 +492,11 @@ private:
         v.phrases.reset (phraseRng, em, 0);
         v.rhythm.reset (v.rhythmRng, em, params_.density, 0);
 
-        Scale::fromMidi (reg.startMidi, v.pitch.degree, v.pitch.octave);
-        v.pitch.midiNote = reg.startMidi;
+        journey_.field().fromMidi (reg.startMidi, v.pitch.degree, v.pitch.octave);
+        v.pitch.midiNote = journey_.field().toMidi (v.pitch.degree, v.pitch.octave);
+        v.pitch.midiNote = std::clamp (v.pitch.midiNote, reg.minMidi, reg.maxMidi);
         v.pitch.chromatic = false;
-        v.soundingNote = reg.startMidi;
+        v.soundingNote = v.pitch.midiNote;
         v.nextPitchEvalBar = 2 + static_cast<int> (role); // stagger
         schedulePitchEval (v, 0);
     }
@@ -498,13 +530,16 @@ private:
         if (v.role == VoiceRole::Accent)
             chance *= 0.40f;
         if (v.role == VoiceRole::Wanderer)
-            chance *= 1.15f;
+            chance *= (journey_.field().distanceFromHome > 0 ? 1.35f : 1.15f);
+        if (v.role == VoiceRole::Foundation && journey_.field().distanceFromHome > 0)
+            chance *= 0.55f; // Foundation lags into new fields
         chance = std::clamp (chance, 0.05f, 0.92f);
 
         v.pitchDraws += 1;
         if (v.pitchRng.nextFloat() > chance)
             return;
 
+        const auto& hf = journey_.field();
         PitchState next = v.pitch;
         v.pitchDraws += 1;
         const bool followPhrase = (v.pitchRng.nextFloat() < v.phrases.followBias());
@@ -515,16 +550,16 @@ private:
             next.chromatic = false;
             while (next.degree < 0)
             {
-                next.degree += Scale::kNumDegrees;
+                next.degree += HarmonicField::kNumDegrees;
                 --next.octave;
             }
-            while (next.degree >= Scale::kNumDegrees)
+            while (next.degree >= HarmonicField::kNumDegrees)
             {
-                next.degree -= Scale::kNumDegrees;
+                next.degree -= HarmonicField::kNumDegrees;
                 ++next.octave;
             }
             next.octave = std::clamp (next.octave, reg.minOctave, reg.maxOctave);
-            next.midiNote = Scale::toMidi (next.degree, next.octave);
+            next.midiNote = hf.toMidi (next.degree, next.octave);
             const float pen = v.memory.penaltyMultiplier (next.midiNote);
             const float rejectGate = 0.25f * (1.0f - 0.7f * m);
             v.pitchDraws += 1;
@@ -532,33 +567,53 @@ private:
             {
                 next.degree = 0;
                 next.octave = std::clamp (v.pitch.octave, reg.minOctave, reg.maxOctave);
-                next.midiNote = Scale::toMidi (next.degree, next.octave);
+                next.midiNote = hf.toMidi (next.degree, next.octave);
             }
         }
         else
         {
             const float chromaBoost = 0.35f + 1.1f * m;
             next = v.walk.step (v.pitch, v.pitchRng, v.memory, m, chromaBoost);
-            // walk.step consumes pitch RNG internally — count ~1 draw approx via nextFloat usage
             v.pitchDraws += 2;
             next.octave = std::clamp (next.octave, reg.minOctave, reg.maxOctave);
             if (! next.chromatic)
-                next.midiNote = Scale::toMidi (next.degree, next.octave);
+                next.midiNote = hf.toMidi (next.degree, next.octave);
+            else if (! hf.containsPc (((next.midiNote % 12) + 12) % 12))
+            {
+                if (v.role != VoiceRole::Wanderer || hf.distanceFromHome == 0)
+                {
+                    hf.fromMidi (next.midiNote, next.degree, next.octave);
+                    next.midiNote = hf.toMidi (next.degree, next.octave);
+                    next.chromatic = false;
+                }
+            }
         }
 
-        // Pulse soft lock toward Foundation pitch class
+        // Pulse soft lock toward Foundation pitch class (current field)
         if (v.role == VoiceRole::Pulse && voices_[0].pitch.midiNote > 0)
         {
             const int fPc = ((voices_[0].pitch.midiNote % 12) + 12) % 12;
             int deg = 0, oct = 0;
-            Scale::fromMidi (next.midiNote, deg, oct);
+            hf.fromMidi (next.midiNote, deg, oct);
             if (m < 0.55f)
             {
-                const int prefer = Scale::toMidi (0, std::clamp (oct, reg.minOctave, reg.maxOctave));
-                // bias toward root/fifth near foundation class
+                const int prefer = hf.toMidi (0, std::clamp (oct, reg.minOctave, reg.maxOctave));
                 if (std::abs (((prefer % 12) + 12) % 12 - fPc) > 1
-                    && std::abs (((Scale::toMidi (3, oct) % 12) + 12) % 12 - fPc) <= 1)
-                    next.midiNote = Scale::toMidi (3, std::clamp (oct, reg.minOctave, reg.maxOctave));
+                    && std::abs (((hf.toMidi (3, oct) % 12) + 12) % 12 - fPc) <= 1)
+                    next.midiNote = hf.toMidi (3, std::clamp (oct, reg.minOctave, reg.maxOctave));
+            }
+        }
+
+        // Foundation prefers root/fifth of current field
+        if (v.role == VoiceRole::Foundation)
+        {
+            v.pitchDraws += 1;
+            if (v.pitchRng.nextFloat() < 0.62f)
+            {
+                next.degree = (v.pitchRng.nextFloat() < 0.65f) ? 0 : 3;
+                next.octave = std::clamp (next.octave, reg.minOctave, reg.maxOctave);
+                next.midiNote = hf.toMidi (next.degree, next.octave);
+                next.chromatic = false;
             }
         }
 
@@ -848,9 +903,10 @@ private:
 
         ++collisionStats_.attemptedSamePitch;
 
-        // Nearest scale tones
+        // Nearest field tones
         int deg = 0, oct = 0;
-        Scale::fromMidi (desired, deg, oct);
+        const auto& hf = journey_.field();
+        hf.fromMidi (desired, deg, oct);
         for (int delta = 1; delta <= 4; ++delta)
         {
             for (int sign : { +1, -1 })
@@ -859,15 +915,15 @@ private:
                 int o2 = oct;
                 while (d2 < 0)
                 {
-                    d2 += Scale::kNumDegrees;
+                    d2 += HarmonicField::kNumDegrees;
                     --o2;
                 }
-                while (d2 >= Scale::kNumDegrees)
+                while (d2 >= HarmonicField::kNumDegrees)
                 {
-                    d2 -= Scale::kNumDegrees;
+                    d2 -= HarmonicField::kNumDegrees;
                     ++o2;
                 }
-                const int cand = Scale::toMidi (d2, o2);
+                const int cand = hf.toMidi (d2, o2);
                 if (free (cand))
                 {
                     ++collisionStats_.shifted;
@@ -1157,6 +1213,7 @@ private:
     MidiNoteTracker emittedTracker_{};
     CollisionStats collisionStats_{};
     OutputRole outputRole_ = OutputRole::Ensemble;
+    HarmonicJourney journey_{};
 
     std::array<uint8_t, 16> recentOnsets_ {};
     int recentOnsetCursor_ = 0;

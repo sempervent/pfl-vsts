@@ -4,13 +4,14 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**Broken Conductor Stage 5 — COMPLETE** (Ableton-accepted).  
-PR #8 ready for review; creative director merges.
+**Broken Conductor Stage 6 — COMPLETE** (Ableton-accepted).  
+PR #9 merged to `main`.
 
 ## Branch / tags
 
-- Stage 5 complete: `broken-conductor-stage5-complete`
-- Stage 5 PR: #8 `pr/broken-conductor-stage5-performance` (ready for review; not merged by agent)
+- Stage 6 complete: `broken-conductor-stage6-complete`
+- Stage 6 PR: #9 `pr/broken-conductor-stage6-harmonic-form` (merged)
+- Stage 5 complete: `broken-conductor-stage5-complete` (PR #8 merged)
 - Stage 4 complete: `broken-conductor-stage4-complete`
 - Stage 3 complete: `broken-conductor-stage3-complete` @ `dc68bb7`
 - Stage 2 complete: `broken-conductor-stage2-complete` @ `0f42d56`
@@ -21,7 +22,7 @@ PR #8 ready for review; creative director merges.
 ./scripts/configure.sh
 ./scripts/build.sh
 ./scripts/test.sh
-./build/tests/pfl_broken_conductor_render --stage5
+./build/tests/pfl_broken_conductor_render --stage6
 ```
 
 ## Drone Organism
@@ -36,9 +37,10 @@ PR #8 ready for review; creative director merges.
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 5 COMPLETE** (Ableton PASS) |
-| Engine | algorithm **v5** + performance-engine **v1** |
+| Status | **Stage 6 COMPLETE** (Ableton PASS) |
+| Engine | algorithm **v6** (HarmonicField + HarmonicJourney) + performance-engine **v1** |
 | Host shell | Stage 1C stereo in (ignored) + silent stereo out |
 | Continuous params | DENSITY, MUTATION |
 | Config | OUTPUT ROLE |
-| Performance | FREEZE, SILENCE (toggle); MUTATE, COLLAPSE, RESEED (edge) |
+| Performance | FREEZE, SILENCE; MUTATE, COLLAPSE, RESEED |
+| Harmony | HOME / SHADOW / LIFT / HAZE / WIDE / DRIFT |

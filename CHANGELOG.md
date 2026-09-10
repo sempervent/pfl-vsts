@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Broken Conductor — Stage 6 COMPLETE
+
+- Creative-director Ableton acceptance **PASS** (harmonic journey / long-form structure)
+- HarmonicField ecology + HarmonicJourney; algorithm **v6**
+- HOME departure/return; projection union preserved; Stage 5 commands intact
+- Tag: `broken-conductor-stage6-complete`
+- PR #9 merged to `main`
+
 ### Broken Conductor — Stage 5 COMPLETE
 
 - Creative-director Ableton acceptance **PASS** (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE)

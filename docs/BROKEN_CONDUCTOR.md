@@ -201,4 +201,6 @@ compile
 
 **Stage 4:** Deterministic role projection via OUTPUT ROLE (ENSEMBLE / FOUNDATION / PULSE / WANDERER / ACCENT). Every instance still computes the full ensemble; filter is post-arbitration. Role hunger (v5) keeps Accent/Wanderer on beat timescales. See `docs/ABLETON_ROLE_PROJECTION.md`. Ableton **PASS**. Per-role MIDI channels remain rejected for Live 11.
 
-**Stage 5:** FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE via `ConductorPerformanceController`. Freeze = lock evolution, continue pattern. Collapse = 24-beat MIDI descent. Projection union holds under identical command timelines. Ableton **PASS**. See `docs/DECISIONS.md` Stage 5.
+**Stage 5:** FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE via `ConductorPerformanceController`. Ableton **PASS**.
+
+**Stage 6:** HarmonicField ecology + HarmonicJourney (HOME → depart → explore → return). Algorithm **v6**. Ableton **PASS**. See `docs/DECISIONS.md` Stage 6.

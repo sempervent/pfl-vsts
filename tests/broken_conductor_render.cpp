@@ -387,11 +387,68 @@ static RunResult runFull (uint64_t seed, float density, float mutation, int bars
 
 int main (int argc, char** argv)
 {
+    const bool stage6 = (argc > 1 && std::string (argv[1]) == "--stage6");
     const bool stage5 = (argc > 1 && std::string (argv[1]) == "--stage5");
-    const fs::path outDir = stage5
-                                ? ((argc > 2) ? fs::path (argv[2]) : fs::path ("renders/broken-conductor/stage5"))
-                                : ((argc > 1) ? fs::path (argv[1]) : fs::path ("renders/broken-conductor/stage4"));
+    const fs::path outDir = stage6
+                                ? ((argc > 2) ? fs::path (argv[2]) : fs::path ("renders/broken-conductor/stage6"))
+                                : stage5
+                                      ? ((argc > 2) ? fs::path (argv[2]) : fs::path ("renders/broken-conductor/stage5"))
+                                      : ((argc > 1) ? fs::path (argv[1]) : fs::path ("renders/broken-conductor/stage4"));
     fs::create_directories (outDir);
+
+    if (stage6)
+    {
+        using pfl::generative::HarmonicFieldId;
+        auto writeHarmony = [&] (const fs::path& path, const ConductorEngine& eng) {
+            std::ofstream out (path);
+            out << "# Harmonic journey trace algo=" << ConductorEngine::kAlgorithmVersion
+                << " seed=" << eng.masterSeed() << "\n";
+            for (const auto& e : eng.journey().traces())
+            {
+                out << "beat " << e.ppq
+                    << " FIELD " << fieldById (e.field).name
+                    << " STATE " << journeyStateName (e.state)
+                    << " dist=" << e.distance
+                    << " reason=" << (e.reason ? e.reason : "")
+                    << "\n";
+            }
+        };
+
+        auto runSeed = [&] (uint64_t seed, float mut, const char* label) {
+            ConductorEngine eng;
+            eng.setCapture (true);
+            eng.journey().setTraceEnabled (true);
+            eng.setParams ({ 0.50f, mut });
+            eng.reseed (seed);
+            double ppq = 0.0;
+            const double endPpq = 512.0;
+            while (ppq < endPpq - 1.0e-12)
+            {
+                const double next = std::min (endPpq, ppq + 0.25);
+                pfl::generative::ClockSnapshot snap;
+                snap.playing = true;
+                snap.ppq = ppq;
+                snap.tempoBpm = 72.0;
+                snap.timeSigNumerator = 4;
+                snap.timeSigDenominator = 4;
+                eng.clock().advance (snap);
+                eng.processTimeRange (ppq, next, true);
+                eng.drainPending();
+                ppq = next;
+            }
+            writeSmf (outDir / (std::string (label) + ".mid"), eng.captured(), 72.0);
+            writeHarmony (outDir / (std::string (label) + "-harmony.txt"), eng);
+            std::cout << "Wrote " << label << " hops=" << eng.journey().traces().size() << "\n";
+        };
+
+        runSeed (1001, 0.35f, "seed-1001");
+        runSeed (2002, 0.35f, "seed-2002");
+        runSeed (3003, 0.35f, "seed-3003");
+        runSeed (2002, 0.00f, "mutation-0");
+        runSeed (2002, 0.50f, "mutation-050");
+        runSeed (2002, 1.00f, "mutation-100");
+        return 0;
+    }
 
     if (stage5)
     {
