@@ -52,6 +52,7 @@ enum class ParasiteSuppressReason : uint8_t
     RecentResponse,
     Hunger,
     SourceBusy,
+    Relationship,
     Count
 };
 
@@ -67,6 +68,7 @@ inline const char* parasiteSuppressName (ParasiteSuppressReason r) noexcept
         case ParasiteSuppressReason::RecentResponse: return "RECENT_RESPONSE";
         case ParasiteSuppressReason::Hunger: return "HUNGER";
         case ParasiteSuppressReason::SourceBusy: return "SOURCE_BUSY";
+        case ParasiteSuppressReason::Relationship: return "RELATIONSHIP";
         default: return "?";
     }
 }
@@ -96,6 +98,7 @@ struct ParasiteResponseEvent
     float brightness = 0.5f;
     float pan = 0.0f;
     StimulusKind kind = StimulusKind::Attack;
+    uint8_t state = 0; // ParasiteRelationship the answer was issued from
 };
 
 // ============================================================================
@@ -139,6 +142,12 @@ public:
         // the baselines converge on the silence that preceded it.
         attackSettleN_ = msSamples (600.0, sr_);
         changeSettleN_ = msSamples (2500.0, sr_);
+        // `fill01` divides by a 2 s peak follower that starts *at* the signal,
+        // so it reads a hard 1.0 for the first seconds of any material at all.
+        // Publishing 0 until the follower has had a couple of time constants is
+        // what stops a fresh insert from looking like a wall of sound.
+        fillSettleN_ = msSamples (4000.0, sr_);
+        settleN_ = std::max (changeSettleN_, fillSettleN_);
         reset();
     }
 
@@ -153,6 +162,7 @@ public:
         ampMed_ = ampLong_ = 0.0f;
         changeSm_ = 0.0f;
         peakSlow_ = 0.0f;
+        fillSm_ = 0.0f;
         eL_ = eR_ = 0.0f;
         active_ = 0;
         sinceEdge_ = 0;
@@ -190,6 +200,7 @@ public:
             frame_.rising = 0;
             frame_.activeFrac = 0.0f;
             peakSlow_ = frame_.energy;
+            fillSm_ = 0.0f;
             frame_.fill01 = 0.0f;
             return;
         }
@@ -256,7 +267,7 @@ public:
         else
             peakSlow_ = flush (peakSlow_ + aPeak_ * (energy - peakSlow_));
         const float fillRaw = std::min (1.0f, energy / std::max (peakSlow_, 1.0e-3f) * 1.25f);
-        frame_.fill01 += aActive_ * (fillRaw - frame_.fill01);
+        fillSm_ += aActive_ * (fillRaw - fillSm_);
 
         eL_ = flush (eL_ + aBal_ * (l * l - eL_));
         eR_ = flush (eR_ + aBal_ * (r * r - eR_));
@@ -265,13 +276,14 @@ public:
                              ? std::clamp ((eR_ - eL_) / stereoSum, -1.0f, 1.0f)
                              : 0.0f;
 
-        if (sinceReset_ < changeSettleN_)
+        if (sinceReset_ < settleN_)
             ++sinceReset_;
 
         frame_.energy = energy;
         frame_.active = active_;
         frame_.attack = sinceReset_ >= attackSettleN_ ? attackSm_ : 0.0f;
         frame_.change = sinceReset_ >= changeSettleN_ ? changeSm_ : 0.0f;
+        frame_.fill01 = sinceReset_ >= fillSettleN_ ? fillSm_ : 0.0f;
     }
 
     const ParasiteFeatureFrame& frame() const noexcept { return frame_; }
@@ -300,6 +312,7 @@ private:
     float aChgUp_ = 0.1f, aChgDn_ = 0.01f;
     float aActive_ = 0.01f, aPeak_ = 0.001f, aBal_ = 0.05f, aLp_ = 0.1f;
     int minOpenN_ = 1, minGapN_ = 1, attackSettleN_ = 1, changeSettleN_ = 1;
+    int fillSettleN_ = 1, settleN_ = 1;
 
     bool primed_ = false;
     float envFast1_ = 0.0f, envFast_ = 0.0f, envSlow_ = 0.0f;
@@ -307,7 +320,7 @@ private:
     float lpZ_ = 0.0f, envLp_ = 0.0f, envHp_ = 0.0f;
     float brightSlow_ = 0.5f;
     float ampMed_ = 0.0f, ampLong_ = 0.0f, changeSm_ = 0.0f;
-    float peakSlow_ = 0.0f;
+    float peakSlow_ = 0.0f, fillSm_ = 0.0f;
     float eL_ = 0.0f, eR_ = 0.0f;
     int active_ = 0;
     int sinceEdge_ = 0;
@@ -671,6 +684,615 @@ inline int parasiteLifespanBars (float mutation) noexcept
 }
 
 // ============================================================================
+// Stage 2 relationship — recent stimulus history, never audio memory
+// ============================================================================
+
+/**
+ * How the parasite currently relates to whatever is feeding it.
+ *
+ * LURKING    — present and listening, answers sparingly and late.
+ * ATTACHED   — it has decided this source is worth following.
+ * ANSWERING  — an exchange is going: it answers sooner, a touch louder.
+ * WITHDRAWN  — it has backed off, from a wall of sound or from its own fatigue.
+ */
+enum class ParasiteRelationship : uint8_t
+{
+    Lurking = 0,
+    Attached,
+    Answering,
+    Withdrawn,
+    Count
+};
+
+inline const char* parasiteRelationshipName (ParasiteRelationship s) noexcept
+{
+    switch (s)
+    {
+        case ParasiteRelationship::Lurking: return "LURKING";
+        case ParasiteRelationship::Attached: return "ATTACHED";
+        case ParasiteRelationship::Answering: return "ANSWERING";
+        case ParasiteRelationship::Withdrawn: return "WITHDRAWN";
+        default: return "?";
+    }
+}
+
+/**
+ * One remembered stimulus: when it arrived, how strong and how bright it was,
+ * which kind it was, and whether the parasite answered it. There is no PCM
+ * here. Stage 2 remembers *that* things happened, not what they sounded like.
+ */
+struct ParasiteStimulusMemo
+{
+    int64_t absSample = 0; // identity — matches StimulusEvent::sampleIndex
+    int64_t relSample = 0; // relationship clock — pauses with the transport
+    float strength = 0.0f;
+    float brightness = 0.5f;
+    StimulusKind kind = StimulusKind::Attack;
+    bool answered = false;
+    bool exchange = false; // arrived soon after something the parasite answered
+};
+
+struct ParasiteHistorySummary
+{
+    int offered = 0;
+    int answered = 0;
+    int exchanges = 0;
+    float ratePerBeat = 0.0f;
+    float interest = 0.0f;
+    float gapScore = 1.0f;
+    float success = 0.0f;
+    float beatsSinceLast = 1.0e6f;
+};
+
+/** Fixed-capacity ring of stimulus descriptors. Never allocates. */
+class RecentStimulusHistory
+{
+public:
+    static constexpr int kCapacity = 16;
+    static constexpr float kExchangeBeats = 2.0f;
+
+    void reset() noexcept
+    {
+        head_ = 0;
+        size_ = 0;
+        lastAnsweredRel_ = -1;
+    }
+
+    void push (const StimulusEvent& e, int64_t relSample, double samplesPerBeat) noexcept
+    {
+        ParasiteStimulusMemo m;
+        m.absSample = e.sampleIndex;
+        m.relSample = relSample;
+        m.strength = e.strength;
+        m.brightness = e.brightness;
+        m.kind = e.kind;
+        if (lastAnsweredRel_ >= 0)
+        {
+            const double gapBeats = static_cast<double> (relSample - lastAnsweredRel_)
+                                    / std::max (1.0, samplesPerBeat);
+            m.exchange = gapBeats <= static_cast<double> (kExchangeBeats);
+        }
+        ring_[static_cast<size_t> (head_)] = m;
+        head_ = (head_ + 1) % kCapacity;
+        if (size_ < kCapacity)
+            ++size_;
+    }
+
+    void markAnswered (int64_t absSample, int64_t relSample) noexcept
+    {
+        for (int i = 0; i < size_; ++i)
+        {
+            auto& m = ring_[static_cast<size_t> (i)];
+            if (m.absSample == absSample)
+            {
+                m.answered = true;
+                break;
+            }
+        }
+        lastAnsweredRel_ = relSample;
+    }
+
+    int size() const noexcept { return size_; }
+
+    /** Aggregate the entries inside `windowBeats` of now. O(kCapacity), no sort. */
+    ParasiteHistorySummary summarise (int64_t nowRel, double samplesPerBeat,
+                                      float windowBeats) const noexcept
+    {
+        ParasiteHistorySummary s;
+        const double spb = std::max (1.0, samplesPerBeat);
+        const int64_t windowSamples =
+            static_cast<int64_t> (std::llround (static_cast<double> (windowBeats) * spb));
+
+        float sMin = 1.0f, sMax = 0.0f, bMin = 1.0f, bMax = 0.0f, sSum = 0.0f;
+        int nAttack = 0, nShift = 0;
+        int64_t oldest = 0, newest = 0;
+
+        for (int i = 0; i < size_; ++i)
+        {
+            const auto& m = ring_[static_cast<size_t> (i)];
+            if (nowRel - m.relSample > windowSamples)
+                continue;
+            if (s.offered == 0)
+                oldest = newest = m.relSample;
+            else
+            {
+                oldest = std::min (oldest, m.relSample);
+                newest = std::max (newest, m.relSample);
+            }
+            ++s.offered;
+            if (m.answered) ++s.answered;
+            if (m.exchange) ++s.exchanges;
+            sMin = std::min (sMin, m.strength);
+            sMax = std::max (sMax, m.strength);
+            bMin = std::min (bMin, m.brightness);
+            bMax = std::max (bMax, m.brightness);
+            sSum += m.strength;
+            if (m.kind == StimulusKind::Attack) ++nAttack; else ++nShift;
+        }
+
+        if (s.offered == 0)
+            return s;
+
+        s.beatsSinceLast = static_cast<float> (static_cast<double> (nowRel - newest) / spb);
+        s.ratePerBeat =
+            static_cast<float> (static_cast<double> (s.offered) / std::max (0.25, static_cast<double> (windowBeats)));
+        s.success = static_cast<float> (s.answered) / static_cast<float> (s.offered);
+
+        if (s.offered >= 2)
+        {
+            // Mean spacing without sorting: the window's span over its intervals.
+            const double meanGap = static_cast<double> (newest - oldest) / spb
+                                   / static_cast<double> (s.offered - 1);
+            s.gapScore = std::clamp (static_cast<float> (meanGap / 1.5), 0.0f, 1.0f);
+            const float kindMix = 2.0f * static_cast<float> (std::min (nAttack, nShift))
+                                  / static_cast<float> (s.offered);
+            s.interest = std::clamp (0.45f * std::min (1.0f, (bMax - bMin) * 2.5f)
+                                         + 0.35f * std::min (1.0f, (sMax - sMin) * 2.0f)
+                                         + 0.20f * kindMix,
+                                     0.0f, 1.0f);
+        }
+        else
+        {
+            s.gapScore = 1.0f;
+            s.interest = std::clamp (0.35f * sSum, 0.0f, 1.0f);
+        }
+        return s;
+    }
+
+private:
+    std::array<ParasiteStimulusMemo, kCapacity> ring_ {};
+    int head_ = 0;
+    int size_ = 0;
+    int64_t lastAnsweredRel_ = -1;
+};
+
+/** Bounded 0…1 drives read by the state machine. */
+struct ParasitePressures
+{
+    float source = 0.0f;
+    float attachment = 0.0f;
+    float conversation = 0.0f;
+    float withdrawal = 0.0f;
+    float fatigue = 0.0f;
+};
+
+struct ParasiteTransition
+{
+    int64_t relSample = 0;
+    uint8_t from = 0;
+    uint8_t to = 0;
+    uint8_t major = 0;
+};
+
+/**
+ * The Stage 2 brain. It owns a paused-with-the-transport sample clock, the
+ * bounded stimulus history, the pressures derived from it, and the state.
+ *
+ * It decides only *manner*: how readily the parasite accepts a stimulus and
+ * how it shapes the answer. It never manufactures a stimulus, so no state —
+ * ANSWERING included — can make a sound without the source doing something
+ * first.
+ */
+class ParasiteRelationshipModel
+{
+public:
+    using RNG = pfl::generative::DeterministicRNG;
+
+    static constexpr float kMinorEvalBeats = 1.0f;
+    static constexpr float kMajorEvalBeatsMin = 4.0f;
+    static constexpr float kMajorEvalBeatsMax = 16.0f;
+    static constexpr float kWindowBeats = 8.0f;
+    static constexpr float kAbandonBeats = 6.0f;
+    static constexpr float kFatiguePerResponse = 0.18f;
+    static constexpr float kFatigueTauBeats = 6.0f;
+    static constexpr float kInertia = 0.35f;
+    static constexpr float kWithdrawRise = 0.15f;
+    static constexpr int kNumStates = static_cast<int> (ParasiteRelationship::Count);
+    static constexpr int kMaxTransitionTrace = 1024;
+
+    // Dwell floors, in beats. Nothing leaves a state before it has lived in it.
+    static constexpr float kDwellLurking = 2.0f;
+    static constexpr float kDwellAttached = 4.0f;
+    static constexpr float kDwellAnswering = 3.0f;
+    static constexpr float kDwellWithdrawn = 6.0f;
+
+    // Transition thresholds. Entering costs more than leaving (hysteresis).
+    static constexpr float kAttachEnter = 0.35f;
+    static constexpr float kAnswerEnter = 0.50f;
+    static constexpr float kAnswerExit = 0.30f;
+    static constexpr float kAnswerFatigueMax = 0.60f;
+    static constexpr float kAnswerFatigueExit = 0.80f;
+    static constexpr float kWithdrawFromLurking = 0.58f;
+    static constexpr float kWithdrawFromAttached = 0.54f;
+    static constexpr float kWithdrawFromAnswering = 0.50f;
+    static constexpr float kWithdrawExit = 0.40f;
+
+    struct SlotRange
+    {
+        int lo = 0;
+        int hi = 0;
+    };
+
+    void prepare() { trace_.reserve (kMaxTransitionTrace); }
+
+    void setClockRng (const RNG& rng) noexcept { clockRng_ = rng; }
+
+    /** Full reset: clock, history, state, pressures and the journey metrics. */
+    void reset() noexcept
+    {
+        onDiscontinuity();
+        relSample_ = 0;
+        stateEnterRel_ = 0;
+        lastEvalRel_ = 0;
+        nextMinorRel_ = -1;
+        nextMajorRel_ = -1;
+        stateSamples_.fill (0);
+        playedSamples_ = 0;
+        transitions_ = 0;
+        trace_.clear();
+    }
+
+    /**
+     * Seek, loop wrap or a SEED change. The parasite lost the thread: history
+     * and pressures go, the state falls back to LURKING, the DNA does not move.
+     * The journey metrics survive, because they describe the whole session.
+     */
+    void onDiscontinuity() noexcept
+    {
+        history_.reset();
+        pressures_ = {};
+        lastSummary_ = {};
+        state_ = ParasiteRelationship::Lurking;
+        stateEnterRel_ = relSample_;
+        lastEvalRel_ = relSample_;
+        nextMinorRel_ = -1;
+        nextMajorRel_ = -1;
+        winSamples_ = 0;
+        winVoiceSamples_ = 0;
+        winFillSum_ = 0.0f;
+    }
+
+    void setTraceEnabled (bool e) noexcept { traceEnabled_ = e; }
+
+    int64_t clock() const noexcept { return relSample_; }
+
+    void noteStimulus (const StimulusEvent& e, double samplesPerBeat) noexcept
+    {
+        history_.push (e, relSample_, samplesPerBeat);
+    }
+
+    void noteResponse (int64_t absStimulusSample) noexcept
+    {
+        history_.markAnswered (absStimulusSample, relSample_);
+        pressures_.fatigue = std::clamp (pressures_.fatigue + kFatiguePerResponse, 0.0f, 1.0f);
+    }
+
+    /**
+     * One sample of relationship time. Only called while the transport plays,
+     * which is what makes "stopped" a pause rather than a wall clock.
+     */
+    void advance (double samplesPerBeat, bool voiceActive, float fill01) noexcept
+    {
+        const double spb = std::max (1.0, samplesPerBeat);
+        if (nextMinorRel_ < 0)
+        {
+            nextMinorRel_ = relSample_ + beatsToSamples (kMinorEvalBeats, spb);
+            nextMajorRel_ = relSample_ + beatsToSamples (drawMajorBeats(), spb);
+        }
+
+        ++winSamples_;
+        if (voiceActive)
+            ++winVoiceSamples_;
+        winFillSum_ += fill01;
+
+        stateSamples_[static_cast<size_t> (state_)] += 1;
+        ++playedSamples_;
+        ++relSample_;
+
+        if (relSample_ >= nextMinorRel_)
+        {
+            const bool major = relSample_ >= nextMajorRel_;
+            evaluate (major, spb);
+            nextMinorRel_ = relSample_ + beatsToSamples (kMinorEvalBeats, spb);
+            if (major)
+                nextMajorRel_ = relSample_ + beatsToSamples (drawMajorBeats(), spb);
+        }
+    }
+
+    // ---- what the response brain reads --------------------------------------
+
+    ParasiteRelationship state() const noexcept { return state_; }
+    const ParasitePressures& pressures() const noexcept { return pressures_; }
+    int historySize() const noexcept { return history_.size(); }
+
+    /** The window the last evaluation read. Diagnostics for renders and tests. */
+    const ParasiteHistorySummary& lastSummary() const noexcept { return lastSummary_; }
+
+    /** Multiplies the HUNGER accept probability. Never lifts the 0.62 cap. */
+    float acceptGain() const noexcept
+    {
+        switch (state_)
+        {
+            case ParasiteRelationship::Lurking: return 0.80f;
+            case ParasiteRelationship::Attached: return 1.00f;
+            case ParasiteRelationship::Answering: return 1.20f;
+            case ParasiteRelationship::Withdrawn: return 0.20f;
+            default: return 1.00f;
+        }
+    }
+
+    /** Stretches DNA politeness. The HUNGER minimum gap underneath is untouched. */
+    float gapMultiplier() const noexcept
+    {
+        switch (state_)
+        {
+            case ParasiteRelationship::Lurking: return 1.15f;
+            case ParasiteRelationship::Attached: return 1.00f;
+            case ParasiteRelationship::Answering: return 0.85f;
+            case ParasiteRelationship::Withdrawn: return 1.60f;
+            default: return 1.00f;
+        }
+    }
+
+    float levelScale() const noexcept
+    {
+        switch (state_)
+        {
+            case ParasiteRelationship::Lurking: return 0.85f;
+            case ParasiteRelationship::Attached: return 1.00f;
+            case ParasiteRelationship::Answering: return 1.10f;
+            case ParasiteRelationship::Withdrawn: return 0.70f;
+            default: return 1.00f;
+        }
+    }
+
+    /** Half of the Stage 1 delay vocabulary the state prefers. ATTACHED is all of it. */
+    SlotRange delayTilt() const noexcept
+    {
+        switch (state_)
+        {
+            case ParasiteRelationship::Lurking: return { 2, ParasiteDNA::kDelaySlots - 1 };
+            case ParasiteRelationship::Answering: return { 0, 3 };
+            case ParasiteRelationship::Withdrawn: return { 3, ParasiteDNA::kDelaySlots - 1 };
+            default: return { 0, ParasiteDNA::kDelaySlots - 1 };
+        }
+    }
+
+    SlotRange durationTilt() const noexcept
+    {
+        switch (state_)
+        {
+            case ParasiteRelationship::Lurking: return { 0, 3 };
+            case ParasiteRelationship::Answering: return { 1, ParasiteDNA::kDurSlots - 1 };
+            case ParasiteRelationship::Withdrawn: return { 0, 2 };
+            default: return { 0, ParasiteDNA::kDurSlots - 1 };
+        }
+    }
+
+    // ---- journey metrics -----------------------------------------------------
+
+    float occupancy (ParasiteRelationship s) const noexcept
+    {
+        const auto i = static_cast<size_t> (s);
+        if (playedSamples_ <= 0 || i >= stateSamples_.size())
+            return 0.0f;
+        return static_cast<float> (static_cast<double> (stateSamples_[i])
+                                   / static_cast<double> (playedSamples_));
+    }
+
+    int64_t occupancySamples (ParasiteRelationship s) const noexcept
+    {
+        const auto i = static_cast<size_t> (s);
+        return i < stateSamples_.size() ? stateSamples_[i] : 0;
+    }
+
+    uint32_t transitionCount() const noexcept { return transitions_; }
+    const std::vector<ParasiteTransition>& transitions() const noexcept { return trace_; }
+    int64_t playedSamples() const noexcept { return playedSamples_; }
+
+private:
+    static int64_t beatsToSamples (float beats, double spb) noexcept
+    {
+        return std::max<int64_t> (1, static_cast<int64_t> (std::llround (
+                                         static_cast<double> (beats) * spb)));
+    }
+
+    /**
+     * How far away the next major opportunity is. Drawn from its own stream so
+     * that MUTATION — which owns DNA and nothing else — cannot become a state
+     * transition rate.
+     */
+    float drawMajorBeats() noexcept
+    {
+        return kMajorEvalBeatsMin
+               + (kMajorEvalBeatsMax - kMajorEvalBeatsMin) * clockRng_.nextFloat();
+    }
+
+    void evaluate (bool major, double spb) noexcept
+    {
+        const auto sum = history_.summarise (relSample_, spb, kWindowBeats);
+        lastSummary_ = sum;
+        const float winFill = winSamples_ > 0
+                                  ? winFillSum_ / static_cast<float> (winSamples_)
+                                  : 0.0f;
+        const float occ = winSamples_ > 0
+                              ? static_cast<float> (winVoiceSamples_)
+                                    / static_cast<float> (winSamples_)
+                              : 0.0f;
+        winSamples_ = 0;
+        winVoiceSamples_ = 0;
+        winFillSum_ = 0.0f;
+
+        const float dtBeats =
+            static_cast<float> (static_cast<double> (relSample_ - lastEvalRel_) / spb);
+        lastEvalRel_ = relSample_;
+        pressures_.fatigue *= std::exp (-std::max (0.0f, dtBeats) / kFatigueTauBeats);
+
+        // Two independent readings of "how much room is there": how often the
+        // source hands out events, and whether it ever leaves its own peak.
+        // Two independent ways for a source to be busy: it hands out events
+        // faster than one voice can answer them, or it never steps off its own
+        // peak. A wall of sound produces almost no events precisely because it
+        // is a wall, so these have to count separately rather than blend.
+        const float density01 = std::clamp (sum.ratePerBeat / 2.5f, 0.0f, 1.0f);
+        const float wall01 = std::clamp ((winFill - 0.75f) / 0.15f, 0.0f, 1.0f);
+        const float sourceT = std::clamp (std::max (density01, wall01), 0.0f, 1.0f);
+        const float space01 =
+            std::clamp (0.55f * (1.0f - winFill) + 0.45f * sum.gapScore, 0.0f, 1.0f);
+
+        const float attachT =
+            sum.offered == 0
+                ? 0.0f
+                : std::clamp (0.40f * sum.interest + 0.35f * space01 + 0.25f * sum.success,
+                              0.0f, 1.0f);
+
+        // A conversation is evidence that answering changed what came back:
+        // stimuli landing in the shadow of an answer, plus a healthy hit rate.
+        const float share = sum.offered > 0 ? static_cast<float> (sum.exchanges)
+                                                  / static_cast<float> (sum.offered)
+                                            : 0.0f;
+        const float exchange01 = std::clamp (share / 0.40f, 0.0f, 1.0f);
+        const float answerRate01 = std::clamp (sum.success / 0.30f, 0.0f, 1.0f);
+        const float convT =
+            sum.offered == 0
+                ? 0.0f
+                : std::clamp (0.45f * exchange01 + 0.35f * answerRate01 + 0.20f * sum.interest,
+                              0.0f, 1.0f);
+
+        const float withdrawT = std::clamp (
+            0.70f * sourceT + 0.20f * pressures_.fatigue + 0.10f * occ, 0.0f, 1.0f);
+
+        pressures_.source += kInertia * (sourceT - pressures_.source);
+        pressures_.attachment += kInertia * (attachT - pressures_.attachment);
+        pressures_.conversation += kInertia * (convT - pressures_.conversation);
+        // Backing off is a decision, not a reflex: withdrawal builds over about
+        // ten beats of sustained pressure, so the peak of a swell cannot chase
+        // the parasite away while an actual wall of sound still can.
+        pressures_.withdrawal +=
+            (withdrawT > pressures_.withdrawal ? kWithdrawRise : kInertia)
+            * (withdrawT - pressures_.withdrawal);
+
+        transitionStep (major, sum, spb);
+    }
+
+    void transitionStep (bool major, const ParasiteHistorySummary& sum, double spb) noexcept
+    {
+        const float beatsInState =
+            static_cast<float> (static_cast<double> (relSample_ - stateEnterRel_) / spb);
+        const bool starved = sum.offered == 0 || sum.beatsSinceLast > kAbandonBeats;
+        const auto& p = pressures_;
+        auto next = state_;
+
+        switch (state_)
+        {
+            case ParasiteRelationship::Lurking:
+                if (beatsInState >= kDwellLurking)
+                {
+                    // Not in the locked skeleton, but a wall of sound has to be
+                    // able to drive the parasite off before it ever attaches.
+                    if (p.withdrawal > kWithdrawFromLurking)
+                        next = ParasiteRelationship::Withdrawn;
+                    else if (major && ! starved && p.attachment > kAttachEnter)
+                        next = ParasiteRelationship::Attached;
+                }
+                break;
+
+            case ParasiteRelationship::Attached:
+                if (beatsInState >= kDwellAttached)
+                {
+                    if (p.withdrawal > kWithdrawFromAttached)
+                        next = ParasiteRelationship::Withdrawn;
+                    else if (starved)
+                        next = ParasiteRelationship::Lurking;
+                    else if (major && p.conversation > kAnswerEnter
+                             && p.fatigue < kAnswerFatigueMax)
+                        next = ParasiteRelationship::Answering;
+                }
+                break;
+
+            case ParasiteRelationship::Answering:
+                if (beatsInState >= kDwellAnswering)
+                {
+                    if (p.withdrawal > kWithdrawFromAnswering || p.fatigue > kAnswerFatigueExit)
+                        next = ParasiteRelationship::Withdrawn;
+                    else if (starved || (major && p.conversation < kAnswerExit))
+                        next = ParasiteRelationship::Attached;
+                }
+                break;
+
+            case ParasiteRelationship::Withdrawn:
+                if (major && beatsInState >= kDwellWithdrawn && p.withdrawal < kWithdrawExit)
+                    next = (! starved && p.attachment > kAttachEnter)
+                               ? ParasiteRelationship::Attached
+                               : ParasiteRelationship::Lurking;
+                break;
+
+            default:
+                break;
+        }
+
+        if (next == state_)
+            return;
+
+        if (traceEnabled_ && trace_.size() < trace_.capacity())
+        {
+            ParasiteTransition t;
+            t.relSample = relSample_;
+            t.from = static_cast<uint8_t> (state_);
+            t.to = static_cast<uint8_t> (next);
+            t.major = major ? 1u : 0u;
+            trace_.push_back (t);
+        }
+        state_ = next;
+        stateEnterRel_ = relSample_;
+        ++transitions_;
+    }
+
+    RecentStimulusHistory history_;
+    ParasiteHistorySummary lastSummary_ {};
+    ParasitePressures pressures_ {};
+    ParasiteRelationship state_ = ParasiteRelationship::Lurking;
+    RNG clockRng_ {};
+
+    int64_t relSample_ = 0;
+    int64_t stateEnterRel_ = 0;
+    int64_t lastEvalRel_ = 0;
+    int64_t nextMinorRel_ = -1;
+    int64_t nextMajorRel_ = -1;
+
+    int64_t winSamples_ = 0;
+    int64_t winVoiceSamples_ = 0;
+    float winFillSum_ = 0.0f;
+
+    std::array<int64_t, static_cast<size_t> (ParasiteRelationship::Count)> stateSamples_ {};
+    int64_t playedSamples_ = 0;
+    uint32_t transitions_ = 0;
+
+    bool traceEnabled_ = false;
+    std::vector<ParasiteTransition> trace_;
+};
+
+// ============================================================================
 // ParasiteVoice — generated wet: noise → resonant LP chirp → AR → sat → pan
 // ============================================================================
 
@@ -716,6 +1338,7 @@ public:
         float change = 0.40f;
         float balance = 0.0f;
         int64_t durationSamples = 4800;
+        float levelScale = 1.0f; // relationship trim; 1.0 is the Stage 1 voice
     };
 
     void noteOn (const NoteOn& n, const ParasiteDNA& dna) noexcept
@@ -745,7 +1368,8 @@ public:
                                       0.0f, kMaxResonance);
         resSm_.setTarget (res);
 
-        level_ = std::clamp ((0.08f + 0.42f * std::sqrt (E)) * (1.0f + 0.30f * dna.energyBias),
+        level_ = std::clamp ((0.08f + 0.42f * std::sqrt (E)) * (1.0f + 0.30f * dna.energyBias)
+                                 * std::clamp (n.levelScale, 0.0f, 1.25f),
                              0.0f, 0.60f);
         burst_ = std::clamp (0.35f + 0.65f * E, 0.0f, 1.0f);
         drvSm_.setTarget (std::clamp (0.05f + 0.22f * E * (0.4f + 0.6f * C), 0.0f, 0.30f));
@@ -877,22 +1501,26 @@ private:
 };
 
 // ============================================================================
-// SignalParasiteEngine — algorithm v1
+// SignalParasiteEngine — algorithm v2
 // ============================================================================
 
 /**
- * Signal Parasite Stage 1 — reactive single-voice collaborator.
+ * Signal Parasite Stage 2 — a collaborator with a relationship to its source.
  *
- * Listen (original input only) → StimulusDetector → ParasiteDNA response
- * decision → ONE generated ParasiteVoice → DC → limiter → MIX → OUTPUT.
+ * Listen (original input only) → StimulusDetector → RelationshipModel →
+ * ParasiteDNA response decision → ONE generated ParasiteVoice → DC → limiter
+ * → MIX → OUTPUT.
  *
- * The wet path is generated audio, never processed input, so the parasite can
- * never stimulate itself. Algorithm v1: no performance verbs, no FFT, no pitch.
+ * Stage 2 adds a bounded history of recent stimuli — descriptors, not audio —
+ * and a LURKING / ATTACHED / ANSWERING / WITHDRAWN state over it. The state
+ * biases how readily and how forwardly the parasite answers; DNA still owns
+ * the personality, and a stimulus is still the only thing that can make a
+ * sound. Algorithm v2: no performance verbs, no FFT, no pitch, one voice.
  */
 class SignalParasiteEngine
 {
 public:
-    static constexpr int kAlgorithmVersion = 1;
+    static constexpr int kAlgorithmVersion = 2;
     static constexpr int kNumSuppressReasons = static_cast<int> (ParasiteSuppressReason::Count);
     static constexpr int kMaxTraceEvents = 4096;
     static constexpr double kWarmupMs = 50.0;
@@ -923,6 +1551,7 @@ public:
         warmupN_ = ParasiteFeatureExtractor::msSamples (kWarmupMs, sampleRate_);
         stimulusTrace_.reserve (kMaxTraceEvents);
         responseTrace_.reserve (kMaxTraceEvents);
+        relationship_.prepare();
         reset();
     }
 
@@ -958,6 +1587,7 @@ public:
         responseTrace_.clear();
         samplesPerBeat_ = sampleRate_ * 0.5;
         rebuildRng();
+        relationship_.reset();
         birthDNA (0);
         seedDirty_ = false;
     }
@@ -1002,6 +1632,7 @@ public:
     void forceRebuild (int bar = 0) noexcept
     {
         rebuildRng();
+        relationship_.reset();
         birthDNA (bar);
         detector_.reset();
         detector_.clearCounters();
@@ -1025,7 +1656,11 @@ public:
         seedDirty_ = false;
     }
 
-    void setTraceEnabled (bool e) noexcept { traceEnabled_ = e; }
+    void setTraceEnabled (bool e) noexcept
+    {
+        traceEnabled_ = e;
+        relationship_.setTraceEnabled (e);
+    }
     bool traceEnabled() const noexcept { return traceEnabled_; }
 
     void process (const float* inL, const float* inR, float* outL, float* outR, int numSamples,
@@ -1093,6 +1728,11 @@ public:
                 const double ppq = ppqStart + static_cast<double> (i) * beatsPerSample;
                 advanceMusical (ppq, mut);
 
+                // Relationship time only runs while the transport does, so a
+                // stop is a pause and never a wall clock.
+                relationship_.advance (samplesPerBeat_, voice_.isActive(),
+                                       features_.frame().fill01);
+
                 features_.processSample (dryL, dryR);
                 if (warmupLeft_ > 0)
                 {
@@ -1102,6 +1742,7 @@ public:
                 {
                     if (traceEnabled_ && stimulusTrace_.size() < stimulusTrace_.capacity())
                         stimulusTrace_.push_back (detector_.lastEvent());
+                    relationship_.noteStimulus (detector_.lastEvent(), samplesPerBeat_);
                 }
 
                 drainStimuli (hunger);
@@ -1164,6 +1805,31 @@ public:
     const ParasiteFeatureFrame& lastFeatures() const noexcept { return features_.frame(); }
     bool voiceActive() const noexcept { return voice_.isActive(); }
 
+    // ---- Stage 2 relationship ------------------------------------------------
+
+    ParasiteRelationship relationshipState() const noexcept { return relationship_.state(); }
+    const ParasitePressures& pressures() const noexcept { return relationship_.pressures(); }
+    const ParasiteHistorySummary& historySummary() const noexcept
+    {
+        return relationship_.lastSummary();
+    }
+    int historySize() const noexcept { return relationship_.historySize(); }
+    uint32_t stateTransitions() const noexcept { return relationship_.transitionCount(); }
+
+    /** Fraction of *played* time spent in one state. Stopped time does not count. */
+    float stateOccupancy (ParasiteRelationship s) const noexcept
+    {
+        return relationship_.occupancy (s);
+    }
+
+    /** Accepted responses per detected stimulus. −1 when nothing was detected. */
+    float acceptRatio() const noexcept
+    {
+        const auto stim = stimulusCount();
+        return stim == 0 ? -1.0f
+                         : static_cast<float> (responseCount_) / static_cast<float> (stim);
+    }
+
     /** Fraction of processed samples with the parasite voice sounding. */
     float responseDuty() const noexcept
     {
@@ -1214,6 +1880,20 @@ public:
         return os.str();
     }
 
+    /** Structural relationship schedule — transitions plus occupancy, no PCM. */
+    std::string stateFingerprint() const
+    {
+        std::ostringstream os;
+        os << relationship_.transitionCount() << ";";
+        for (int s = 0; s < ParasiteRelationshipModel::kNumStates; ++s)
+            os << relationship_.occupancySamples (static_cast<ParasiteRelationship> (s)) << ",";
+        os << ";";
+        for (const auto& t : relationship_.transitions())
+            os << t.relSample << ":" << static_cast<int> (t.from) << ">"
+               << static_cast<int> (t.to) << ":" << static_cast<int> (t.major) << ";";
+        return os.str();
+    }
+
     std::string dnaFingerprint() const
     {
         std::ostringstream os;
@@ -1257,6 +1937,9 @@ private:
         acceptRng_ = RNG::derived (masterSeed_, hashTag ("parasite/response/accept"));
         spatialRng_ = RNG::derived (masterSeed_, hashTag ("parasite/response/spatial"));
         voiceNoiseRng_ = RNG::derived (masterSeed_, hashTag ("parasite/voice/noise"));
+        // Its own stream: the state clock must not move when MUTATION does.
+        relationship_.setClockRng (
+            RNG::derived (masterSeed_, hashTag ("parasite/relationship/clock")));
     }
 
     static void normalise (float* w, int n, float floorEach = 0.005f) noexcept
@@ -1469,6 +2152,8 @@ private:
             rebuildRng();
             birthDNA (bar);
             detector_.clearQueue();
+            // A new personality has no history with this source yet.
+            relationship_.onDiscontinuity();
             pendingActive_ = false;
             pendingSlid_ = false;
             seedDirty_ = false;
@@ -1503,6 +2188,10 @@ private:
     {
         features_.reset();
         detector_.reset();
+        // The thread of the conversation is gone: history and state go back to
+        // LURKING. The DNA does not — it is reconstructed for absolute musical
+        // time below, exactly as in Stage 1.
+        relationship_.onDiscontinuity();
         pendingActive_ = false;
         pendingSlid_ = false;
         voice_.stopSafely();
@@ -1545,6 +2234,24 @@ private:
         return 0;
     }
 
+    /**
+     * Restrict a draw to the half of a vocabulary the relationship prefers,
+     * re-rolling at most once and only ever from the DNA weights. ATTACHED
+     * spans the whole vocabulary, so it never costs a second draw and behaves
+     * exactly as Stage 1 did.
+     */
+    static int applyTilt (int slot, const float* w, int n,
+                          ParasiteRelationshipModel::SlotRange tilt,
+                          pfl::generative::DeterministicRNG& rng) noexcept
+    {
+        if (slot >= tilt.lo && slot <= tilt.hi)
+            return slot;
+        float masked[8] = {};
+        for (int i = 0; i < n && i < 8; ++i)
+            masked[i] = (i >= tilt.lo && i <= tilt.hi) ? w[i] : 0.0f;
+        return weightedPick (masked, n, rng);
+    }
+
     int pickDelaySlot (bool sourceBusy) noexcept
     {
         int slot = weightedPick (dna_.delayW.data(), ParasiteDNA::kDelaySlots, delayRng_);
@@ -1557,7 +2264,8 @@ private:
             };
             slot = weightedPick (late, ParasiteDNA::kDelaySlots, delayRng_);
         }
-        return slot;
+        return applyTilt (slot, dna_.delayW.data(), ParasiteDNA::kDelaySlots,
+                          relationship_.delayTilt(), delayRng_);
     }
 
     int pickDurationSlot (float hunger) noexcept
@@ -1574,12 +2282,20 @@ private:
         if (shortSum > 1.0e-6f)
             for (int i = 0; i < 3; ++i)
                 w[i] += take * (w[i] / shortSum);
-        return weightedPick (w, ParasiteDNA::kDurSlots, durationRng_);
+        const int slot = weightedPick (w, ParasiteDNA::kDurSlots, durationRng_);
+        return applyTilt (slot, w, ParasiteDNA::kDurSlots, relationship_.durationTilt(),
+                          durationRng_);
     }
 
+    /**
+     * DNA politeness, stretched or relaxed by the relationship. This sits on
+     * top of the HUNGER minimum gap and can only ever add to it — the state
+     * has no way to make the parasite denser than HUNGER allows.
+     */
     float recentGapBeats() const noexcept
     {
-        return 0.75f + (2.0f - 0.75f) * std::clamp (dna_.gapPreference, 0.0f, 1.0f);
+        const float dnaGap = 0.75f + (2.0f - 0.75f) * std::clamp (dna_.gapPreference, 0.0f, 1.0f);
+        return dnaGap * relationship_.gapMultiplier();
     }
 
     /**
@@ -1655,11 +2371,16 @@ private:
                 continue;
             }
 
-            const float pEff = parasiteAcceptProbability (hunger, beatsSinceResponse_);
-            if (acceptRng_.nextFloat() >= pEff)
+            // HUNGER sets the appetite; the relationship only scales it, and
+            // the 0.62 cap survives so ANSWERING is still selective.
+            const float pBase = parasiteAcceptProbability (hunger, beatsSinceResponse_);
+            const float pEff = std::clamp (pBase * relationship_.acceptGain(), 0.0f, 0.62f);
+            const float draw = acceptRng_.nextFloat();
+            if (draw >= pEff)
             {
                 detector_.dropFront();
-                countSuppress (ParasiteSuppressReason::Hunger);
+                countSuppress (draw < pBase ? ParasiteSuppressReason::Relationship
+                                            : ParasiteSuppressReason::Hunger);
                 continue;
             }
 
@@ -1716,6 +2437,7 @@ private:
         n.change = std::clamp (std::max (ev.strength, ev.change), 0.0f, 1.0f);
         n.balance = std::clamp (ev.balance, -1.0f, 1.0f);
         n.durationSamples = pending_.durSamples;
+        n.levelScale = relationship_.levelScale();
 
         // Spatial stream is isolated from the schedule streams.
         const float jitter = (spatialRng_.nextFloat() * 2.0f - 1.0f) * 0.12f;
@@ -1744,11 +2466,13 @@ private:
             r.brightness = ev.brightness;
             r.pan = n.balance;
             r.kind = ev.kind;
+            r.state = static_cast<uint8_t> (relationship_.state());
             responseTrace_.push_back (r);
         }
 
         ++responseCount_;
         countSuppress (ParasiteSuppressReason::Accept);
+        relationship_.noteResponse (ev.sampleIndex);
         beatsSinceResponse_ = 0.0f;
         pendingActive_ = false;
         pendingSlid_ = false;
@@ -1772,6 +2496,7 @@ private:
     ParamSmoother mixSm_, sensSm_, hungerSm_, mutSm_, outSm_;
     ParasiteFeatureExtractor features_;
     ParasiteStimulusDetector detector_;
+    ParasiteRelationshipModel relationship_;
     ParasiteVoice voice_;
     DCBlocker dcL_, dcR_;
     SafetyLimiter limL_, limR_;
