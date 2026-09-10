@@ -35,6 +35,7 @@ enable_testing()
 add_subdirectory(src/plugins/DroneOrganism)
 add_subdirectory(src/plugins/BrokenConductor)
 add_subdirectory(src/plugins/RuinEngine)
+add_subdirectory(src/plugins/MemoryEater)
 
 if(PFL_BUILD_TESTS)
     add_subdirectory(tests)

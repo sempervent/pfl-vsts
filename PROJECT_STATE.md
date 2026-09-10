@@ -4,14 +4,15 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**Ruin Engine — PARKED** (Stage 4 COMPLETE, Ableton PASS).  
-Next active product: **PFL Memory Eater Stage 1**.
+**PFL Memory Eater Stage 1 — IN PROGRESS** (short-term audio recall).
+Ruin Engine PARKED at Stage 4 (`ruin-engine-stage4-complete`).
 
 Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 ## Branch / tags
 
-- Stage 4 complete: `ruin-engine-stage4-complete` (PR #13)
+- Active: `pr/memory-eater-stage1`
+- Stage 4 complete: `ruin-engine-stage4-complete` (PR #13 merged)
 - Stage 3 complete: `ruin-engine-stage3-complete` (PR #12 merged)
 - Stage 2 complete: `ruin-engine-stage2-complete` (PR #11 merged)
 - Stage 1 complete: `ruin-engine-stage1-complete` (PR #10 merged)
@@ -56,5 +57,8 @@ Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 1 STARTING** |
-| Next | Short-term audio memory / microloop recall |
+| Status | **Stage 1 IN PROGRESS** (draft PR) |
+| Engine | algorithm **v1** |
+| Formats | AU VST3 (`Fx`) · `Mem1` · `com.pfl.memoryeater` |
+| Params | MIX, HUNGER, MEMORY, OUTPUT, SEED |
+| Next | Creative-director Ableton acceptance |

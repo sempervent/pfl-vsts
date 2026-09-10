@@ -880,3 +880,58 @@ Mid-collapse not journaled — prepare restores toggles, cancels transient colla
 
 SILENCE=MIX=0; COLLAPSE=AGE=1; RESEED clears wear; FREEZE=static snapshot; MUTATE=randomize-all.
 
+
+---
+
+## 2026-09-10 — Memory Eater Stage 1 short-term audio recall
+
+### Musical job
+
+Hear recent input, retain bounded audio history, sparsely recall recognizable fragments as microloops — callbacks, not continuous stutter/delay.
+
+### Differs from delay/looper/slicer
+
+Not fixed delay taps; not manual loop capture; not rhythmic chop grid. One voice, musical-time opportunities with substantial negative space.
+
+### Differs from Ruin Engine WearState
+
+Ruin stores processing condition. Memory Eater stores actual audio samples.
+
+### Stage 1 memory model
+
+Stereo dual-mono ring, allocate in prepare for 32 beats @ 40 BPM worst case + block margin.
+No processBlock allocation. Valid-history tracking. Recalled wet never written back.
+
+### Public controls
+
+MIX, HUNGER (activity), MEMORY (lookback horizon), OUTPUT, SEED.
+
+### Scheduling
+
+Eighth-note opportunity grid. HUNGER → fire probability + min gap (8→1.5 beats).
+Fragments: 1/8, 1/4, 1/2, 1 beat. Durations: 1/4–2 beats. Lookback ≥1 beat, MEMORY opens depth.
+One voice; suppress while active.
+
+### Seek / stop / persist
+
+Seek/discontinuity clears audio memory. Stop freezes write + scheduling, keeps buffer.
+Project state: controls only — never serialize ring audio; reload → empty memory.
+SEED preserves history; stops active recall safely.
+
+### Safety
+
+DC + limiter on wet; click-safe attack/release (~3–8 ms) + loop crossfade. MIX parallel dry.
+
+### Rejected Stage 2+
+
+Self-resampling, polyphony, reverse/pitch, performance verbs, audio state serialization, custom GUI.
+
+
+### Stage 1 follow-up clarifications (same day)
+
+- Stop freezes expected PPQ (no invented advance); multi-block stop retains audio memory.
+- Seek/discontinuity clears when jump is backward or larger than ~2.5× max-block musical span (not a fixed 2-beat window).
+- Microloop duration capped to ≤4× fragment length to avoid stutter-train identity.
+- Loop crossfade reads fragment start `[0, xfade)`, not older-than-fragment history.
+- Tempos below 40 BPM clamp musical horizon to allocated samples (documented).
+

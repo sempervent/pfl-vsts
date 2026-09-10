@@ -67,6 +67,27 @@ target_link_libraries(pfl_ruin_engine_render
         juce::juce_events
 )
 
+add_executable(pfl_memory_eater_tests
+    memory_eater_tests.cpp
+)
+target_include_directories(pfl_memory_eater_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_features(pfl_memory_eater_tests PRIVATE cxx_std_20)
+add_test(NAME memory_eater_tests COMMAND pfl_memory_eater_tests)
+
+add_executable(pfl_memory_eater_render
+    memory_eater_render.cpp
+)
+target_include_directories(pfl_memory_eater_render PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_features(pfl_memory_eater_render PRIVATE cxx_std_20)
+target_compile_definitions(pfl_memory_eater_render PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+target_link_libraries(pfl_memory_eater_render
+    PRIVATE
+        juce::juce_audio_formats
+        juce::juce_audio_basics
+        juce::juce_core
+        juce::juce_events
+)
+
 add_executable(pfl_plugin_identity_tests
     plugin_identity_tests.cpp
 )
