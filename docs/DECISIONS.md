@@ -555,3 +555,17 @@ FREEZE/SILENCE lock/pause journey. COLLAPSE suspends journey. RESEED → HOME/SE
 
 Chord/Roman UI; shared Scale mutation (breaks DO); per-onset modulation; MOTION as density; geological dwells; I–IV–V graphs.
 
+---
+
+## 2026-09-09 — Broken Conductor Stage 6 complete (Ableton acceptance)
+
+### Context
+
+Creative director accepted Stage 6 in Ableton: HarmonicField ecology and HarmonicJourney (HOME departure/exploration/return), algorithm v6, human musical review PASS.
+
+### Decisions
+
+1. Tag `broken-conductor-stage6-complete` at the accepted Stage 6 tip.
+2. Mark PR #9 ready and merge to `main` (explicit creative-director request).
+3. Do not begin Stage 7 without an explicit task.
+

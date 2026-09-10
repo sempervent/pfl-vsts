@@ -2,12 +2,13 @@
 
 ## Unreleased
 
-### Broken Conductor — Stage 6 (draft)
+### Broken Conductor — Stage 6 COMPLETE
 
-- HarmonicField ecology (HOME/SHADOW/LIFT/HAZE/WIDE/DRIFT) + HarmonicJourney
-- Algorithm **v6**; isolated `harmony.*` RNG; 16-beat eval boundaries
-- HOME return pressure; FREEZE/SILENCE/RESEED/COLLAPSE integration
-- No new continuous parameters
+- Creative-director Ableton acceptance **PASS** (harmonic journey / long-form structure)
+- HarmonicField ecology + HarmonicJourney; algorithm **v6**
+- HOME departure/return; projection union preserved; Stage 5 commands intact
+- Tag: `broken-conductor-stage6-complete`
+- PR #9 merged to `main`
 
 ### Broken Conductor — Stage 5 COMPLETE
 

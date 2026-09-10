@@ -203,4 +203,4 @@ compile
 
 **Stage 5:** FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE via `ConductorPerformanceController`. Ableton **PASS**.
 
-**Stage 6 (in progress):** HarmonicField ecology + HarmonicJourney (HOME → depart → explore → return). Algorithm **v6**. No new continuous params. Draft PR until Ableton acceptance.
+**Stage 6:** HarmonicField ecology + HarmonicJourney (HOME → depart → explore → return). Algorithm **v6**. Ableton **PASS**. See `docs/DECISIONS.md` Stage 6.
