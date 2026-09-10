@@ -485,3 +485,17 @@ Continuous: DENSITY, MUTATION. Config: OUTPUT ROLE. Performance: FREEZE/SILENCE 
 
 Per-role channels/density/mute, IPC, MPE/CC, custom GUI, Stage 6.
 
+---
+
+## 2026-09-09 — Broken Conductor Stage 5 complete (Ableton acceptance)
+
+### Context
+
+Creative director accepted Stage 5 in Ableton: FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE, VST routing as expected, performance-engine v1 over algorithm v5, projection-safe command timelines.
+
+### Decisions
+
+1. Tag `broken-conductor-stage5-complete` at the accepted Stage 5 tip.
+2. Mark PR #8 ready for review; creative director merges (agent does not merge).
+3. Do not begin Stage 6 without an explicit task.
+

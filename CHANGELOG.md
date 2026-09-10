@@ -2,14 +2,13 @@
 
 ## Unreleased
 
-### Broken Conductor — Stage 5 (draft)
+### Broken Conductor — Stage 5 COMPLETE
 
-- Performance intervention: FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE via `ConductorPerformanceController`
-- FREEZE locks evolution (DNA/pitch/hunger) while continuing frozen pattern MIDI
-- COLLAPSE: 24-beat Destabilize→Thin→Fragment→Residue; stays collapsed until RESEED
-- Projection union preserved under identical command timelines
-- Host: freeze/silence toggles; mutate/collapse/reseed edge triggers
-- Artifacts: `renders/broken-conductor/stage5/`; pluginval green
+- Creative-director Ableton acceptance **PASS** (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE)
+- `ConductorPerformanceController` performance-engine **v1**; generative algorithm stays **v5**
+- Projection union preserved under performance command timelines
+- Tag: `broken-conductor-stage5-complete`
+- PR #8 ready for review (merge by creative director)
 
 ### Broken Conductor — Stage 4 COMPLETE
 

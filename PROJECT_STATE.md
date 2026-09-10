@@ -4,12 +4,13 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**Broken Conductor Stage 5 — IN PROGRESS** (performance intervention).  
-Draft PR; awaiting Ableton host acceptance. Do not tag complete / mark ready until PASS.
+**Broken Conductor Stage 5 — COMPLETE** (Ableton-accepted).  
+PR #8 ready for review; creative director merges.
 
 ## Branch / tags
 
-- Stage 5 branch: `pr/broken-conductor-stage5-performance` (from `main` after PR #7 merge)
+- Stage 5 complete: `broken-conductor-stage5-complete`
+- Stage 5 PR: #8 `pr/broken-conductor-stage5-performance` (ready for review; not merged by agent)
 - Stage 4 complete: `broken-conductor-stage4-complete`
 - Stage 3 complete: `broken-conductor-stage3-complete` @ `dc68bb7`
 - Stage 2 complete: `broken-conductor-stage2-complete` @ `0f42d56`
@@ -35,7 +36,7 @@ Draft PR; awaiting Ableton host acceptance. Do not tag complete / mark ready unt
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 5 draft** — FREEZE/MUTATE/COLLAPSE/RESEED/SILENCE |
+| Status | **Stage 5 COMPLETE** (Ableton PASS) |
 | Engine | algorithm **v5** + performance-engine **v1** |
 | Host shell | Stage 1C stereo in (ignored) + silent stereo out |
 | Continuous params | DENSITY, MUTATION |
