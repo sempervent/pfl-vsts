@@ -956,3 +956,33 @@ Insert remains supported; MIX retained; no SEND MODE parameter.
 
 Independent dry (source) vs memory (return) mix is the intended experience.
 
+
+---
+
+## 2026-09-10 — Memory Eater Stage 2 memory ecology
+
+### Musical job
+
+Certain fragments become recurring memories: strengthen via recall, tire temporarily (fatigue), survive beyond the 32-beat ring, and eventually forget.
+
+### Send-first
+
+Canonical Ableton: Return + MIX=1.0; sources via Sends. No SEND MODE parameter.
+
+### Ecology
+
+- **6** fixed slots, each owns preallocated stereo fragment ≤ **1 beat** @ 40 BPM design
+- Sparse promotion from short-term ring (not every recall)
+- Strength + beat-based decay; reinforcement with diminishing returns; fatigue cooldown
+- Deterministic victim replacement; never overwrite active playback slot
+- One playback voice; recent + stored selection (MEMORY raises stored share / persistence)
+- Seek/loop: clear Stage 1 ring; **preserve** established slots
+- Stop: pause write/schedule/decay; keep slots
+- Project reload: controls only — no audio serialization
+- SEED: changes future choices; preserves ring + ecology
+- Algorithm **v2**; no self-resampling; no audio mutation
+
+### Rejected Stage 3+
+
+Self-resampling, polyphony, reverse/pitch, performance verbs, persistent audio state, GUI, hardware
+

@@ -144,7 +144,7 @@ void MemoryEaterProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffe
 
 void MemoryEaterProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    // Stage 1: persist controls only — never serialize audio history.
+    // Persist controls only — never serialize ring or ecology audio.
     juce::ValueTree root ("PFLMemoryEaterState");
     root.setProperty ("stateVersion", 1, nullptr);
     root.setProperty ("algorithmVersion", pfl::dsp::MemoryEaterEngine::kAlgorithmVersion, nullptr);

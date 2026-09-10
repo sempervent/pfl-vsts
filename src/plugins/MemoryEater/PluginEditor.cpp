@@ -18,7 +18,7 @@ void MemoryEaterEditor::paint (juce::Graphics& g)
     g.fillAll (juce::Colours::black);
     g.setColour (juce::Colours::grey);
     g.setFont (12.0f);
-    g.drawText ("PFL Memory Eater — Stage 1",
+    g.drawText ("PFL Memory Eater — Stage 2",
                 getLocalBounds().removeFromBottom (24).reduced (8, 2),
                 juce::Justification::centredLeft);
 }

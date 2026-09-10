@@ -5,13 +5,13 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 ## Current milestone
 
 **PFL Memory Eater Stage 2 — IN PROGRESS** (memory ecology).
-Stage 1 COMPLETE (Ableton PASS). Ruin Engine PARKED at Stage 4.
+Stage 1 COMPLETE (Ableton PASS, send-first). Ruin Engine PARKED at Stage 4.
 
 Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 ## Branch / tags
 
-- Active: `pr/memory-eater-stage2-ecology`
+- Active: `pr/memory-eater-stage2-ecology` (draft PR)
 - Stage 1 complete: `memory-eater-stage1-complete` (PR #14)
 - Stage 4 complete: `ruin-engine-stage4-complete` (PR #13 merged)
 - Stage 3 complete: `ruin-engine-stage3-complete` (PR #12 merged)
@@ -58,10 +58,11 @@ Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 1 COMPLETE** (Ableton PASS); Stage 2 starting |
-| Engine | algorithm **v1** (Stage 2 → v2) |
+| Status | **Stage 2 IN PROGRESS** (draft PR); Stage 1 COMPLETE |
+| Engine | algorithm **v2** |
 | Formats | AU VST3 (`Fx`) · `Mem1` · `com.pfl.memoryeater` |
 | Params | MIX, HUNGER, MEMORY, OUTPUT, SEED |
-| Workflow | **SEND-FIRST** — Return track with MIX=1.0; source via Ableton Sends |
+| Workflow | **SEND-FIRST** — Return + MIX=1.0; source via Ableton Sends |
+| Ecology | 6 slots · ≤1 beat fragments · strength/decay/fatigue |
 | Tag | `memory-eater-stage1-complete` (PR #14) |
-| Next | Stage 2 memory ecology |
+| Next | Creative-director Ableton acceptance for Stage 2 |

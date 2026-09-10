@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Memory Eater — Stage 2 (IN PROGRESS)
+
+- Generative memory ecology: 6 fixed slots with strength / decay / reinforcement / fatigue
+- Stored memories outlive the 32-beat ring; seek preserves ecology, clears short-term ring
+- Send-first workflow documented (Return + MIX=1.0); algorithm **v2**
+- Draft PR — waiting for creative-director Ableton acceptance
+
 ### Memory Eater — Stage 1 COMPLETE
 
 - Creative-director Ableton acceptance **PASS** (short-term audio recall)
