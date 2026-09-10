@@ -1816,6 +1816,9 @@ public:
     int historySize() const noexcept { return relationship_.historySize(); }
     uint32_t stateTransitions() const noexcept { return relationship_.transitionCount(); }
 
+    /** Samples of relationship time. Advances only while the transport plays. */
+    int64_t relationshipSamples() const noexcept { return relationship_.playedSamples(); }
+
     /** Fraction of *played* time spent in one state. Stopped time does not count. */
     float stateOccupancy (ParasiteRelationship s) const noexcept
     {

@@ -3,16 +3,42 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
+#include <new>
 #include <sstream>
 #include <string>
 #include <vector>
+
+// Allocation trap. Armed only around process() calls so that the real-time
+// path can be asserted allocation-free; everything else (streams, fixtures)
+// runs with it disarmed.
+namespace
+{
+bool gTrapAllocs = false;
+int gAllocCount = 0;
+} // namespace
+
+void* operator new (std::size_t n)
+{
+    if (gTrapAllocs)
+        ++gAllocCount;
+    void* p = std::malloc (n == 0 ? 1 : n);
+    if (p == nullptr)
+        throw std::bad_alloc();
+    return p;
+}
+void* operator new[] (std::size_t n) { return ::operator new (n); }
+void operator delete (void* p) noexcept { std::free (p); }
+void operator delete[] (void* p) noexcept { std::free (p); }
+void operator delete (void* p, std::size_t) noexcept { std::free (p); }
+void operator delete[] (void* p, std::size_t) noexcept { std::free (p); }
 
 static int gFails = 0;
 #define EXPECT(cond) \
     do { \
         if (!(cond)) { \
-            std::cerr << "FAIL: " << #cond << "\n"; \
+            std::cerr << "FAIL: " << __func__ << ": " << #cond << "\n"; \
             ++gFails; \
         } \
     } while (0)
@@ -21,6 +47,7 @@ namespace
 {
 using Engine = pfl::dsp::SignalParasiteEngine;
 using Reason = pfl::dsp::ParasiteSuppressReason;
+using Rel = pfl::dsp::ParasiteRelationship;
 
 constexpr double kPi = 3.14159265358979323846;
 
@@ -59,44 +86,114 @@ std::vector<float> makeNoise (int n, float amp, uint32_t seed = 777u)
     return x;
 }
 
-/** Synthetic kit: kick, snare, offbeat hats, 16th ghost notes. Four levels. */
+/** Drop one synthetic percussive hit into `x` at an absolute beat position. */
+void addHit (std::vector<float>& x, double beat, float amp, double decayMs, double toneHz,
+             float noiseMix, double sr, double bpm, FixtureLcg& lcg)
+{
+    const double spb = sr * 60.0 / bpm;
+    const auto n = static_cast<int64_t> (x.size());
+    const int64_t start = std::llround (beat * spb);
+    const int64_t len = static_cast<int64_t> (decayMs * 0.001 * sr * 5.0);
+    for (int64_t i = 0; i < len; ++i)
+    {
+        const int64_t j = start + i;
+        if (j < 0 || j >= n)
+            continue;
+        const double t = static_cast<double> (i) / sr;
+        const float env = static_cast<float> (std::exp (-t / (decayMs * 0.001)));
+        const float tone = static_cast<float> (std::sin (2.0 * kPi * toneHz * t));
+        x[static_cast<size_t> (j)] +=
+            amp * env * ((1.0f - noiseMix) * tone + noiseMix * lcg.next());
+    }
+}
+
+void clampFixture (std::vector<float>& x)
+{
+    for (auto& v : x)
+        v = std::clamp (v, -0.99f, 0.99f);
+}
+
+/** One bar of the synthetic kit: kick, snare, offbeat hats, 16th ghost notes. */
+void addDrumBar (std::vector<float>& x, double b0, double sr, double bpm, FixtureLcg& lcg)
+{
+    addHit (x, b0 + 0.0, 0.85f, 90.0, 55.0, 0.05f, sr, bpm, lcg);
+    addHit (x, b0 + 2.0, 0.85f, 90.0, 55.0, 0.05f, sr, bpm, lcg);
+    addHit (x, b0 + 1.0, 0.45f, 60.0, 190.0, 0.65f, sr, bpm, lcg);
+    addHit (x, b0 + 3.0, 0.45f, 60.0, 190.0, 0.65f, sr, bpm, lcg);
+    for (int e = 0; e < 8; ++e)
+        addHit (x, b0 + e * 0.5 + 0.25, 0.16f, 25.0, 5000.0, 0.90f, sr, bpm, lcg);
+    for (int s = 0; s < 16; ++s)
+        if (s % 4 == 3)
+            addHit (x, b0 + s * 0.25, 0.055f, 18.0, 7000.0, 0.95f, sr, bpm, lcg);
+}
+
+/** One bar of a sparse partner: a downbeat and, every other bar, one answer. */
+void addSparseBar (std::vector<float>& x, double b0, int bar, double sr, double bpm,
+                   FixtureLcg& lcg)
+{
+    addHit (x, b0 + 0.0, 0.80f, 120.0, 60.0, 0.10f, sr, bpm, lcg);
+    if (bar % 2 == 1)
+        addHit (x, b0 + 2.5, 0.45f, 60.0, 2400.0, 0.80f, sr, bpm, lcg);
+}
+
+/** One bar of a busy partner: loud sixteenths, short tails, almost no room. */
+void addBusyBar (std::vector<float>& x, double b0, double sr, double bpm, FixtureLcg& lcg)
+{
+    for (int s = 0; s < 16; ++s)
+        addHit (x, b0 + s * 0.25, s % 4 == 0 ? 0.90f : 0.65f, 28.0, s % 2 ? 2600.0 : 80.0,
+                s % 2 ? 0.85f : 0.20f, sr, bpm, lcg);
+}
+
 std::vector<float> makeDrums (int n, double sr, double bpm)
 {
     std::vector<float> x (static_cast<size_t> (n), 0.0f);
-    const double spb = sr * 60.0 / bpm;
     FixtureLcg lcg;
-    auto hit = [&] (double beat, float amp, double decayMs, double toneHz, float noiseMix)
-    {
-        const int64_t start = std::llround (beat * spb);
-        const int64_t len = static_cast<int64_t> (decayMs * 0.001 * sr * 5.0);
-        for (int64_t i = 0; i < len; ++i)
-        {
-            const int64_t j = start + i;
-            if (j < 0 || j >= n)
-                continue;
-            const double t = static_cast<double> (i) / sr;
-            const float env = static_cast<float> (std::exp (-t / (decayMs * 0.001)));
-            const float tone = static_cast<float> (std::sin (2.0 * kPi * toneHz * t));
-            x[static_cast<size_t> (j)] +=
-                amp * env * ((1.0f - noiseMix) * tone + noiseMix * lcg.next());
-        }
-    };
+    const double spb = sr * 60.0 / bpm;
     const int bars = static_cast<int> (n / (spb * 4.0)) + 1;
     for (int b = 0; b < bars; ++b)
-    {
-        const double b0 = b * 4.0;
-        hit (b0 + 0.0, 0.85f, 90.0, 55.0, 0.05f);
-        hit (b0 + 2.0, 0.85f, 90.0, 55.0, 0.05f);
-        hit (b0 + 1.0, 0.45f, 60.0, 190.0, 0.65f);
-        hit (b0 + 3.0, 0.45f, 60.0, 190.0, 0.65f);
-        for (int e = 0; e < 8; ++e)
-            hit (b0 + e * 0.5 + 0.25, 0.16f, 25.0, 5000.0, 0.90f);
-        for (int s = 0; s < 16; ++s)
-            if (s % 4 == 3)
-                hit (b0 + s * 0.25, 0.055f, 18.0, 7000.0, 0.95f);
-    }
-    for (auto& v : x)
-        v = std::clamp (v, -0.99f, 0.99f);
+        addDrumBar (x, b * 4.0, sr, bpm, lcg);
+    clampFixture (x);
+    return x;
+}
+
+std::vector<float> makeSparse (int n, double sr, double bpm)
+{
+    std::vector<float> x (static_cast<size_t> (n), 0.0f);
+    FixtureLcg lcg { 4242u };
+    const double spb = sr * 60.0 / bpm;
+    const int bars = static_cast<int> (n / (spb * 4.0)) + 1;
+    for (int b = 0; b < bars; ++b)
+        addSparseBar (x, b * 4.0, b, sr, bpm, lcg);
+    clampFixture (x);
+    return x;
+}
+
+std::vector<float> makeBusy (int n, double sr, double bpm)
+{
+    std::vector<float> x (static_cast<size_t> (n), 0.0f);
+    FixtureLcg lcg { 909u };
+    const double spb = sr * 60.0 / bpm;
+    const int bars = static_cast<int> (n / (spb * 4.0)) + 1;
+    for (int b = 0; b < bars; ++b)
+        addBusyBar (x, b * 4.0, sr, bpm, lcg);
+    clampFixture (x);
+    return x;
+}
+
+/** Sparse for `section` beats, busy for `section`, sparse again. A whole arc. */
+std::vector<float> makeJourney (double sectionBeats, double sr, double bpm)
+{
+    const int n = static_cast<int> (3.0 * sectionBeats * sr * 60.0 / bpm);
+    std::vector<float> x (static_cast<size_t> (n), 0.0f);
+    FixtureLcg lcg { 1717u };
+    const int barsPerSection = static_cast<int> (sectionBeats / 4.0);
+    for (int b = 0; b < barsPerSection; ++b)
+        addSparseBar (x, b * 4.0, b, sr, bpm, lcg);
+    for (int b = 0; b < barsPerSection; ++b)
+        addBusyBar (x, sectionBeats + b * 4.0, sr, bpm, lcg);
+    for (int b = 0; b < barsPerSection; ++b)
+        addSparseBar (x, 2.0 * sectionBeats + b * 4.0, b, sr, bpm, lcg);
+    clampFixture (x);
     return x;
 }
 
@@ -182,8 +279,32 @@ std::string structuralKey (const Engine& eng)
 {
     std::ostringstream os;
     os << eng.stimulusFingerprint() << "|" << eng.responseFingerprint() << "|"
-       << eng.dnaFingerprint();
+       << eng.stateFingerprint() << "|" << eng.dnaFingerprint();
     return os.str();
+}
+
+/** Drive the engine until it leaves LURKING, or give up after `maxBeats`. */
+bool runUntilState (Engine& eng, const std::vector<float>& src, double sr, double bpm,
+                    Rel want, double maxBeats, double& beatsConsumed)
+{
+    const int block = 256;
+    const double bps = (bpm / 60.0) / sr;
+    const auto limit = static_cast<int> (maxBeats * sr * 60.0 / bpm);
+    const int n = std::min (limit, static_cast<int> (src.size()));
+    std::vector<float> outL (static_cast<size_t> (block)), outR (static_cast<size_t> (block));
+    for (int done = 0; done < n; done += block)
+    {
+        const int m = std::min (block, n - done);
+        eng.process (src.data() + done, src.data() + done, outL.data(), outR.data(), m,
+                     static_cast<double> (done) * bps, bpm, true);
+        if (eng.relationshipState() == want)
+        {
+            beatsConsumed = static_cast<double> (done + m) * bps;
+            return true;
+        }
+    }
+    beatsConsumed = static_cast<double> (n) * bps;
+    return false;
 }
 
 int beatsToSamples (double beats, double sr, double bpm)
@@ -196,10 +317,38 @@ int beatsToSamples (double beats, double sr, double bpm)
 
 static void testAlgorithmVersion()
 {
-    EXPECT (Engine::kAlgorithmVersion == 1);
+    EXPECT (Engine::kAlgorithmVersion == 2);
     EXPECT (pfl::dsp::ParasiteStimulusDetector::kQueueCap == 8);
     EXPECT (pfl::dsp::ParasiteVoice::kMaxResonance <= 0.72f);
     EXPECT (pfl::dsp::ParasiteVoice::kMaxPan <= 0.85f);
+
+    // Stage 2 shape: a small fixed history, minor reflexes about a beat apart,
+    // major opportunities a musical phrase apart.
+    using History = pfl::dsp::RecentStimulusHistory;
+    using Model = pfl::dsp::ParasiteRelationshipModel;
+    EXPECT (History::kCapacity >= 8 && History::kCapacity <= 32);
+    EXPECT (Model::kMinorEvalBeats >= 1.0f && Model::kMinorEvalBeats <= 2.0f);
+    EXPECT (Model::kMajorEvalBeatsMin >= 4.0f);
+    EXPECT (Model::kMajorEvalBeatsMax <= 16.0f);
+    EXPECT (Model::kNumStates == 4);
+
+    // The relationship can slow the parasite down but never speed it past the
+    // Stage 1 politeness floor by more than its own bias.
+    EXPECT (std::string (pfl::dsp::parasiteRelationshipName (Rel::Lurking)) == "LURKING");
+    EXPECT (std::string (pfl::dsp::parasiteRelationshipName (Rel::Withdrawn)) == "WITHDRAWN");
+    EXPECT (std::string (pfl::dsp::parasiteSuppressName (Reason::Relationship))
+            == "RELATIONSHIP");
+}
+
+static void testStartsLurking()
+{
+    Engine eng;
+    Setup s;
+    setupEngine (eng, s);
+    EXPECT (eng.relationshipState() == Rel::Lurking);
+    EXPECT (eng.historySize() == 0);
+    EXPECT (eng.stateTransitions() == 0);
+    EXPECT (eng.relationshipSamples() == 0);
 }
 
 static void testHungerCurveContract()
@@ -939,9 +1088,391 @@ static void testLongSoak()
     EXPECT (eng.stimuli().size() <= static_cast<size_t> (Engine::kMaxTraceEvents));
 }
 
+// ---------------------------------------------------------------------------
+// Stage 2 — relationship
+// ---------------------------------------------------------------------------
+
+namespace
+{
+struct Journey
+{
+    uint32_t stim = 0, resp = 0, transitions = 0;
+    float accept = 0.0f;
+    float occ[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    Rel finalState = Rel::Lurking;
+};
+
+Journey runJourney (const std::vector<float>& src, double sr, double bpm, float sens,
+                    float hunger, float mutation = 0.0f)
+{
+    Engine eng;
+    Setup s;
+    s.sens = sens;
+    s.hunger = hunger;
+    s.mutation = mutation;
+    setupEngine (eng, s);
+    processRun (eng, src, src, sr, bpm, 0.0, true, 256);
+    Journey j;
+    j.stim = eng.stimulusCount();
+    j.resp = eng.responseCount();
+    j.transitions = eng.stateTransitions();
+    j.accept = eng.acceptRatio();
+    for (int i = 0; i < 4; ++i)
+        j.occ[i] = eng.stateOccupancy (static_cast<Rel> (i));
+    j.finalState = eng.relationshipState();
+    return j;
+}
+} // namespace
+
+static void testBusySourceWithdrawsSparseSourceEngages()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    const int n = beatsToSamples (96.0, sr, bpm);
+    auto sparse = makeSparse (n, sr, bpm);
+    auto busy = makeBusy (n, sr, bpm);
+
+    // Same ears, same appetite. Only the partner changes.
+    const auto s = runJourney (sparse, sr, bpm, 0.5f, 0.5f);
+    const auto b = runJourney (busy, sr, bpm, 0.5f, 0.5f);
+
+    const auto wSparse = s.occ[static_cast<int> (Rel::Withdrawn)];
+    const auto wBusy = b.occ[static_cast<int> (Rel::Withdrawn)];
+    EXPECT (wBusy > wSparse);
+    EXPECT (wBusy > 0.25f);
+    EXPECT (wSparse < 0.10f);
+
+    // A wall of events is not an invitation: it answers a far smaller share of it.
+    EXPECT (b.accept < s.accept);
+
+    // The sparse partner is the one it bonds with.
+    const auto engagedSparse = s.occ[static_cast<int> (Rel::Attached)]
+                               + s.occ[static_cast<int> (Rel::Answering)];
+    const auto engagedBusy = b.occ[static_cast<int> (Rel::Attached)]
+                             + b.occ[static_cast<int> (Rel::Answering)];
+    EXPECT (engagedSparse > 0.5f);
+    EXPECT (engagedSparse > engagedBusy);
+}
+
+static void testMutationZeroFreezesDnaNotState()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    const int n = beatsToSamples (96.0, sr, bpm);
+    auto drums = makeDrums (n, sr, bpm);
+
+    Engine eng;
+    Setup s;
+    s.mutation = 0.0f;
+    setupEngine (eng, s);
+    const auto dnaBefore = eng.dnaFingerprint();
+    processRun (eng, drums, drums, sr, bpm, 0.0, true, 256);
+
+    EXPECT (eng.dnaGeneration() == 0);
+    EXPECT (eng.dnaFingerprint() == dnaBefore);
+    // Frozen DNA is not a frozen relationship.
+    EXPECT (eng.stateTransitions() > 0);
+    EXPECT (eng.relationshipState() != Rel::Lurking);
+}
+
+static void testMutationDoesNotDriveStateRate()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    const int n = beatsToSamples (128.0, sr, bpm);
+    auto drums = makeDrums (n, sr, bpm);
+    // MUTATION owns DNA. It must not become a second clock on the state machine,
+    // so the transition count cannot swing wildly with it.
+    const auto frozen = runJourney (drums, sr, bpm, 0.5f, 0.5f, 0.0f);
+    const auto full = runJourney (drums, sr, bpm, 0.5f, 0.5f, 1.0f);
+    const int swing = std::abs (static_cast<int> (full.transitions)
+                                - static_cast<int> (frozen.transitions));
+    EXPECT (swing <= 2);
+}
+
+static void testHungerZeroStillObserves()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    const int n = beatsToSamples (96.0, sr, bpm);
+    auto sparse = makeSparse (n, sr, bpm);
+
+    Engine eng;
+    Setup s;
+    s.hunger = 0.0f;
+    setupEngine (eng, s);
+    processRun (eng, sparse, sparse, sr, bpm, 0.0, true, 256);
+
+    EXPECT (eng.responseCount() == 0);
+    EXPECT (eng.stimulusCount() > 0);
+    // Silent does not mean blind: it still builds a history and still forms an
+    // opinion about the source.
+    EXPECT (eng.historySize() > 0);
+    EXPECT (eng.stateTransitions() > 0);
+    EXPECT (eng.relationshipState() != Rel::Lurking);
+    // …but with no answers there is no conversation to be in.
+    EXPECT (eng.stateOccupancy (Rel::Answering) == 0.0f);
+}
+
+static void testNoStimulusNoResponseEvenWhenAnswering()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    auto drums = makeDrums (beatsToSamples (128.0, sr, bpm), sr, bpm);
+    Engine eng;
+    Setup s;
+    s.hunger = 0.8f;
+    setupEngine (eng, s);
+
+    double consumed = 0.0;
+    const bool reached = runUntilState (eng, drums, sr, bpm, Rel::Answering, 96.0, consumed);
+    EXPECT (reached);
+    EXPECT (eng.relationshipState() == Rel::Answering);
+
+    // Cut the source dead while it is at its most forward. Let any already
+    // scheduled answer land, then hold silence for 32 beats.
+    auto settle = makeSilence (beatsToSamples (2.0, sr, bpm));
+    processRun (eng, settle, settle, sr, bpm, consumed, true, 256);
+    const auto respAfterSettle = eng.responseCount();
+    const auto stimAfterSettle = eng.stimulusCount();
+
+    auto quiet = makeSilence (beatsToSamples (32.0, sr, bpm));
+    const auto out = processRun (eng, quiet, quiet, sr, bpm, consumed + 2.0, true, 256);
+    EXPECT (eng.responseCount() == respAfterSettle);
+    EXPECT (eng.stimulusCount() == stimAfterSettle);
+    EXPECT (out.allFinite);
+    // With nothing to answer it does not stay forward either.
+    EXPECT (eng.relationshipState() != Rel::Answering);
+}
+
+static void testSilenceHasNoRelationship()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    auto sil = makeSilence (beatsToSamples (128.0, sr, bpm));
+    Engine eng;
+    Setup s;
+    s.sens = 1.0f;
+    s.hunger = 1.0f;
+    s.mutation = 1.0f;
+    setupEngine (eng, s);
+    const auto out = processRun (eng, sil, sil, sr, bpm, 0.0, true, 256);
+    EXPECT (eng.responseCount() == 0);
+    EXPECT (eng.historySize() == 0);
+    EXPECT (eng.relationshipState() == Rel::Lurking);
+    EXPECT (eng.stateTransitions() == 0);
+    EXPECT (eng.stateOccupancy (Rel::Lurking) == 1.0f);
+    EXPECT (out.peak == 0.0f);
+}
+
+static void testSeekResetsRelationship()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    auto drums = makeDrums (beatsToSamples (128.0, sr, bpm), sr, bpm);
+    Engine eng;
+    Setup s;
+    s.hunger = 0.7f;
+    s.mutation = 0.0f; // frozen DNA, so "the seek kept the DNA" is literal
+    setupEngine (eng, s);
+
+    double consumed = 0.0;
+    EXPECT (runUntilState (eng, drums, sr, bpm, Rel::Attached, 64.0, consumed));
+    EXPECT (eng.historySize() > 0);
+    const auto stim = eng.stimulusCount();
+    const auto resp = eng.responseCount();
+    const auto dnaBefore = eng.dnaFingerprint();
+
+    // Jump forward into already-flowing steady material.
+    auto steady = makeTone (static_cast<int> (sr * 0.5), sr, 220.0, 0.3f);
+    const auto out = processRun (eng, steady, steady, sr, bpm, consumed + 64.0, true, 256);
+
+    EXPECT (eng.relationshipState() == Rel::Lurking);
+    EXPECT (eng.historySize() == 0);
+    // A seek is a discontinuity, never a stimulus, and never a new personality.
+    EXPECT (eng.stimulusCount() == stim);
+    EXPECT (eng.responseCount() == resp);
+    EXPECT (eng.dnaFingerprint() == dnaBefore);
+    EXPECT (out.allFinite);
+}
+
+static void testStopPausesRelationship()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    auto drums = makeDrums (beatsToSamples (64.0, sr, bpm), sr, bpm);
+    Engine eng;
+    Setup s;
+    s.hunger = 0.7f;
+    setupEngine (eng, s);
+    processRun (eng, drums, drums, sr, bpm, 0.0, true, 256);
+
+    const auto state = eng.relationshipState();
+    const auto transitions = eng.stateTransitions();
+    const auto relSamples = eng.relationshipSamples();
+    const auto history = eng.historySize();
+    EXPECT (relSamples > 0);
+
+    // Loud input, frozen playhead, transport stopped: relationship time stops
+    // with it. No wall clock anywhere.
+    const auto stopped = processRun (eng, drums, drums, sr, bpm, 64.0, false, 256);
+    EXPECT (eng.relationshipSamples() == relSamples);
+    EXPECT (eng.relationshipState() == state);
+    EXPECT (eng.stateTransitions() == transitions);
+    EXPECT (eng.historySize() == history); // paused, not forgotten
+    EXPECT (stopped.allFinite);
+}
+
+static void testSeedChangeResetsRelationshipNotHistoryPolicy()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    auto drums = makeDrums (beatsToSamples (128.0, sr, bpm), sr, bpm);
+    Engine eng;
+    Setup s;
+    s.hunger = 0.7f;
+    setupEngine (eng, s);
+    double consumed = 0.0;
+    EXPECT (runUntilState (eng, drums, sr, bpm, Rel::Attached, 64.0, consumed));
+
+    const auto dnaBefore = eng.dnaFingerprint();
+    eng.setSeed (5150);
+
+    // The new DNA lands on the next bar boundary. Step there and check the
+    // relationship at the moment it lands, not some beats later.
+    const int block = 256;
+    const double bps = (bpm / 60.0) / sr;
+    const int start = static_cast<int> (consumed * sr * 60.0 / bpm);
+    std::vector<float> outL (block), outR (block);
+    bool landed = false;
+    for (int done = start; done + block < static_cast<int> (drums.size()) && ! landed;
+         done += block)
+    {
+        eng.process (drums.data() + done, drums.data() + done, outL.data(), outR.data(), block,
+                     static_cast<double> (done) * bps, bpm, true);
+        landed = eng.dnaFingerprint() != dnaBefore;
+    }
+    EXPECT (landed);
+    EXPECT (eng.seed() == 5150);
+    // A new personality starts over with this source.
+    EXPECT (eng.relationshipState() == Rel::Lurking);
+    EXPECT (eng.historySize() < pfl::dsp::RecentStimulusHistory::kCapacity);
+}
+
+static void testRelationshipNeverOutrunsHunger()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    const int n = beatsToSamples (128.0, sr, bpm);
+    auto sparse = makeSparse (n, sr, bpm);
+    Engine eng;
+    Setup s;
+    s.sens = 0.9f;
+    s.hunger = 1.0f;
+    setupEngine (eng, s);
+    processRun (eng, sparse, sparse, sr, bpm, 0.0, true, 256);
+    // This fixture puts the parasite in ANSWERING, its most forward state…
+    EXPECT (eng.stateOccupancy (Rel::Answering) > 0.2f);
+    // …and it still respects the HUNGER floor and still leaves space.
+    EXPECT (eng.minResponseGapBeats() < 0.0f || eng.minResponseGapBeats() >= 0.70f);
+    EXPECT (eng.responseDuty() < 0.35f);
+    EXPECT (eng.responseCount() < eng.stimulusCount());
+}
+
+static void testStateBiasesAnswersWithinStageOneVocabulary()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    auto journey = makeJourney (64.0, sr, bpm);
+
+    Engine eng;
+    Setup s;
+    s.hunger = 0.7f;
+    setupEngine (eng, s);
+    processRun (eng, journey, journey, sr, bpm, 0.0, true, 256);
+
+    int fromLurking = 0, fromAnswering = 0;
+    double delayLurking = 0.0, delayAnswering = 0.0;
+    for (const auto& r : eng.responses())
+    {
+        EXPECT (r.delaySlot >= 0 && r.delaySlot < pfl::dsp::ParasiteDNA::kDelaySlots);
+        EXPECT (r.durSlot >= 0 && r.durSlot < pfl::dsp::ParasiteDNA::kDurSlots);
+        if (r.state == static_cast<uint8_t> (Rel::Lurking))
+        {
+            ++fromLurking;
+            delayLurking += r.delaySlot;
+        }
+        else if (r.state == static_cast<uint8_t> (Rel::Answering))
+        {
+            ++fromAnswering;
+            delayAnswering += r.delaySlot;
+        }
+    }
+    EXPECT (fromLurking > 0);
+    EXPECT (fromAnswering > 0);
+    if (fromLurking > 0 && fromAnswering > 0)
+    {
+        // Lurking hangs back; answering comes in closer to the stimulus.
+        EXPECT (delayLurking / fromLurking > delayAnswering / fromAnswering);
+    }
+}
+
+static void testJourneyOccupancyAndReturn()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    auto journey = makeJourney (64.0, sr, bpm);
+    Engine eng;
+    Setup s;
+    s.hunger = 0.6f;
+    setupEngine (eng, s);
+    processRun (eng, journey, journey, sr, bpm, 0.0, true, 256);
+
+    // Sparse → busy → sparse. It should bond, back off, and come back.
+    EXPECT (eng.stateTransitions() >= 3);
+    EXPECT (eng.stateOccupancy (Rel::Withdrawn) > 0.05f);
+    EXPECT (eng.stateOccupancy (Rel::Attached) + eng.stateOccupancy (Rel::Answering) > 0.25f);
+    EXPECT (eng.relationshipState() != Rel::Withdrawn);
+
+    float total = 0.0f;
+    for (int i = 0; i < 4; ++i)
+        total += eng.stateOccupancy (static_cast<Rel> (i));
+    EXPECT (std::abs (total - 1.0f) < 1.0e-3f);
+}
+
+static void testHistoryIsBoundedAndProcessDoesNotAllocate()
+{
+    const double sr = 48000.0, bpm = 120.0;
+    const int n = beatsToSamples (256.0, sr, bpm);
+    auto busy = makeBusy (n, sr, bpm);
+    Engine eng;
+    Setup s;
+    s.sens = 1.0f;
+    s.hunger = 1.0f;
+    s.mutation = 1.0f;
+    setupEngine (eng, s);
+
+    std::vector<float> outL (256), outR (256);
+    const double bps = (bpm / 60.0) / sr;
+
+    // Prove the trap sees allocations at all, so a zero below means something.
+    gAllocCount = 0;
+    gTrapAllocs = true;
+    {
+        std::vector<int> canary;
+        canary.resize (64);
+    }
+    gTrapAllocs = false;
+    EXPECT (gAllocCount > 0);
+
+    gAllocCount = 0;
+    gTrapAllocs = true;
+    for (int done = 0; done < n; done += 256)
+    {
+        const int m = std::min (256, n - done);
+        eng.process (busy.data() + done, busy.data() + done, outL.data(), outR.data(), m,
+                     static_cast<double> (done) * bps, bpm, true);
+    }
+    gTrapAllocs = false;
+    EXPECT (gAllocCount == 0);
+
+    // Thousands of stimuli through a 16-slot ring: the history never grows.
+    EXPECT (eng.stimulusCount() > 100u);
+    EXPECT (eng.historySize() <= pfl::dsp::RecentStimulusHistory::kCapacity);
+}
+
 int main()
 {
     testAlgorithmVersion();
+    testStartsLurking();
     testHungerCurveContract();
     testSilenceNoStimuli();
     testQuietBelowFloorNoStimuli();
@@ -969,6 +1500,21 @@ int main()
     testStimulusTimingIsSampleAccurate();
     testLongSoak();
 
+    // Stage 2 — relationship
+    testBusySourceWithdrawsSparseSourceEngages();
+    testMutationZeroFreezesDnaNotState();
+    testMutationDoesNotDriveStateRate();
+    testHungerZeroStillObserves();
+    testNoStimulusNoResponseEvenWhenAnswering();
+    testSilenceHasNoRelationship();
+    testSeekResetsRelationship();
+    testStopPausesRelationship();
+    testSeedChangeResetsRelationshipNotHistoryPolicy();
+    testRelationshipNeverOutrunsHunger();
+    testStateBiasesAnswersWithinStageOneVocabulary();
+    testJourneyOccupancyAndReturn();
+    testHistoryIsBoundedAndProcessDoesNotAllocate();
+
     if (gFails == 0)
     {
         std::cout << "signal_parasite_tests: OK\n";
@@ -977,5 +1523,3 @@ int main()
     std::cerr << "signal_parasite_tests: " << gFails << " failure(s)\n";
     return 1;
 }
-
-// temporary - remove
