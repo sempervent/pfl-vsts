@@ -8,6 +8,7 @@
 #include "RuinStateMachine.h"
 #include "SafetyLimiter.h"
 #include "Saturator.h"
+#include "WearAccumulator.h"
 
 #include "generative/DeterministicRNG.h"
 
@@ -19,13 +20,14 @@ namespace pfl::dsp
 {
 
 /**
- * Ruin Engine Stage 2: Stage 1 DSP foundation + generative processing states.
- * Musical-time structural decisions are buffer-independent (4-beat eval grid).
+ * Ruin Engine Stage 3: Stage 2 states + bounded WearState processing history.
+ * Wear is exposure memory (not audio memory). Musical-time structural decisions
+ * remain buffer-independent on a 4-beat eval grid.
  */
 class RuinEngine
 {
 public:
-    static constexpr int kAlgorithmVersion = 2;
+    static constexpr int kAlgorithmVersion = 3;
     static constexpr float kMaxFeedback = 0.72f;
 
     void prepare (double sampleRate) noexcept
@@ -51,8 +53,13 @@ public:
 
         delay_.setInternalWet (1.0f);
         delay_.setFullWetMode (true);
+        // Preserve WearState across prepare (buffer-size / SR changes must not erase scars).
+        const auto savedWear = wear_.wear();
+        const auto savedFloor = wear_.scarFloor();
         rebuildRng();
         reset();
+        wear_.setWearAndFloor (savedWear, savedFloor);
+        syncTargetsFromState (true);
         mapDspTargets (0.0f, 0.0f, true);
     }
 
@@ -75,9 +82,12 @@ public:
         discardPendingEvals_ = false;
         tone_ = grit_ = wobble_ = smear_ = 0.0f;
         toneT_ = gritT_ = wobbleT_ = smearT_ = 0.0f;
-        fractureAmt_ = 0.0f;
+        fractureAmt_ = fractureAmtT_ = 0.0f;
         stateMachine_.reset (masterSeed_);
         fracture_.setSeed (masterSeed_);
+        // WearState is not cleared here — physical processing history survives DSP reset.
+        activitySum_ = 0.0;
+        activityCount_ = 0;
         syncTargetsFromState (true);
     }
 
@@ -85,9 +95,41 @@ public:
     {
         if (seed == masterSeed_)
             return;
+        // SEED changes generative personality; preserve accumulated WearState.
+        const auto savedWear = wear_.wear();
+        const auto savedFloor = wear_.scarFloor();
         masterSeed_ = seed == 0 ? 1ull : seed;
         rebuildRng();
         reset();
+        wear_.setWearAndFloor (savedWear, savedFloor);
+        syncTargetsFromState (true);
+        mapDspTargets (ageSmooth_.current(), instSmooth_.current(), true);
+    }
+
+    /** Diagnostic / test only — not a public control. */
+    void resetWearFresh() noexcept
+    {
+        wear_.resetFresh();
+        syncTargetsFromState (true);
+        mapDspTargets (ageSmooth_.current(), instSmooth_.current(), true);
+    }
+
+    WearState wearState() const noexcept { return wear_.wear(); }
+    WearState scarFloor() const noexcept { return wear_.scarFloor(); }
+
+    void setWearState (WearState w, WearState floor = {}) noexcept
+    {
+        wear_.setWearAndFloor (w, floor);
+        syncTargetsFromState (true);
+        mapDspTargets (ageSmooth_.current(), instSmooth_.current(), true);
+    }
+
+    /** Force all wear dimensions to 1.0 for safety soak tests. */
+    void setWearMaxDiagnostic() noexcept
+    {
+        WearState w { 1.0f, 1.0f, 1.0f };
+        wear_.setWearAndFloor (w, WearState { 0.55f, 0.55f, 0.60f });
+        syncTargetsFromState (true);
         mapDspTargets (ageSmooth_.current(), instSmooth_.current(), true);
     }
 
@@ -104,6 +146,7 @@ public:
         ageSmooth_.setCurrentAndTarget (ageSmooth_.target());
         instSmooth_.setCurrentAndTarget (instSmooth_.target());
         outSmooth_.setCurrentAndTarget (outSmooth_.target());
+        syncTargetsFromState (true);
         mapDspTargets (ageSmooth_.current(), instSmooth_.current(), true);
     }
 
@@ -118,9 +161,19 @@ public:
 
     void setBypassed (bool b) noexcept
     {
-        bypassed_ = b;
         if (b)
-            setEvolutionPaused (true);
+        {
+            // Always discard pending evals on bypass entry so unmute cannot
+            // catch up wear for PPQ that advanced while process() was skipped.
+            discardPendingEvals_ = true;
+            evolutionPaused_ = true;
+            wear_.setPaused (true);
+        }
+        else
+        {
+            wear_.setPaused (false);
+        }
+        bypassed_ = b;
     }
 
     /** Offline / diagnostic only — not a public plugin parameter. */
@@ -149,6 +202,7 @@ public:
             return;
 
         setEvolutionPaused (! transportPlaying || bypassed_);
+        wear_.setPaused (! transportPlaying || bypassed_);
 
         const double safeBpm = bpm > 1.0 ? bpm : 120.0;
         const double beatsPerSample = (safeBpm / 60.0) / sampleRate_;
@@ -168,7 +222,7 @@ public:
             grit_ += (gritT_ - grit_) * morph;
             wobble_ += (wobbleT_ - wobble_) * morph;
             smear_ += (smearT_ - smear_) * morph;
-            fractureAmt_ += (stateMachine_.targets().fractureAmount - fractureAmt_) * morph;
+            fractureAmt_ += (fractureAmtT_ - fractureAmt_) * morph;
 
             mapDspTargets (age, inst, false);
             updateMicroMotion (age, inst);
@@ -184,6 +238,13 @@ public:
             float inR = right[i];
             if (! std::isfinite (inL)) inL = 0.0f;
             if (! std::isfinite (inR)) inR = 0.0f;
+
+            // Soft input activity for the current eval window (near-silence → ~0).
+            {
+                const float energy = std::min (1.0f, (std::abs (inL) + std::abs (inR)) * 4.0f);
+                activitySum_ += energy;
+                ++activityCount_;
+            }
 
             const float dryL = inL;
             const float dryR = inR;
@@ -250,20 +311,29 @@ private:
     void syncTargetsFromState (bool snap) noexcept
     {
         const auto& t = stateMachine_.targets();
+        float tone = t.tone;
+        float grit = t.grit;
+        float wobble = t.wobble;
+        float smear = t.smear;
+        float frac = t.fractureAmount;
+        wear_.applyToProfile (stateMachine_.state(), tone, grit, smear, frac);
+        (void) wobble; // wobble remains state/inst only — wear does not redefine restlessness
+
         if (snap)
         {
-            toneT_ = tone_ = t.tone;
-            gritT_ = grit_ = t.grit;
+            toneT_ = tone_ = tone;
+            gritT_ = grit_ = grit;
             wobbleT_ = wobble_ = t.wobble;
-            smearT_ = smear_ = t.smear;
-            fractureAmt_ = t.fractureAmount;
+            smearT_ = smear_ = smear;
+            fractureAmtT_ = fractureAmt_ = frac;
         }
         else
         {
-            toneT_ = t.tone;
-            gritT_ = t.grit;
+            toneT_ = tone;
+            gritT_ = grit;
             wobbleT_ = t.wobble;
-            smearT_ = t.smear;
+            smearT_ = smear;
+            fractureAmtT_ = frac;
         }
     }
 
@@ -277,24 +347,49 @@ private:
         {
             lastEvalIndex_ = evalIndex;
             discardPendingEvals_ = false;
+            activitySum_ = 0.0;
+            activityCount_ = 0;
             return;
         }
 
         const float age = ageSmooth_.current();
         const float inst = instSmooth_.current();
+        const float mix = mixSmooth_.current();
 
         if (lastEvalIndex_ < 0 || evalIndex < lastEvalIndex_ || evalIndex > lastEvalIndex_ + 64)
         {
+            // Seek / large jump: reconstruct structural state from PPQ.
+            // Do NOT fabricate WearState from skipped exposure time.
             rebuildStructuralTo (evalIndex, age, inst);
             return;
         }
 
+        const float activity = activityCount_ > 0
+                                   ? static_cast<float> (activitySum_ / static_cast<double> (activityCount_))
+                                   : 0.0f;
+        activitySum_ = 0.0;
+        activityCount_ = 0;
+
         for (int idx = lastEvalIndex_ + 1; idx <= evalIndex; ++idx)
-        {
             stateMachine_.evaluateAt (idx, age, inst);
+
+        const int steps = evalIndex - lastEvalIndex_;
+        if (steps > 0)
+        {
+            wear_.accumulate (4.0f * static_cast<float> (steps),
+                              stateMachine_.state(),
+                              age,
+                              inst,
+                              mix,
+                              activity,
+                              stateMachine_.recoveryPressure(),
+                              0.0f);
             syncTargetsFromState (false);
-            const double evalPpq = static_cast<double> (idx) * 4.0;
-            fracture_.maybeSchedule (idx, evalPpq, stateMachine_.targets().fractureAmount, inst);
+            for (int idx = lastEvalIndex_ + 1; idx <= evalIndex; ++idx)
+            {
+                const double evalPpq = static_cast<double> (idx) * 4.0;
+                fracture_.maybeSchedule (idx, evalPpq, fractureAmtT_, inst);
+            }
         }
         lastEvalIndex_ = evalIndex;
     }
@@ -302,7 +397,8 @@ private:
     void rebuildStructuralTo (int evalIndex, float age, float inst) noexcept
     {
         // Do NOT reset noiseRng_/instabilityRng_ — sample-rate streams must stay continuous
-        // across seek; only musical-time state is reconstructed.
+        // across seek; only musical-time structural state is reconstructed.
+        // WearState is intentionally preserved (no PPQ-fabricated aging).
         fracture_.setSeed (masterSeed_);
         stateMachine_.reset (masterSeed_);
         stateMachine_.seedInitialFromAge (age, inst);
@@ -316,6 +412,8 @@ private:
             for (double p = evalPpq; p < evalPpq + 4.0; p += 0.125)
                 fracture_.advance (p);
         }
+        activitySum_ = 0.0;
+        activityCount_ = 0;
         syncTargetsFromState (true);
         mapDspTargets (age, inst, true);
         lastEvalIndex_ = end;
@@ -333,6 +431,7 @@ private:
         const float noise = a < 0.15f ? 0.0f
                                       : (0.002f + 0.06f * std::pow ((a - 0.15f) / 0.85f, 1.3f) * g);
         const float delaySec = 0.03f + 0.55f * s * s;
+        // Wear may color feedback character but never exceeds Stage 1 hard cap.
         const float fb = a < 1.0e-4f ? 0.0f : std::min (kMaxFeedback, 0.12f + 0.55f * s);
 
         if (snap)
@@ -397,6 +496,9 @@ private:
     SafetyLimiter limL_, limR_;
     RuinStateMachine stateMachine_;
     RuinFractureEnvelope fracture_;
+    WearAccumulator wear_;
+    double activitySum_ = 0.0;
+    int activityCount_ = 0;
 
     ParamSmoother mixSmooth_, ageSmooth_, instSmooth_, outSmooth_;
     ParamSmoother cutoffSmooth_, driveSmooth_, delaySecSmooth_, fbSmooth_, noiseSmooth_;
@@ -404,7 +506,7 @@ private:
     pfl::generative::DeterministicRNG noiseRng_, instabilityRng_;
 
     float tone_ = 0, grit_ = 0, wobble_ = 0, smear_ = 0, fractureAmt_ = 0;
-    float toneT_ = 0, gritT_ = 0, wobbleT_ = 0, smearT_ = 0;
+    float toneT_ = 0, gritT_ = 0, wobbleT_ = 0, smearT_ = 0, fractureAmtT_ = 0;
 
     double lfoPhase_ = 0.0;
     float walk_ = 0.0f;

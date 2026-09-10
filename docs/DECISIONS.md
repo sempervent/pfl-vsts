@@ -757,3 +757,68 @@ Creative director accepted Ruin Engine Stage 2 in Ableton: explicit processing s
 2. Mark PR #11 ready and merge to `main` (explicit creative-director authorization).
 3. Stage 3 is accumulated processing wear (not audio memory / Memory Eater). Do not begin MIDI/controller/studio integration.
 
+
+---
+
+## 2026-09-09 — Ruin Engine Stage 3 accumulated processing wear
+
+### Why
+
+Stage 2 PASS established explicit states. Listening direction: AGE alone is an instantaneous environment; abuse over musical time should leave bounded scars that linger and recover gradually.
+
+### Processing memory vs Memory Eater
+
+**WearState** = condition of the processing system (spectral / nonlinear / temporal fatigue).
+**Not** audio capture, loops, granular recall, or resampling. Memory Eater remains a separate future product.
+
+### Wear representation
+
+```text
+WearState { spectralWear, nonlinearWear, temporalWear } ∈ [0, 1]³
+```
+
+- spectral → filter darkening bias
+- nonlinear → grit/noise floor bias
+- temporal → smear + fracture residue bias
+
+### Accumulation
+
+Musical-time integration while transport playing and not bypassed. Rates depend on Stage 2 state × AGE (environment) × soft input activity. INSTABILITY does **not** scale accumulation speed. MIX=0 still accumulates (MIX = blend, not process enable). Silence ≈ near-zero activity → little wear.
+
+### Recovery
+
+RECOVERING and INTACT heal gradually (asymmetric). FRACTURED/RUINED do not heal substantially. Residual scar floors may remain after recovery.
+
+### Interaction with Stage 2
+
+States remain authoritative. Wear offsets applied after profile morph, before DSP mapping, clamped within state neighborhood. Wear never drives illegal transitions.
+
+### AGE / INSTABILITY
+
+AGE = intentional damage environment (scales accumulation eligibility/severity of effect).
+INSTABILITY = restlessness (unchanged Stage 2 semantics).
+
+### Seek / stop / bypass
+
+- Seek does **not** fabricate exposure from skipped PPQ.
+- Backward seek does **not** reverse wear.
+- Wear is preserved across seek; structural state still rebuilds from absolute PPQ.
+- Stop / bypass pause wear; no catch-up.
+
+### SEED
+
+SEED changes generative personality; **preserves** WearState (unless test-only fresh reset).
+
+### Persistence
+
+WearState serialized in plugin private state alongside APVTS. Legacy Stage 1/2 loads → fresh wear.
+`prepare`/`reset` preserve WearState (buffer-size/SR re-prepare must not erase scars). Only `resetWearFresh()` (tests) clears wear.
+
+### Safety
+
+Wear cannot bypass feedback cap, AGE=0 wet identity, MIX=0 dry, limiter, or DC.
+
+### Rejected
+
+Wear = slow AGE; INST = wear speed; PPQ-fabricated aging; audio buffers; public WEAR knob; performance commands; Memory Eater.
+

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Ruin Engine — Stage 3 COMPLETE
+
+- Creative-director Ableton acceptance **PASS** (accumulated processing wear)
+- `WearState` spectral / nonlinear / temporal; algorithm **v3**
+- Seek preserves wear; stop/bypass pause; silence ≈ no aging; SEED preserves wear
+- Tag: `ruin-engine-stage3-complete`
+- PR #12 merged to `main`
+
 ### Ruin Engine — Stage 2 COMPLETE
 
 - Creative-director Ableton acceptance **PASS** (explicit processing states)

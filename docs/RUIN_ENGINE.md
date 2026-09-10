@@ -4,9 +4,9 @@ Deterministic generative audio-transformation effect.
 
 ## Status
 
-**Stage 2 COMPLETE** — creative-director Ableton acceptance **PASS**.  
-Tag: `ruin-engine-stage2-complete` · PR #11 merged.  
-Stage 1: `ruin-engine-stage1-complete` (PR #10 merged).
+**Stage 3 COMPLETE** — creative-director Ableton acceptance **PASS**.
+Tag: `ruin-engine-stage3-complete` · PR #12 merged.
+Stage 2: `ruin-engine-stage2-complete` (PR #11). Stage 1: `ruin-engine-stage1-complete` (PR #10).
 
 Broken Conductor software development remains paused (Stage 7 = physical-rig integration).
 
@@ -14,13 +14,37 @@ Broken Conductor software development remains paused (Stage 7 = physical-rig int
 
 Treat signal degradation and transformation as compositional events.
 
-## Stage 2 objective
+## Stage 3 objective
 
-Give Ruin Engine recognizable processing conditions and deterministic structural arcs so it can settle, deteriorate, fracture, become ruined, and recover — rather than merely drifting continuously.
+Make Ruin Engine remember how much abuse the **processing system** has experienced over musical time — bounded scars that linger and recover — without becoming Memory Eater (no audio capture / loops / granular recall).
 
-Stage 1 DSP foundation is preserved.
+## Processing memory vs audio memory
 
-## Processing states
+| WearState (Stage 3) | Memory Eater (future, separate) |
+|---------------------|----------------------------------|
+| Accumulated processing condition | Captured audio content |
+| spectral / nonlinear / temporal wear | Loops, grains, resampling |
+| Modulates Stage 2 profiles | Playback of remembered audio |
+
+## WearState
+
+```text
+WearState { spectralWear, nonlinearWear, temporalWear } ∈ [0, 1]³
+```
+
+Internal only — no public WEAR knob. AGE remains intentional damage pressure; wear is what that pressure has done over time.
+
+### Accumulation / recovery (summary)
+
+- Musical-time integration while playing and not bypassed
+- State-specific rates × AGE × soft input activity (silence ≈ no aging)
+- INSTABILITY does **not** set wear speed
+- MIX=0 continues wear (MIX = blend)
+- Seek preserves wear (no fabricated PPQ exposure; backward seek does not reverse)
+- SEED change preserves wear
+- Persisted in private plugin state; legacy Stage 1/2 → fresh wear
+
+## Processing states (Stage 2, still authoritative)
 
 | State | Meaning |
 |-------|---------|
@@ -30,15 +54,7 @@ Stage 1 DSP foundation is preserved.
 | RUINED | Severe but bounded transformation |
 | RECOVERING | Reassembly from damage |
 
-### Transition graph
-
-```text
-INTACT → WEATHERED
-WEATHERED → INTACT | FRACTURED
-FRACTURED → WEATHERED | RUINED
-RUINED → RECOVERING
-RECOVERING → INTACT | WEATHERED
-```
+Wear **modifies** state profiles; it does not replace the state machine.
 
 ## Public controls (unchanged)
 
@@ -48,54 +64,51 @@ RECOVERING → INTACT | WEATHERED
 | AGE | damage eligibility / severity landscape |
 | INSTABILITY | restlessness / rate / depth |
 | OUTPUT | final level |
-| SEED | deterministic universe |
-
-## Signal path
-
-```text
-INPUT
-  ├──────── DRY ──────────────────┐
-  ▼                               │
-FILTER → SAT → DELAY              │
-  ↓                               │
-DC → SafetyLimiter                │
-  ↓                               │
-× fracture envelope (wet only)    │
-  ↓                               │
-WET ── MIX ◄──────────────────────┘
-  ↓
-OUTPUT clamp
-```
+| SEED | deterministic universe (preserves WearState) |
 
 ## Algorithm
 
-Version **2** (explicit-state ecology). Version 1 was continuous profile nudges only.
+Version **3** (accumulated processing wear). Version 2 = explicit-state ecology. Version 1 = continuous profile nudges.
 
 ## Determinism
 
-- 4-beat PPQ eval grid; absolute rebuild on seek/insert (state + fracture schedule)
-- Sample-rate noise/micro RNG is **not** reset on seek (delay audio history may differ)
-- Isolated streams: `state.transition`, `state.duration`, `state.profile`, `state.fracture`, `state.recovery`
+- 4-beat PPQ eval grid; absolute rebuild of **structural** state on seek/insert
+- WearState is **exposure history**, not reconstructed from absolute PPQ
+- Sample-rate noise/micro RNG is **not** reset on seek
 
-## Explicitly out of Stage 2
+## Explicitly out of Stage 3
 
-FREEZE/MUTATE/COLLAPSE/RESEED/SILENCE · content memory · custom GUI · hardware mapping · Stage 3
+FREEZE/MUTATE/COLLAPSE/RESEED/SILENCE · audio memory · custom GUI · hardware mapping · Stage 4
 
 ## Reference renders
 
 ```bash
-./build/tests/pfl_ruin_engine_render --stage2
-# → renders/ruin-engine/stage2/
+./build/tests/pfl_ruin_engine_render --stage3
+# → renders/ruin-engine/stage3/
 ```
 
-## Ableton acceptance (Stage 2)
+## Ableton acceptance (Stage 3)
 
 **PASS** (2026-09-09) — creative director confirmed in Ableton Live:
 
-- explicit states are musically useful
-- INTACT / WEATHERED / FRACTURED / RUINED / RECOVERING behave as intended
-- AGE and INSTABILITY remain perceptually distinct
-- AGE .20 / INSTABILITY .80 differs from AGE .90 / INSTABILITY .15
+- accumulated processing wear is musically useful
+- fresh vs aged / scarred conditions are perceptibly distinct
+- recovery is gradual; returning AGE does not instantly erase history
+- WearState persists across save/reload as intended
 - no host-level issue observed
 
-Next musical direction: **Stage 3 — accumulated processing wear** (not audio-loop memory).
+### Listening procedure (accepted)
+
+**TEST A — Fresh vs aged:** MIX .70 / AGE .20 / INST .35 briefly, then AGE .85 / INST .60 for ~128–256 beats, return AGE .20 — residual wear should remain.
+
+**TEST B — Recovery:** After damage, AGE .10 / INST .20 for 128–256 beats — gradual recovery, not instant erase.
+
+**TEST C — AGE vs history:** Fresh instance at AGE .40 vs previously abused/recovered at AGE .40 — subtle difference, same recognisable intent.
+
+**TEST D — Save/restore:** Damage, save Set, reload — WearState restored.
+
+## Stage 2 acceptance (complete)
+
+**PASS** (2026-09-09) — explicit states musically useful; AGE vs INSTABILITY distinct; no host issues.
+
+Next musical direction: **Stage 4 — performance intervention** (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE).
