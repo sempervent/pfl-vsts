@@ -26,7 +26,7 @@ Deterministic generative MIDI **Instrument** (AU/VST3) for Ableton: stereo in (i
 
 Deterministic generative **audio effect** (AU/VST3): degradation states, accumulated WearState, and performance verbs (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE). Controls: MIX, AGE, INSTABILITY, OUTPUT, SEED. Algorithm v4. Ableton-accepted through Stage 4; parked as shippable. See `docs/RUIN_ENGINE.md`.
 
-### PFL Memory Eater (Stage 3 complete; Stage 4 in progress)
+### PFL Memory Eater (Stage 4 draft — performance; Stages 1–3 PASS)
 
 Generative **audio-memory** effect: short-term ring + ecology + **generational descendants** (bounded self-resampling, no feedback loop). **Send-first**: Ableton Return with MIX=1.0. Controls: MIX, HUNGER, MEMORY, OUTPUT, SEED. Algorithm v3. See `docs/MEMORY_EATER.md`.
 
@@ -37,7 +37,7 @@ Development order (planned unless the creative director changes priority):
 1. **PFL Drone Organism** — Implemented. Composition + synthesis + performance control.
 2. **PFL Broken Conductor** — Stage 6 complete (software). Stage 7 = physical rig.
 3. **PFL Ruin Engine** — PARKED at Stage 4 (shippable). Generative transformation of incoming audio.
-4. **PFL Memory Eater** — Stage 3 complete (Ableton PASS, generational). Stage 4 = performance verbs (final).
+4. **PFL Memory Eater** — Stages 1–3 PASS. Stage 4 draft = FREEZE/MUTATE/COLLAPSE/RESEED/SILENCE (final before park).
 5. **PFL Pulse Colony** — Evolving rhythmic slicer / gate / panner organisms (not static presets).
 6. **PFL Signal Parasite** — Later: audio-reactive generative collaborator (deterministic analysis, not ML-by-default).
 

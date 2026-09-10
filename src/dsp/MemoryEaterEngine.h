@@ -33,15 +33,16 @@ struct MemoryRecallEvent
 };
 
 /**
- * Memory Eater Stage 3: ecology + bounded generational descendant capture.
- * Algorithm v3. Recalled wet is NOT written back into the ring.
- * Descendants come from explicit capture of the internal wet recall path only.
+ * Memory Eater Stage 4: Stage 3 ecology + performance intervention.
+ * Algorithm v4. Recalled wet is NOT written back into the ring.
+ * Descendants come from explicit capture of the internal wet recall path only,
+ * or from manual MUTATE structural children.
  * Send-first: MIX=1.0 on Ableton Return is the canonical workflow.
  */
 class MemoryEaterEngine
 {
 public:
-    static constexpr int kAlgorithmVersion = 3;
+    static constexpr int kAlgorithmVersion = 4;
     static constexpr float kMaxHistoryBeats = 32.0f;
     static constexpr float kMinDesignBpm = 40.0f;
     static constexpr double kOpportunityBeats = 0.5;
@@ -90,6 +91,16 @@ public:
         lastPpq_ = -1.0e9;
         events_.clear();
         inputActivity_ = 0.0f;
+        ringWriteEnabled_ = true;
+        lifecycleEnabled_ = true;
+        promoteEnabled_ = true;
+        scheduleEnabled_ = true;
+        captureEnabled_ = true;
+        collapseRememberBias_ = false;
+        silenceActive_ = false;
+        silenceGain_ = 1.0f;
+        silenceGainT_ = 1.0f;
+        ecology_.setDecayMultiplier (1.0f);
         rebuildRng();
     }
 
@@ -147,6 +158,89 @@ public:
 
     int descendantsCreated() const noexcept { return ecology_.descendants(); }
     bool captureArmed() const noexcept { return captureArmed_; }
+
+    // --- Stage 4 performance hooks (driven by MemoryEaterPerformanceController) ---
+    void setRingWriteEnabled (bool e) noexcept { ringWriteEnabled_ = e; }
+    void setLifecycleEnabled (bool e) noexcept { lifecycleEnabled_ = e; }
+    void setPromoteEnabled (bool e) noexcept { promoteEnabled_ = e; }
+    void setScheduleEnabled (bool e) noexcept { scheduleEnabled_ = e; }
+    void setCaptureEnabled (bool e) noexcept { captureEnabled_ = e; }
+    void setCollapseRememberBias (bool e) noexcept { collapseRememberBias_ = e; }
+    void setLifecycleDecayMultiplier (float m) noexcept { ecology_.setDecayMultiplier (m); }
+
+    void setSilenceActive (bool on) noexcept
+    {
+        silenceActive_ = on;
+        silenceGainT_ = on ? 0.0f : 1.0f;
+        if (on)
+            silenceCoeff_ = 1.0f - std::exp (-1.0f / static_cast<float> (std::max (1.0, 0.008 * sampleRate_)));
+    }
+
+    void beginUnsilenceFade() noexcept
+    {
+        silenceActive_ = false;
+        silenceGainT_ = 1.0f;
+        silenceCoeff_ = 1.0f - std::exp (-1.0f / static_cast<float> (std::max (1.0, 0.012 * sampleRate_)));
+    }
+
+    float silenceGain() const noexcept { return silenceGain_; }
+    bool ringWriteEnabled() const noexcept { return ringWriteEnabled_; }
+    bool scheduleEnabled() const noexcept { return scheduleEnabled_; }
+
+    void clearShortTermRing() noexcept { history_.clear(); }
+
+    /** Snap opportunity scheduler to current PPQ without processing missed indices. */
+    void snapScheduler (double ppq) noexcept
+    {
+        lastEvalIndex_ = static_cast<int> (std::floor (ppq / kOpportunityBeats));
+        lastRecallBeat_ = std::min (lastRecallBeat_, ppq);
+    }
+
+    /** Avoid lifecycle catch-up after a pause (FREEZE/SILENCE). */
+    void resyncEcologyTimeline (double ppq) noexcept
+    {
+        ecology_.resyncTimeline (ppq);
+    }
+
+    void terminateActiveRecall() noexcept
+    {
+        if (voiceActive_)
+            beginRelease();
+        cancelCapture();
+    }
+
+    void cancelActiveCapture() noexcept { cancelCapture(); }
+
+    /** Manual MUTATE: one bounded structural child. Returns child memoryId or -1. */
+    int forceManualDescendant (double beat, float memoryParam,
+                               pfl::generative::DeterministicRNG& selRng,
+                               pfl::generative::DeterministicRNG& childRng) noexcept
+    {
+        const int parent = selectMutateParent (beat, selRng);
+        if (parent < 0)
+            return -1;
+        const float offU = childRng.nextFloat();
+        const float lenU = childRng.nextFloat();
+        return ecology_.forceStructuralChild (beat, parent, offU, lenU, memoryParam);
+    }
+
+    int forceForgetSteps (double beat, int steps) noexcept
+    {
+        return ecology_.forceForgetSteps (beat, steps);
+    }
+
+    int enforceResidue (double beat) noexcept
+    {
+        return ecology_.enforceResidue (beat);
+    }
+
+    void clearAllMemories (double beat) noexcept
+    {
+        terminateActiveRecall();
+        ecology_.clearAllMemories (beat);
+    }
+
+    float currentMemoryParam() const noexcept { return memorySmooth_.current(); }
 
     void process (float* left, float* right, int numSamples,
                   bool transportPlaying, double ppqStart, double bpm) noexcept
@@ -206,9 +300,12 @@ public:
 
             if (transportPlaying)
             {
-                history_.write (inL, inR); // original input only — never wet
-                ecology_.advanceLifecycle (ppq, memory);
-                advanceScheduler (ppq, hunger, memory, safeBpm);
+                if (ringWriteEnabled_)
+                    history_.write (inL, inR); // original input only — never wet
+                if (lifecycleEnabled_)
+                    ecology_.advanceLifecycle (ppq, memory);
+                if (scheduleEnabled_)
+                    advanceScheduler (ppq, hunger, memory, safeBpm);
             }
 
             float wetL = 0.0f, wetR = 0.0f;
@@ -220,13 +317,18 @@ public:
             wetR = limR_.processSample (wetR);
 
             // Stage 3: explicit descendant capture from internal wet (pre MIX/OUTPUT)
-            if (transportPlaying)
+            if (transportPlaying && captureEnabled_)
                 tickCapture (wetL, wetR, ppq, memory);
 
             float outL = inL * (1.0f - mix) + wetL * mix;
             float outR = inR * (1.0f - mix) + wetR * mix;
-            outL = std::clamp (outL * outG, -0.99f, 0.99f);
-            outR = std::clamp (outR * outG, -0.99f, 0.99f);
+            outL *= outG;
+            outR *= outG;
+            silenceGain_ += (silenceGainT_ - silenceGain_) * silenceCoeff_;
+            outL *= silenceGain_;
+            outR *= silenceGain_;
+            outL = std::clamp (outL, -0.99f, 0.99f);
+            outR = std::clamp (outR, -0.99f, 0.99f);
             if (! std::isfinite (outL)) outL = 0.0f;
             if (! std::isfinite (outR)) outR = 0.0f;
             left[i] = outL;
@@ -240,6 +342,41 @@ public:
     }
 
 private:
+    int selectMutateParent (double beat, pfl::generative::DeterministicRNG& selRng) noexcept
+    {
+        float weights[MemoryEcology::kNumSlots] {};
+        float total = 0.0f;
+        int eligible = 0;
+        for (int i = 0; i < MemoryEcology::kNumSlots; ++i)
+        {
+            const auto& s = ecology_.slot (i);
+            if (! s.valid || s.generation >= MemoryEcology::kMaxGeneration)
+                continue;
+            const float age = static_cast<float> (std::max (0.0, beat - s.promoteBeat));
+            const float w = (0.25f + 0.55f * s.strength) * (1.0f - 0.35f * s.fatigue)
+                            * (1.0f + 0.15f * std::min (age, 64.0f) / 64.0f)
+                            * (1.0f - 0.08f * static_cast<float> (s.generation));
+            weights[i] = std::max (0.02f, w);
+            total += weights[i];
+            ++eligible;
+        }
+        if (eligible == 0 || total <= 0.0f)
+            return -1;
+        float u = selRng.nextFloat() * total;
+        for (int i = 0; i < MemoryEcology::kNumSlots; ++i)
+        {
+            if (weights[i] <= 0.0f)
+                continue;
+            u -= weights[i];
+            if (u <= 0.0f)
+                return i;
+        }
+        for (int i = MemoryEcology::kNumSlots - 1; i >= 0; --i)
+            if (weights[i] > 0.0f)
+                return i;
+        return -1;
+    }
+
     void rebuildRng() noexcept
     {
         opportunityRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, 0x4F50504Full);
@@ -344,9 +481,12 @@ private:
         // Selection: stored vs short-term (ecology RNG isolated from opportunity timing)
         bool useStored = false;
         int slot = -1;
-        if (haveStored && ecology_.shouldTryStored (memory))
+        float memSel = memory;
+        if (collapseRememberBias_)
+            memSel = std::min (1.0f, memory + 0.35f);
+        if (haveStored && (ecology_.shouldTryStored (memSel) || collapseRememberBias_))
         {
-            slot = ecology_.selectStoredSlot (beat, memory);
+            slot = ecology_.selectStoredSlot (beat, memSel);
             useStored = slot >= 0;
         }
 
@@ -364,7 +504,8 @@ private:
             fragLookbackStart_ = 0.0f;
             fragPos_ = 0.0f;
             lastRecallBeat_ = beat;
-            ecology_.noteStoredRecall (slot, beat);
+            if (lifecycleEnabled_)
+                ecology_.noteStoredRecall (slot, beat);
 
             const int loops = std::max (1, static_cast<int> (std::ceil (
                 durBeats / std::max (0.01f, s.fragmentBeats))));
@@ -421,8 +562,9 @@ private:
         pushRecallEvent (beat, sourceBeat, lookbackBeats, fragBeats, durBeats, loops,
                          hunger, memory, false, -1, 0);
 
-        ecology_.tryPromote (history_, beat, sourceBeat, lookbackSamples2, fragLenSamples_,
-                             fragBeats, memory, inputActivity_);
+        if (promoteEnabled_)
+            ecology_.tryPromote (history_, beat, sourceBeat, lookbackSamples2, fragLenSamples_,
+                                 fragBeats, memory, inputActivity_);
     }
 
     void pushRecallEvent (double beat, double sourceBeat, double lookback, float frag, float dur,
@@ -459,6 +601,8 @@ private:
     void maybeArmDescendantCapture (int parentSlot, double beat, float memory, double bpm) noexcept
     {
         cancelCapture();
+        if (! promoteEnabled_ || ! captureEnabled_)
+            return;
         if (parentSlot < 0)
             return;
         const auto& p = ecology_.slot (parentSlot);
@@ -676,6 +820,18 @@ private:
     float captureMemoryParam_ = 0.5f;
     double captureBpm_ = 120.0;
     std::vector<float> captureL_, captureR_;
+
+    // Stage 4 performance gates (defaults preserve Stage 3 behaviour)
+    bool ringWriteEnabled_ = true;
+    bool lifecycleEnabled_ = true;
+    bool promoteEnabled_ = true;
+    bool scheduleEnabled_ = true;
+    bool captureEnabled_ = true;
+    bool collapseRememberBias_ = false;
+    bool silenceActive_ = false;
+    float silenceGain_ = 1.0f;
+    float silenceGainT_ = 1.0f;
+    float silenceCoeff_ = 0.05f;
 
     bool traceEnabled_ = false;
     std::vector<MemoryRecallEvent> events_;

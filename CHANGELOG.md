@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Memory Eater — Stage 4 (draft)
+
+Performance intervention: FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE.
+Algorithm v4 + performance-engine v1. Send-first Return workflow unchanged.
+WAITING FOR CREATIVE-DIRECTOR ACCEPTANCE.
+
+
 ### Memory Eater — Stage 3 COMPLETE
 
 - Creative-director Ableton acceptance **PASS** (generational memory)

@@ -8,7 +8,7 @@ MemoryEaterEditor::MemoryEaterEditor (MemoryEaterProcessor& p)
 {
     juce::ignoreUnused (processor_);
     addAndMakeVisible (genericEditor_);
-    setSize (400, 280);
+    setSize (400, 420);
 }
 
 MemoryEaterEditor::~MemoryEaterEditor() = default;
@@ -18,7 +18,7 @@ void MemoryEaterEditor::paint (juce::Graphics& g)
     g.fillAll (juce::Colours::black);
     g.setColour (juce::Colours::grey);
     g.setFont (12.0f);
-    g.drawText ("PFL Memory Eater — Stage 3",
+    g.drawText ("PFL Memory Eater — Stage 4",
                 getLocalBounds().removeFromBottom (24).reduced (8, 2),
                 juce::Justification::centredLeft);
 }

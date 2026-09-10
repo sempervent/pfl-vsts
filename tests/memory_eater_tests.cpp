@@ -1,10 +1,12 @@
 #include "dsp/MemoryEaterEngine.h"
+#include "performance/MemoryEaterPerformanceController.h"
 
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -55,11 +57,52 @@ void renderRun (pfl::dsp::MemoryEaterEngine& eng, std::vector<float>& L, std::ve
         done += m;
     }
 }
+
+void processWithPerf (pfl::dsp::MemoryEaterEngine& eng,
+                      pfl::memory_perf::MemoryEaterPerformanceController& perf,
+                      std::vector<float>& L, std::vector<float>& R,
+                      double sr, double bpm, double startBeat, double numBeats,
+                      bool playing, int block = 256)
+{
+    const double bps = (bpm / 60.0) / sr;
+    const int n = std::max (1, static_cast<int> (numBeats / bps));
+    if (static_cast<int> (L.size()) < n)
+    {
+        auto src = makeIdentSource (n, sr, bpm);
+        L = src;
+        R = src;
+    }
+    int done = 0;
+    while (done < n)
+    {
+        const int m = std::min (block, n - done);
+        const double ppq = startBeat + static_cast<double> (done) * bps;
+        perf.tick (ppq, playing, eng);
+        eng.process (L.data() + done, R.data() + done, m, playing, ppq, bpm);
+        done += m;
+    }
+}
+
+std::string fingerprintEcology (const pfl::dsp::MemoryEcology& eco)
+{
+    std::ostringstream os;
+    os << "occ=" << eco.occupiedCount() << ";";
+    for (int i = 0; i < eco.numSlots(); ++i)
+    {
+        const auto& s = eco.slot (i);
+        if (! s.valid) continue;
+        os << s.memoryId << ":g" << s.generation << ":p" << s.parentMemoryId
+           << ":r" << s.rootMemoryId << ":s" << static_cast<int> (s.strength * 1000)
+           << ";";
+    }
+    return os.str();
+}
 } // namespace
 
 static void testAlgorithmVersion()
 {
-    EXPECT (pfl::dsp::MemoryEaterEngine::kAlgorithmVersion == 3);
+    EXPECT (pfl::dsp::MemoryEaterEngine::kAlgorithmVersion == 4);
+    EXPECT (pfl::memory_perf::kPerformanceEngineVersion == 1);
 }
 
 static void testMixZeroDry()
@@ -659,6 +702,311 @@ static void testHungerIncreasesActivity()
     EXPECT (high > low);
 }
 
+static void testStage4FreezeKeepsRecallsNoPromote()
+{
+    const double sr = 48000.0, bpm = 72.0;
+    pfl::dsp::MemoryEaterEngine eng;
+    pfl::memory_perf::MemoryEaterPerformanceController perf;
+    eng.prepare (sr);
+    eng.setSeed (3003);
+    eng.setMix (1.0f);
+    eng.setHunger (0.85f);
+    eng.setMemory (0.80f);
+    eng.setOutput (0.9f);
+    eng.snapMacros();
+    eng.setTraceEnabled (true);
+    perf.reset (3003);
+    perf.setTraceEnabled (true);
+    std::vector<float> L, R;
+    processWithPerf (eng, perf, L, R, sr, bpm, 0.0, 96.0, true);
+    const int occBefore = eng.ecology().occupiedCount();
+    const int promoBefore = eng.ecology().promotions();
+    const int descBefore = eng.ecology().descendants();
+    const auto fpBefore = fingerprintEcology (eng.ecology());
+    EXPECT (occBefore > 0);
+
+    perf.trigger (pfl::memory_perf::Command::FreezeOn, 96.0, eng);
+    EXPECT (perf.mode() == pfl::memory_perf::Mode::Frozen);
+    EXPECT (! eng.ringWriteEnabled());
+    const size_t recallsBefore = eng.events().size();
+    processWithPerf (eng, perf, L, R, sr, bpm, 96.0, 64.0, true);
+    EXPECT (eng.ecology().promotions() == promoBefore);
+    EXPECT (eng.ecology().descendants() == descBefore);
+    EXPECT (fingerprintEcology (eng.ecology()) == fpBefore);
+    EXPECT (eng.events().size() > recallsBefore);
+}
+
+static void testStage4MutateWhileFrozen()
+{
+    const double sr = 48000.0, bpm = 72.0;
+    pfl::dsp::MemoryEaterEngine eng;
+    pfl::memory_perf::MemoryEaterPerformanceController perf;
+    eng.prepare (sr);
+    eng.setSeed (3003);
+    eng.setMix (1.0f);
+    eng.setHunger (0.9f);
+    eng.setMemory (0.85f);
+    eng.setOutput (0.9f);
+    eng.snapMacros();
+    perf.reset (3003);
+    perf.setTraceEnabled (true);
+    std::vector<float> L, R;
+    processWithPerf (eng, perf, L, R, sr, bpm, 0.0, 128.0, true);
+    EXPECT (eng.ecology().occupiedCount() > 0);
+    perf.trigger (pfl::memory_perf::Command::FreezeOn, 128.0, eng);
+    const int desc0 = eng.ecology().descendants();
+    perf.trigger (pfl::memory_perf::Command::Mutate, 130.0, eng);
+    EXPECT (perf.mode() == pfl::memory_perf::Mode::Frozen);
+    EXPECT (eng.ecology().descendants() >= desc0);
+    perf.trigger (pfl::memory_perf::Command::Mutate, 140.0, eng);
+    EXPECT (perf.mode() == pfl::memory_perf::Mode::Frozen);
+}
+
+static void testStage4MutateEmptyNoOp()
+{
+    pfl::dsp::MemoryEaterEngine eng;
+    pfl::memory_perf::MemoryEaterPerformanceController perf;
+    eng.prepare (48000.0);
+    eng.setSeed (3003);
+    eng.snapMacros();
+    perf.reset (3003);
+    perf.setTraceEnabled (true);
+    perf.trigger (pfl::memory_perf::Command::Mutate, 0.0, eng);
+    EXPECT (perf.state().lastMutateChildId < 0);
+    EXPECT (eng.ecology().descendants() == 0);
+}
+
+static void testStage4CollapseResidue()
+{
+    const double sr = 48000.0, bpm = 72.0;
+    pfl::dsp::MemoryEaterEngine eng;
+    pfl::memory_perf::MemoryEaterPerformanceController perf;
+    eng.prepare (sr);
+    eng.setSeed (3003);
+    eng.setMix (1.0f);
+    eng.setHunger (0.95f);
+    eng.setMemory (0.9f);
+    eng.setOutput (0.9f);
+    eng.snapMacros();
+    perf.reset (3003);
+    perf.setTraceEnabled (true);
+    std::vector<float> L, R;
+    processWithPerf (eng, perf, L, R, sr, bpm, 0.0, 160.0, true);
+    const int before = eng.ecology().occupiedCount();
+    EXPECT (before >= 1);
+    perf.trigger (pfl::memory_perf::Command::Collapse, 160.0, eng);
+    processWithPerf (eng, perf, L, R, sr, bpm, 160.0, 28.0, true);
+    EXPECT (perf.mode() == pfl::memory_perf::Mode::Collapsed
+            || perf.mode() == pfl::memory_perf::Mode::Collapsing);
+    if (perf.mode() == pfl::memory_perf::Mode::Collapsed)
+    {
+        EXPECT (eng.ecology().occupiedCount() <= 1);
+        EXPECT (eng.ecology().occupiedCount() <= before);
+    }
+    const auto mode = perf.mode();
+    perf.trigger (pfl::memory_perf::Command::Collapse, 190.0, eng);
+    EXPECT (perf.mode() == mode);
+}
+
+static void testStage4ReseedPreservesEcology()
+{
+    const double sr = 48000.0, bpm = 72.0;
+    pfl::dsp::MemoryEaterEngine eng;
+    pfl::memory_perf::MemoryEaterPerformanceController perf;
+    eng.prepare (sr);
+    eng.setSeed (3003);
+    eng.setMix (1.0f);
+    eng.setHunger (0.9f);
+    eng.setMemory (0.85f);
+    eng.setOutput (0.9f);
+    eng.snapMacros();
+    perf.reset (3003);
+    std::vector<float> L, R;
+    processWithPerf (eng, perf, L, R, sr, bpm, 0.0, 128.0, true);
+    const auto fp = fingerprintEcology (eng.ecology());
+    const auto oldSeed = eng.seed();
+    EXPECT (eng.ecology().occupiedCount() > 0);
+    perf.trigger (pfl::memory_perf::Command::Reseed, 128.0, eng);
+    EXPECT (eng.seed() != oldSeed);
+    EXPECT (fingerprintEcology (eng.ecology()) == fp);
+}
+
+static void testStage4SilenceMutesTotalOutput()
+{
+    const double sr = 48000.0, bpm = 72.0;
+    pfl::dsp::MemoryEaterEngine eng;
+    pfl::memory_perf::MemoryEaterPerformanceController perf;
+    eng.prepare (sr);
+    eng.setSeed (3003);
+    eng.setMix (0.0f);
+    eng.setHunger (0.5f);
+    eng.setMemory (0.5f);
+    eng.setOutput (1.0f);
+    eng.snapMacros();
+    perf.reset (3003);
+    perf.trigger (pfl::memory_perf::Command::SilenceOn, 0.0, eng);
+    EXPECT (eng.ringWriteEnabled());
+    const int n = 4800;
+    auto in = makeIdentSource (n, sr, bpm);
+    float peak = 1.0f;
+    for (int iter = 0; iter < 12; ++iter)
+    {
+        auto outL = in, outR = in;
+        perf.tick (0.0, true, eng);
+        eng.process (outL.data(), outR.data(), n, true, 0.0, bpm);
+        peak = 0.0f;
+        for (int s = 0; s < n; ++s)
+            peak = std::max (peak, std::max (std::abs (outL[static_cast<size_t> (s)]),
+                                             std::abs (outR[static_cast<size_t> (s)])));
+    }
+    EXPECT (peak < 0.02f);
+    EXPECT (eng.silenceGain() < 0.05f);
+}
+
+static void testStage4CommandScriptDeterminism()
+{
+    const double sr = 48000.0, bpm = 72.0;
+    auto run = [&] ()
+    {
+        pfl::dsp::MemoryEaterEngine eng;
+        pfl::memory_perf::MemoryEaterPerformanceController perf;
+        eng.prepare (sr);
+        eng.setSeed (3003);
+        eng.setMix (1.0f);
+        eng.setHunger (0.75f);
+        eng.setMemory (0.70f);
+        eng.setOutput (0.9f);
+        eng.snapMacros();
+        eng.setTraceEnabled (true);
+        perf.reset (3003);
+        perf.setTraceEnabled (true);
+        std::vector<float> L, R;
+        processWithPerf (eng, perf, L, R, sr, bpm, 0.0, 64.0, true);
+        perf.trigger (pfl::memory_perf::Command::FreezeOn, 64.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 64.0, 16.0, true);
+        perf.trigger (pfl::memory_perf::Command::Mutate, 80.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 80.0, 16.0, true);
+        perf.trigger (pfl::memory_perf::Command::Mutate, 96.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 96.0, 16.0, true);
+        perf.trigger (pfl::memory_perf::Command::FreezeOff, 112.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 112.0, 32.0, true);
+        perf.trigger (pfl::memory_perf::Command::Collapse, 144.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 144.0, 12.0, true);
+        perf.trigger (pfl::memory_perf::Command::SilenceOn, 156.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 156.0, 8.0, true);
+        perf.trigger (pfl::memory_perf::Command::SilenceOff, 164.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 164.0, 28.0, true);
+        perf.trigger (pfl::memory_perf::Command::Reseed, 192.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 192.0, 64.0, true);
+
+        std::ostringstream os;
+        os << "seed=" << eng.seed()
+           << " occ=" << eng.ecology().occupiedCount()
+           << " desc=" << eng.ecology().descendants()
+           << " recalls=" << eng.events().size()
+           << " residue=" << perf.state().residueMemoryId
+           << " mode=" << static_cast<int> (perf.mode());
+        for (const auto& e : perf.events())
+            os << "|" << e.ppq << ":" << e.detail;
+        return os.str();
+    };
+    EXPECT (run() == run());
+}
+
+static void testStage4PerfBufferMatrix()
+{
+    const double sr = 48000.0, bpm = 72.0;
+    const int blocks[] = { 64, 127, 128, 255, 256, 511, 512, 1024 };
+    std::string ref;
+    for (int b : blocks)
+    {
+        pfl::dsp::MemoryEaterEngine eng;
+        pfl::memory_perf::MemoryEaterPerformanceController perf;
+        eng.prepare (sr, b);
+        eng.setSeed (3003);
+        eng.setMix (1.0f);
+        eng.setHunger (0.7f);
+        eng.setMemory (0.7f);
+        eng.setOutput (0.9f);
+        eng.snapMacros();
+        eng.setTraceEnabled (true);
+        perf.reset (3003);
+        std::vector<float> L, R;
+        processWithPerf (eng, perf, L, R, sr, bpm, 0.0, 48.0, true, b);
+        perf.trigger (pfl::memory_perf::Command::FreezeOn, 48.0, eng);
+        processWithPerf (eng, perf, L, R, sr, bpm, 48.0, 16.0, true, b);
+        perf.trigger (pfl::memory_perf::Command::Mutate, 64.0, eng);
+        std::ostringstream os;
+        os << eng.ecology().occupiedCount() << ":" << eng.ecology().descendants()
+           << ":" << perf.state().lastMutateChildId;
+        if (ref.empty())
+            ref = os.str();
+        else
+            EXPECT (os.str() == ref);
+    }
+}
+
+static void testStage4LongRunSoak()
+{
+    const double sr = 44100.0, bpm = 120.0;
+    const double beats = 120.0; // ~60s at 120bpm
+    pfl::dsp::MemoryEaterEngine eng;
+    pfl::memory_perf::MemoryEaterPerformanceController perf;
+    eng.prepare (sr);
+    eng.setSeed (3003);
+    eng.setMix (1.0f);
+    eng.setHunger (0.95f);
+    eng.setMemory (0.90f);
+    eng.setOutput (0.9f);
+    eng.snapMacros();
+    perf.reset (3003);
+    const double bps = (bpm / 60.0) / sr;
+    const int n = static_cast<int> (beats / bps);
+    auto L = makeIdentSource (n, sr, bpm);
+    auto R = L;
+    const size_t ram0 = eng.totalRamBytes();
+    int done = 0;
+    int cmdBeat = 32;
+    int phase = 0;
+    while (done < n)
+    {
+        const int m = std::min (256, n - done);
+        const double ppq = static_cast<double> (done) * bps;
+        if (ppq >= cmdBeat)
+        {
+            using C = pfl::memory_perf::Command;
+            switch (phase % 5)
+            {
+                case 0: perf.trigger (C::FreezeOn, ppq, eng); break;
+                case 1: perf.trigger (C::Mutate, ppq, eng); break;
+                case 2: perf.trigger (C::FreezeOff, ppq, eng);
+                        perf.trigger (C::Collapse, ppq, eng); break;
+                case 3: perf.trigger (C::SilenceOn, ppq, eng); break;
+                case 4: perf.trigger (C::SilenceOff, ppq, eng);
+                        perf.trigger (C::Reseed, ppq, eng); break;
+            }
+            ++phase;
+            cmdBeat += 24;
+        }
+        perf.tick (ppq, true, eng);
+        eng.process (L.data() + done, R.data() + done, m, true, ppq, bpm);
+        done += m;
+        for (int i = 0; i < m; ++i)
+        {
+            EXPECT (std::isfinite (L[static_cast<size_t> (done - m + i)]));
+            EXPECT (std::isfinite (R[static_cast<size_t> (done - m + i)]));
+        }
+    }
+    EXPECT (eng.ecology().occupiedCount() <= 6);
+    EXPECT (eng.totalRamBytes() == ram0);
+    for (int i = 0; i < eng.ecology().numSlots(); ++i)
+    {
+        const auto& s = eng.ecology().slot (i);
+        if (s.valid)
+            EXPECT (s.generation <= pfl::dsp::MemoryEcology::kMaxGeneration);
+    }
+}
+
 int main()
 {
     testAlgorithmVersion();
@@ -684,6 +1032,15 @@ int main()
     testGenerationCapNoOverflow();
     testSeekCancelsCapturePreservesLineage();
     testNoWetWriteback();
+    testStage4FreezeKeepsRecallsNoPromote();
+    testStage4MutateWhileFrozen();
+    testStage4MutateEmptyNoOp();
+    testStage4CollapseResidue();
+    testStage4ReseedPreservesEcology();
+    testStage4SilenceMutesTotalOutput();
+    testStage4CommandScriptDeterminism();
+    testStage4PerfBufferMatrix();
+    testStage4LongRunSoak();
 
     if (gFails == 0)
     {

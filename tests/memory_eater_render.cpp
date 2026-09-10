@@ -1,4 +1,5 @@
 #include "dsp/MemoryEaterEngine.h"
+#include "performance/MemoryEaterPerformanceController.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_core/juce_core.h>
@@ -9,6 +10,7 @@
 #include <iostream>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -260,6 +262,174 @@ int main()
         }
         writeWav (dir / "monitoring-mix.wav", mixL, mixR, sr);
         writeLifecycle (dir / "monitoring-mix-lifecycle.txt", eng);
+    }
+
+
+    // -------- Stage 4 performance renders --------
+    {
+        const fs::path d4 = "renders/memory-eater/stage4";
+        fs::create_directories (d4);
+        auto writePerfTrace = [&] (const fs::path& path,
+                                   const pfl::memory_perf::MemoryEaterPerformanceController& perf,
+                                   const pfl::dsp::MemoryEaterEngine& eng)
+        {
+            std::ofstream tr (path);
+            tr << "Memory Eater Stage 4 performance trace\n";
+            tr << "algorithm=" << pfl::dsp::MemoryEaterEngine::kAlgorithmVersion
+               << " perfEngine=" << pfl::memory_perf::kPerformanceEngineVersion << "\n";
+            tr << "seed=" << eng.seed()
+               << " occupied=" << eng.ecology().occupiedCount()
+               << " descendants=" << eng.ecology().descendants()
+               << " residue=" << perf.state().residueMemoryId << "\n";
+            for (const auto& e : perf.events())
+                tr << "ppq " << e.ppq << " " << e.detail << "\n";
+            for (const auto& e : eng.ecology().traces())
+                tr << "eco beat " << e.beat << " " << kindName (e.kind)
+                   << " memory=" << e.memoryId << " gen=" << e.generation << "\n";
+        };
+
+        auto processSeg = [&] (pfl::dsp::MemoryEaterEngine& eng,
+                               pfl::memory_perf::MemoryEaterPerformanceController& perf,
+                               std::vector<float>& L, std::vector<float>& R,
+                               double startBeat, double numBeats)
+        {
+            const double bps = (bpm / 60.0) / sr;
+            const int n = static_cast<int> (numBeats / bps);
+            const int offset = static_cast<int> (startBeat / bps);
+            for (int done = 0; done < n; done += 256)
+            {
+                const int m = std::min (256, n - done);
+                const int idx = offset + done;
+                if (idx + m > static_cast<int> (L.size())) break;
+                const double ppq = startBeat + done * bps;
+                perf.tick (ppq, true, eng);
+                eng.process (L.data() + idx, R.data() + idx, m, true, ppq, bpm);
+            }
+        };
+
+        auto makeBuf = [&] (double beats)
+        {
+            const double bps = (bpm / 60.0) / sr;
+            const int n = static_cast<int> (beats / bps);
+            std::vector<float> L (n), R (n);
+            fillIdent (L, R, sr, bpm);
+            return std::make_pair (L, R);
+        };
+
+        // freeze.wav
+        {
+            auto [L, R] = makeBuf (160.0);
+            pfl::dsp::MemoryEaterEngine eng; pfl::memory_perf::MemoryEaterPerformanceController perf;
+            eng.prepare (sr); eng.setSeed (3003); eng.setMix (1.0f); eng.setHunger (0.55f);
+            eng.setMemory (0.70f); eng.setOutput (0.85f); eng.snapMacros(); eng.setTraceEnabled (true);
+            perf.reset (3003); perf.setTraceEnabled (true);
+            processSeg (eng, perf, L, R, 0.0, 64.0);
+            perf.trigger (pfl::memory_perf::Command::FreezeOn, 64.0, eng);
+            processSeg (eng, perf, L, R, 64.0, 96.0);
+            writeWav (d4 / "freeze.wav", L, R, sr);
+            writePerfTrace (d4 / "freeze-trace.txt", perf, eng);
+        }
+        // freeze-mutate.wav
+        {
+            auto [L, R] = makeBuf (192.0);
+            pfl::dsp::MemoryEaterEngine eng; pfl::memory_perf::MemoryEaterPerformanceController perf;
+            eng.prepare (sr); eng.setSeed (3003); eng.setMix (1.0f); eng.setHunger (0.55f);
+            eng.setMemory (0.70f); eng.setOutput (0.85f); eng.snapMacros(); eng.setTraceEnabled (true);
+            perf.reset (3003); perf.setTraceEnabled (true);
+            processSeg (eng, perf, L, R, 0.0, 64.0);
+            perf.trigger (pfl::memory_perf::Command::FreezeOn, 64.0, eng);
+            processSeg (eng, perf, L, R, 64.0, 16.0);
+            perf.trigger (pfl::memory_perf::Command::Mutate, 80.0, eng);
+            processSeg (eng, perf, L, R, 80.0, 16.0);
+            perf.trigger (pfl::memory_perf::Command::Mutate, 96.0, eng);
+            processSeg (eng, perf, L, R, 96.0, 16.0);
+            perf.trigger (pfl::memory_perf::Command::FreezeOff, 112.0, eng);
+            processSeg (eng, perf, L, R, 112.0, 80.0);
+            writeWav (d4 / "freeze-mutate.wav", L, R, sr);
+            writePerfTrace (d4 / "freeze-mutate-trace.txt", perf, eng);
+        }
+        // collapse.wav + collapse-lineage.wav
+        for (const char* name : { "collapse.wav", "collapse-lineage.wav" })
+        {
+            const double beats = (std::string (name).find ("lineage") != std::string::npos) ? 320.0 : 220.0;
+            const float hunger = (std::string (name).find ("lineage") != std::string::npos) ? 0.80f : 0.60f;
+            const float memory = (std::string (name).find ("lineage") != std::string::npos) ? 0.95f : 0.75f;
+            auto [L, R] = makeBuf (beats);
+            pfl::dsp::MemoryEaterEngine eng; pfl::memory_perf::MemoryEaterPerformanceController perf;
+            eng.prepare (sr); eng.setSeed (3003); eng.setMix (1.0f); eng.setHunger (hunger);
+            eng.setMemory (memory); eng.setOutput (0.85f); eng.snapMacros(); eng.setTraceEnabled (true);
+            perf.reset (3003); perf.setTraceEnabled (true);
+            const double warm = beats - 40.0;
+            processSeg (eng, perf, L, R, 0.0, warm);
+            perf.trigger (pfl::memory_perf::Command::Collapse, warm, eng);
+            processSeg (eng, perf, L, R, warm, 40.0);
+            writeWav (d4 / name, L, R, sr);
+            writePerfTrace (d4 / (std::string (name).substr (0, std::string (name).size() - 4) + "-trace.txt"), perf, eng);
+        }
+        // reseed-preserves-memory.wav
+        {
+            auto [L, R] = makeBuf (256.0);
+            pfl::dsp::MemoryEaterEngine eng; pfl::memory_perf::MemoryEaterPerformanceController perf;
+            eng.prepare (sr); eng.setSeed (3003); eng.setMix (1.0f); eng.setHunger (0.60f);
+            eng.setMemory (0.75f); eng.setOutput (0.85f); eng.snapMacros(); eng.setTraceEnabled (true);
+            perf.reset (3003); perf.setTraceEnabled (true);
+            processSeg (eng, perf, L, R, 0.0, 128.0);
+            perf.trigger (pfl::memory_perf::Command::Reseed, 128.0, eng);
+            processSeg (eng, perf, L, R, 128.0, 128.0);
+            writeWav (d4 / "reseed-preserves-memory.wav", L, R, sr);
+            writePerfTrace (d4 / "reseed-preserves-memory-trace.txt", perf, eng);
+        }
+        // silence-listen-recover.wav
+        {
+            auto [L, R] = makeBuf (192.0);
+            pfl::dsp::MemoryEaterEngine eng; pfl::memory_perf::MemoryEaterPerformanceController perf;
+            eng.prepare (sr); eng.setSeed (3003); eng.setMix (1.0f); eng.setHunger (0.55f);
+            eng.setMemory (0.70f); eng.setOutput (0.85f); eng.snapMacros(); eng.setTraceEnabled (true);
+            perf.reset (3003); perf.setTraceEnabled (true);
+            processSeg (eng, perf, L, R, 0.0, 64.0);
+            perf.trigger (pfl::memory_perf::Command::SilenceOn, 64.0, eng);
+            processSeg (eng, perf, L, R, 64.0, 32.0);
+            perf.trigger (pfl::memory_perf::Command::SilenceOff, 96.0, eng);
+            processSeg (eng, perf, L, R, 96.0, 96.0);
+            writeWav (d4 / "silence-listen-recover.wav", L, R, sr);
+            writePerfTrace (d4 / "silence-listen-recover-trace.txt", perf, eng);
+        }
+        // performance-journey-wet.wav + mix
+        {
+            auto [L, R] = makeBuf (256.0);
+            auto dryL = L, dryR = R;
+            pfl::dsp::MemoryEaterEngine eng; pfl::memory_perf::MemoryEaterPerformanceController perf;
+            eng.prepare (sr); eng.setSeed (3003); eng.setMix (1.0f); eng.setHunger (0.50f);
+            eng.setMemory (0.70f); eng.setOutput (0.85f); eng.snapMacros(); eng.setTraceEnabled (true);
+            perf.reset (3003); perf.setTraceEnabled (true);
+            processSeg (eng, perf, L, R, 0.0, 64.0);
+            perf.trigger (pfl::memory_perf::Command::FreezeOn, 64.0, eng);
+            processSeg (eng, perf, L, R, 64.0, 16.0);
+            perf.trigger (pfl::memory_perf::Command::Mutate, 80.0, eng);
+            processSeg (eng, perf, L, R, 80.0, 16.0);
+            perf.trigger (pfl::memory_perf::Command::Mutate, 96.0, eng);
+            processSeg (eng, perf, L, R, 96.0, 16.0);
+            perf.trigger (pfl::memory_perf::Command::FreezeOff, 112.0, eng);
+            processSeg (eng, perf, L, R, 112.0, 32.0);
+            perf.trigger (pfl::memory_perf::Command::Collapse, 144.0, eng);
+            processSeg (eng, perf, L, R, 144.0, 12.0);
+            perf.trigger (pfl::memory_perf::Command::SilenceOn, 156.0, eng);
+            processSeg (eng, perf, L, R, 156.0, 8.0);
+            perf.trigger (pfl::memory_perf::Command::SilenceOff, 164.0, eng);
+            processSeg (eng, perf, L, R, 164.0, 28.0);
+            perf.trigger (pfl::memory_perf::Command::Reseed, 192.0, eng);
+            processSeg (eng, perf, L, R, 192.0, 64.0);
+            writeWav (d4 / "performance-journey-wet.wav", L, R, sr);
+            writePerfTrace (d4 / "performance-journey-trace.txt", perf, eng);
+            std::vector<float> mixL (L.size()), mixR (R.size());
+            for (size_t i = 0; i < L.size(); ++i)
+            {
+                mixL[i] = std::clamp (dryL[i] * 0.85f + L[i] * 0.55f, -0.99f, 0.99f);
+                mixR[i] = std::clamp (dryR[i] * 0.85f + R[i] * 0.55f, -0.99f, 0.99f);
+            }
+            writeWav (d4 / "performance-journey-mix.wav", mixL, mixR, sr);
+        }
+        std::cout << "stage4 renders written under " << d4 << "\n";
     }
 
     return 0;

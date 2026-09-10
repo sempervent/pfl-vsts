@@ -67,6 +67,10 @@ public:
     static constexpr float kFatigueRecoverPerBeat = 0.06f;
     static constexpr float kDecayPerBeatBase = 0.0065f;
 
+    /** Stage 4 collapse: scale strength decay (1 = normal). */
+    void setDecayMultiplier (float m) noexcept { decayMul_ = std::clamp (m, 0.0f, 24.0f); }
+    float decayMultiplier() const noexcept { return decayMul_; }
+
     void prepare (double sampleRate) noexcept
     {
         sampleRate_ = sampleRate > 1.0 ? sampleRate : 44100.0;
@@ -79,6 +83,8 @@ public:
             s.bufferR.assign (static_cast<size_t> (maxFragSamples_), 0.0f);
             invalidate (s);
         }
+        mutateScratchL_.assign (static_cast<size_t> (maxFragSamples_), 0.0f);
+        mutateScratchR_.assign (static_cast<size_t> (maxFragSamples_), 0.0f);
         nextMemoryId_ = 1;
         lastEcologyBeat_ = 0.0;
         activeSlot_ = -1;
@@ -98,6 +104,7 @@ public:
         traces_.clear();
         promotions_ = recallsStored_ = forgotten_ = replacements_ = descendants_ = 0;
         lastChildPromoteBeat_ = -1.0e9;
+        decayMul_ = 1.0f;
     }
 
     /** After seek/loop: keep slots, but do not decay across the timeline jump. */
@@ -191,7 +198,7 @@ public:
         const float mem = std::clamp (memoryParam, 0.0f, 1.0f);
         // High MEMORY slows decay modestly (longer-lived memories).
         const float decayScale = 1.0f - 0.45f * mem;
-        const float decayPerBeat = kDecayPerBeatBase * decayScale;
+        const float decayPerBeat = kDecayPerBeatBase * decayScale * decayMul_;
 
         for (int i = 0; i < kNumSlots; ++i)
         {
@@ -477,7 +484,130 @@ public:
         return true;
     }
 
+
     int lastPromotedSlot() const noexcept { return lastPromotedSlot_; }
+
+    /** Force-forget weakest non-active slot. Returns forgotten memoryId or -1. */
+    int forceForgetWeakest (double beat, int protectSlot = -1) noexcept
+    {
+        int best = -1;
+        float bestScore = 1.0e9f;
+        for (int i = 0; i < kNumSlots; ++i)
+        {
+            if (i == activeSlot_ || i == protectSlot) continue;
+            const auto& s = slots_[static_cast<size_t> (i)];
+            if (! s.valid) continue;
+            const float score = s.strength * 2.0f + 0.15f * static_cast<float> (s.generation)
+                                - 0.01f * static_cast<float> (beat - s.lastRecallBeat);
+            if (score < bestScore) { bestScore = score; best = i; }
+        }
+        if (best < 0) return -1;
+        const int mid = slots_[static_cast<size_t> (best)].memoryId;
+        if (traceEnabled_)
+            pushTrace (EcologyTraceEvent::Kind::Forget, beat, slots_[static_cast<size_t> (best)], best);
+        invalidate (slots_[static_cast<size_t> (best)]);
+        ++forgotten_;
+        return mid;
+    }
+
+    /** Keep at most one strongest valid slot (residue). Returns residue memoryId or -1. */
+    int enforceResidue (double beat) noexcept
+    {
+        int best = -1;
+        float bestStrength = -1.0f;
+        for (int i = 0; i < kNumSlots; ++i)
+        {
+            if (i == activeSlot_) continue;
+            const auto& s = slots_[static_cast<size_t> (i)];
+            if (! s.valid) continue;
+            const float score = s.strength + 0.05f * static_cast<float> (s.recallCount)
+                                - 0.02f * static_cast<float> (s.generation);
+            if (score > bestStrength) { bestStrength = score; best = i; }
+        }
+        // Also consider active as residue candidate
+        if (activeSlot_ >= 0 && slots_[static_cast<size_t> (activeSlot_)].valid)
+        {
+            const auto& s = slots_[static_cast<size_t> (activeSlot_)];
+            const float score = s.strength + 0.05f * static_cast<float> (s.recallCount);
+            if (score > bestStrength) { bestStrength = score; best = activeSlot_; }
+        }
+        if (best < 0)
+            return -1;
+        const int keepId = slots_[static_cast<size_t> (best)].memoryId;
+        for (int i = 0; i < kNumSlots; ++i)
+        {
+            if (i == best) continue;
+            if (! slots_[static_cast<size_t> (i)].valid) continue;
+            if (traceEnabled_)
+                pushTrace (EcologyTraceEvent::Kind::Forget, beat, slots_[static_cast<size_t> (i)], i);
+            invalidate (slots_[static_cast<size_t> (i)]);
+            ++forgotten_;
+        }
+        return keepId;
+    }
+
+    /** Wipe all stored memories (performance amnesia). Cancels active membership. */
+    void clearAllMemories (double beat) noexcept
+    {
+        for (int i = 0; i < kNumSlots; ++i)
+        {
+            if (! slots_[static_cast<size_t> (i)].valid) continue;
+            if (traceEnabled_)
+                pushTrace (EcologyTraceEvent::Kind::Forget, beat, slots_[static_cast<size_t> (i)], i);
+            invalidate (slots_[static_cast<size_t> (i)]);
+            ++forgotten_;
+        }
+        activeSlot_ = -1;
+    }
+
+    /**
+     * Manual/performance structural child from parent slot buffers (no wet capture).
+     * Uses same copy-loss as descendants. Returns child memoryId or -1.
+     */
+    int forceStructuralChild (double beat, int parentSlot, float offsetU, float lenU,
+                              float memoryParam) noexcept
+    {
+        if (parentSlot < 0 || parentSlot >= kNumSlots) return -1;
+        const auto& parent = slots_[static_cast<size_t> (parentSlot)];
+        if (! parent.valid || parent.generation >= kMaxGeneration) return -1;
+        const int parentLen = std::max (8, parent.lengthSamples);
+        const int skip = static_cast<int> (offsetU * 0.28f * static_cast<float> (parentLen));
+        int target = static_cast<int> ((0.55f + 0.37f * lenU) * static_cast<float> (parentLen));
+        target = std::clamp (target, 8, maxFragSamples_);
+        if (skip + target > parentLen)
+            target = std::max (8, parentLen - skip);
+        if (static_cast<int> (mutateScratchL_.size()) < target)
+            return -1;
+        for (int i = 0; i < target; ++i)
+        {
+            mutateScratchL_[static_cast<size_t> (i)] = parent.bufferL[static_cast<size_t> (skip + i)];
+            mutateScratchR_[static_cast<size_t> (i)] = parent.bufferR[static_cast<size_t> (skip + i)];
+        }
+        const float fragBeats = parent.fragmentBeats
+            * (static_cast<float> (target) / static_cast<float> (parentLen));
+        if (! tryPromoteDescendant (beat, parentSlot, mutateScratchL_.data(), mutateScratchR_.data(),
+                                    target, fragBeats, memoryParam))
+            return -1;
+        return slots_[static_cast<size_t> (lastPromotedSlot_)].memoryId;
+    }
+
+    /**
+     * Collapse devour step: force-forget weakest slots once per call (block/tick rate).
+     * Strength decay itself uses setDecayMultiplier + advanceLifecycle.
+     */
+    int forceForgetSteps (double beat, int steps) noexcept
+    {
+        int n = 0;
+        for (int k = 0; k < steps; ++k)
+        {
+            if (occupiedCount() <= 1)
+                break;
+            if (forceForgetWeakest (beat) >= 0)
+                ++n;
+        }
+        return n;
+    }
+
 
     void readSlotSample (int slotIndex, float pos, float& outL, float& outR) const noexcept
     {
@@ -587,6 +717,8 @@ private:
     int promotions_ = 0, recallsStored_ = 0, forgotten_ = 0, replacements_ = 0, descendants_ = 0;
     double lastChildPromoteBeat_ = -1.0e9;
     pfl::generative::DeterministicRNG promoteRng_, slotRng_, ecologyRecallRng_, lifetimeRng_;
+    std::vector<float> mutateScratchL_, mutateScratchR_;
+    float decayMul_ = 1.0f;
 };
 
 } // namespace pfl::dsp

@@ -60,11 +60,12 @@ Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 3 IN PROGRESS** (draft PR); Stage 2 COMPLETE |
-| Engine | algorithm **v3** |
+| Status | **Stage 4 IN PROGRESS** (draft PR); Stages 1–3 COMPLETE (Ableton PASS) |
+| Engine | algorithm **v4** + performance-engine **v1** |
 | Formats | AU VST3 (`Fx`) · `Mem1` · `com.pfl.memoryeater` |
 | Params | MIX, HUNGER, MEMORY, OUTPUT, SEED |
+| Performance | FREEZE, MUTATE, COLLAPSE, RESEED, SILENCE |
 | Workflow | **SEND-FIRST** — Return + MIX=1.0; source via Ableton Sends |
 | Ecology | 6 slots · gens 0…3 · descendant capture (no feedback loop) |
-| Tags | `memory-eater-stage1-complete` · `memory-eater-stage2-complete` |
-| Next | Creative-director Ableton acceptance for Stage 3 |
+| Tags | `memory-eater-stage1-complete` … `stage3-complete` |
+| Next | Creative-director Ableton acceptance for Stage 4; then PARK |
