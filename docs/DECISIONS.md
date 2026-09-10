@@ -742,3 +742,18 @@ Absolute PPQ rebuild replays state machine 0…evalIndex; isolated streams: `sta
 
 State selector UI; AGE=state index; INST=damage; geological dwells; Memory Eater; performance commands; Stage 1 `nudgeProfile` soup.
 
+
+---
+
+## 2026-09-09 — Ruin Engine Stage 2 complete (Ableton acceptance)
+
+### Context
+
+Creative director accepted Ruin Engine Stage 2 in Ableton: explicit processing states, AGE/INSTABILITY independence, constrained graph, human musical review PASS.
+
+### Decisions
+
+1. Tag `ruin-engine-stage2-complete` at the accepted Stage 2 tip.
+2. Mark PR #11 ready and merge to `main` (explicit creative-director authorization).
+3. Stage 3 is accumulated processing wear (not audio memory / Memory Eater). Do not begin MIDI/controller/studio integration.
+

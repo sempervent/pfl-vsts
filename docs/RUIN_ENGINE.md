@@ -4,8 +4,9 @@ Deterministic generative audio-transformation effect.
 
 ## Status
 
-**Stage 2 — awaiting creative-director Ableton acceptance** (draft PR #11).  
-Stage 1 complete: `ruin-engine-stage1-complete` (PR #10 merged).
+**Stage 2 COMPLETE** — creative-director Ableton acceptance **PASS**.  
+Tag: `ruin-engine-stage2-complete` · PR #11 merged.  
+Stage 1: `ruin-engine-stage1-complete` (PR #10 merged).
 
 Broken Conductor software development remains paused (Stage 7 = physical-rig integration).
 
@@ -89,13 +90,12 @@ FREEZE/MUTATE/COLLAPSE/RESEED/SILENCE · content memory · custom GUI · hardwar
 
 ## Ableton acceptance (Stage 2)
 
-Suggested: MIX .70, AGE .50, INSTABILITY .50, ≥128–256 beats.
+**PASS** (2026-09-09) — creative director confirmed in Ableton Live:
 
-Listen for distinct conditions, FRACTURED temporal identity, usable RUINED, intentional RECOVERY, no chatter.
+- explicit states are musically useful
+- INTACT / WEATHERED / FRACTURED / RUINED / RECOVERING behave as intended
+- AGE and INSTABILITY remain perceptually distinct
+- AGE .20 / INSTABILITY .80 differs from AGE .90 / INSTABILITY .15
+- no host-level issue observed
 
-Cross-test:
-
-- AGE .20 / INST .80 → restless but lightly damaged  
-- AGE .90 / INST .15 → deeply damaged but comparatively stable  
-
-If those sound equivalent: FAIL.
+Next musical direction: **Stage 3 — accumulated processing wear** (not audio-loop memory).

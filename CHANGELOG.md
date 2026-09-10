@@ -2,12 +2,13 @@
 
 ## Unreleased
 
-### Ruin Engine — Stage 2 (draft)
+### Ruin Engine — Stage 2 COMPLETE
 
-- Explicit generative processing states: INTACT / WEATHERED / FRACTURED / RUINED / RECOVERING
-- Constrained transition graph; AGE eligibility vs INSTABILITY restlessness
-- Wet-path fracture attenuation windows; algorithm **v2**
-- Draft PR #11 — awaiting creative-director Ableton acceptance
+- Creative-director Ableton acceptance **PASS** (explicit processing states)
+- INTACT / WEATHERED / FRACTURED / RUINED / RECOVERING; AGE vs INSTABILITY remain distinct
+- Algorithm **v2**; wet-path fracture windows; constrained transition graph
+- Tag: `ruin-engine-stage2-complete`
+- PR #11 merged to `main`
 
 ### Ruin Engine — Stage 1 COMPLETE
 
