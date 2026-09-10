@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Memory Eater — Stage 1 COMPLETE
+
+- Creative-director Ableton acceptance **PASS** (short-term audio recall)
+- **SEND-FIRST** product finding: canonical use is Ableton Return with MIX=1.0; source tracks feed via Sends
+- Bounded ring history + sparse microloop recalls; algorithm **v1**
+- Insert still supported; MIX retained (0=dry, 1=memory-only)
+- Tag: `memory-eater-stage1-complete`
+- PR #14 merged to `main`
+
 ### Ruin Engine — Stage 4 COMPLETE (PARKED)
 
 - Creative-director Ableton acceptance **PASS** (performance intervention)
