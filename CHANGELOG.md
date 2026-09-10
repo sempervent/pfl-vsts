@@ -2,12 +2,13 @@
 
 ## Unreleased
 
-### Memory Eater — Stage 3 (IN PROGRESS)
+### Memory Eater — Stage 3 COMPLETE
 
-- Generational memory: explicit descendant capture from internal wet recall (pre MIX/OUTPUT)
-- Generation cap 0…3; structural mutation + mild birth copy-loss; no continuous feedback
-- Algorithm **v3**; send-first workflow preserved
-- Draft PR — waiting for creative-director Ableton acceptance
+- Creative-director Ableton acceptance **PASS** (generational memory)
+- Bounded self-resampling via explicit descendant capture; gens 0…3; algorithm **v3**
+- **SEND-FIRST** preserved; Return-track descendants musically successful
+- Tag: `memory-eater-stage3-complete`
+- PR #16 merged to `main`
 
 ### Memory Eater — Stage 2 COMPLETE
 

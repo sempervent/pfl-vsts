@@ -4,14 +4,15 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**PFL Memory Eater Stage 3 — IN PROGRESS** (generational memory).
-Stage 2 COMPLETE (Ableton PASS). Ruin Engine PARKED at Stage 4.
+**PFL Memory Eater Stage 4 — IN PROGRESS** (performance intervention).
+Stage 3 COMPLETE (Ableton PASS). Ruin Engine PARKED at Stage 4.
 
 Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 ## Branch / tags
 
-- Active: `pr/memory-eater-stage3-generational` (draft PR #16)
+- Active: `pr/memory-eater-stage4-performance`
+- Stage 3 complete: `memory-eater-stage3-complete` (PR #16)
 - Stage 2 complete: `memory-eater-stage2-complete` (PR #15)
 - Stage 1 complete: `memory-eater-stage1-complete` (PR #14)
 - Stage 4 complete: `ruin-engine-stage4-complete` (PR #13 merged)
