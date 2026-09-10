@@ -2,12 +2,14 @@
 
 ## Unreleased
 
-### Memory Eater — Stage 1 (IN PROGRESS)
+### Memory Eater — Stage 1 COMPLETE
 
-- New AU/VST3 audio-memory effect: bounded ring history + sparse microloop recalls
-- Controls: MIX / HUNGER / MEMORY / OUTPUT / SEED; algorithm **v1**
-- Seek clears audio memory; project state never serializes ring audio
-- Draft PR — waiting for creative-director Ableton acceptance
+- Creative-director Ableton acceptance **PASS** (short-term audio recall)
+- **SEND-FIRST** product finding: canonical use is Ableton Return with MIX=1.0; source tracks feed via Sends
+- Bounded ring history + sparse microloop recalls; algorithm **v1**
+- Insert still supported; MIX retained (0=dry, 1=memory-only)
+- Tag: `memory-eater-stage1-complete`
+- PR #14 merged to `main`
 
 ### Ruin Engine — Stage 4 COMPLETE (PARKED)
 

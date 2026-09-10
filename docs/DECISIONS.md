@@ -935,3 +935,24 @@ Self-resampling, polyphony, reverse/pitch, performance verbs, audio state serial
 - Loop crossfade reads fragment start `[0, xfade)`, not older-than-fragment history.
 - Tempos below 40 BPM clamp musical horizon to allocated samples (documented).
 
+
+---
+
+## 2026-09-10 — Memory Eater Stage 1 Ableton PASS + SEND-FIRST
+
+### Acceptance
+
+CREATIVE-DIRECTOR ABLETON ACCEPTANCE: **PASS**.
+Tag: `memory-eater-stage1-complete`. PR #14 merged.
+
+### Product finding
+
+Memory Eater is **send-first**. Canonical Ableton use:
+
+- Return track: PFL Memory Eater, **MIX = 1.0**
+- Source tracks: Ableton Sends into that Return
+
+Insert remains supported; MIX retained; no SEND MODE parameter.
+
+Independent dry (source) vs memory (return) mix is the intended experience.
+
