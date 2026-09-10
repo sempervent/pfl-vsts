@@ -4,11 +4,9 @@ Deterministic generative audio-transformation effect.
 
 ## Status
 
-**Stage 3 IN PROGRESS** — draft PR #12 (`pr/ruin-engine-stage3-aging`).
-Waiting for creative-director Ableton acceptance.
-
-Stage 2 COMPLETE — tag `ruin-engine-stage2-complete` · PR #11 merged.
-Stage 1 COMPLETE — tag `ruin-engine-stage1-complete` · PR #10 merged.
+**Stage 3 COMPLETE** — creative-director Ableton acceptance **PASS**.
+Tag: `ruin-engine-stage3-complete` · PR #12 merged.
+Stage 2: `ruin-engine-stage2-complete` (PR #11). Stage 1: `ruin-engine-stage1-complete` (PR #10).
 
 Broken Conductor software development remains paused (Stage 7 = physical-rig integration).
 
@@ -91,9 +89,15 @@ FREEZE/MUTATE/COLLAPSE/RESEED/SILENCE · audio memory · custom GUI · hardware 
 
 ## Ableton acceptance (Stage 3)
 
-**WAITING FOR CREATIVE-DIRECTOR ACCEPTANCE**
+**PASS** (2026-09-09) — creative director confirmed in Ableton Live:
 
-### Listening procedure
+- accumulated processing wear is musically useful
+- fresh vs aged / scarred conditions are perceptibly distinct
+- recovery is gradual; returning AGE does not instantly erase history
+- WearState persists across save/reload as intended
+- no host-level issue observed
+
+### Listening procedure (accepted)
 
 **TEST A — Fresh vs aged:** MIX .70 / AGE .20 / INST .35 briefly, then AGE .85 / INST .60 for ~128–256 beats, return AGE .20 — residual wear should remain.
 
@@ -106,3 +110,5 @@ FREEZE/MUTATE/COLLAPSE/RESEED/SILENCE · audio memory · custom GUI · hardware 
 ## Stage 2 acceptance (complete)
 
 **PASS** (2026-09-09) — explicit states musically useful; AGE vs INSTABILITY distinct; no host issues.
+
+Next musical direction: **Stage 4 — performance intervention** (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE).

@@ -4,14 +4,13 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**Ruin Engine Stage 3 — IN PROGRESS** (accumulated processing wear).  
-Stage 2 complete on `main` (`ruin-engine-stage2-complete`, PR #11 merged).
+**Ruin Engine Stage 3 — COMPLETE** (Ableton PASS). Closing and merging PR #12.
 
 Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 ## Branch / tags
 
-- Active: `pr/ruin-engine-stage3-aging`
+- Stage 3 complete: `ruin-engine-stage3-complete` (PR #12)
 - Stage 2 complete: `ruin-engine-stage2-complete` (PR #11 merged)
 - Stage 1 complete: `ruin-engine-stage1-complete` (PR #10 merged)
 - Stage 6 complete: `broken-conductor-stage6-complete`
@@ -49,12 +48,13 @@ Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 3 IN PROGRESS** (draft PR #12) |
+| Status | **Stage 3 COMPLETE** (Ableton PASS) |
 | Engine | algorithm **v3** (WearState processing memory) |
 | Formats | AU VST3 (`Fx`) |
 | Params | MIX, AGE, INSTABILITY, OUTPUT, SEED |
 | States | INTACT / WEATHERED / FRACTURED / RUINED / RECOVERING |
 | Wear | spectral / nonlinear / temporal (internal, persisted) |
+| Stage 3 | `ruin-engine-stage3-complete` (PR #12) |
 | Stage 2 | `ruin-engine-stage2-complete` (PR #11 merged) |
 | Stage 1 | `ruin-engine-stage1-complete` (PR #10 merged) |
-| Next | Creative-director Ableton acceptance for Stage 3 |
+| Next | Stage 4 — performance intervention (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE) |
