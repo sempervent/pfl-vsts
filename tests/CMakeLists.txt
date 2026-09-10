@@ -46,6 +46,27 @@ add_executable(pfl_broken_conductor_render
 target_include_directories(pfl_broken_conductor_render PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_compile_features(pfl_broken_conductor_render PRIVATE cxx_std_20)
 
+add_executable(pfl_ruin_engine_tests
+    ruin_engine_tests.cpp
+)
+target_include_directories(pfl_ruin_engine_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_features(pfl_ruin_engine_tests PRIVATE cxx_std_20)
+add_test(NAME ruin_engine_tests COMMAND pfl_ruin_engine_tests)
+
+add_executable(pfl_ruin_engine_render
+    ruin_engine_render.cpp
+)
+target_include_directories(pfl_ruin_engine_render PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_features(pfl_ruin_engine_render PRIVATE cxx_std_20)
+target_compile_definitions(pfl_ruin_engine_render PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+target_link_libraries(pfl_ruin_engine_render
+    PRIVATE
+        juce::juce_audio_formats
+        juce::juce_audio_basics
+        juce::juce_core
+        juce::juce_events
+)
+
 add_executable(pfl_plugin_identity_tests
     plugin_identity_tests.cpp
 )

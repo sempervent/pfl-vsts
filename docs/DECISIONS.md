@@ -569,3 +569,113 @@ Creative director accepted Stage 6 in Ableton: HarmonicField ecology and Harmoni
 2. Mark PR #9 ready and merge to `main` (explicit creative-director request).
 3. Do not begin Stage 7 without an explicit task.
 
+
+---
+
+## 2026-09-09 — Ruin Engine Stage 1 design
+
+### Problem
+
+Broken Conductor Stage 6 is complete and software work on BC is paused (Stage 7 = physical rig). The next software product is a generative **audio effect** that treats degradation as compositional motion, not a static multi-FX or random modulator.
+
+### Stage 1 objective
+
+Ship a real AU/VST3 stereo audio effect that safely processes external audio through a deterministic evolving degradation chain and loads in Ableton Live.
+
+### Signal path
+
+```text
+INPUT
+  ├──────── DRY ──────────────┐
+  ▼                           │
+FILTER                        │
+  ↓                           │
+SATURATION (+ light noise at high AGE)
+  ↓                           │
+DELAY / SMEAR (internal wet = 1)
+  ↓                           │
+WET ── MIX ◄──────────────────┘
+  ↓
+DC blocker
+  ↓
+Safety limiter
+  ↓
+OUTPUT gain
+```
+
+Dry is taken **before** any ruin processing. Plugin MIX is the only dry/wet control.
+
+### Reusable DSP
+
+- `Filter`, `Saturator`, `DCBlocker`, `SafetyLimiter`, `ParamSmoother` — as-is
+- `FeedbackDelay` — reuse core; add independent delay/feedback/mix setters so Ruin can run internal mix at 1.0 without changing Drone Organism `setSpace`
+- `DeterministicRNG` — isolated streams
+
+### Not reused for audio FX
+
+- `Voice`, `Oscillator`, `Drift` (pitch-ratio for oscillators)
+- `DirtBus` as a whole (bundles filter+sat+noise with DO-specific curves); Stage 1 composes Filter+Saturator with Ruin AGE curves instead
+
+### Plugin-specific DSP / control
+
+`RuinEngine` (`src/dsp/RuinEngine.h`): AGE/INSTABILITY → coherent target curves + bar-gated structural nudges + continuous micro-motion around targets.
+
+### Generative model
+
+- Public: MIX, AGE, INSTABILITY, OUTPUT, SEED
+- Internal profile: `{ tone, grit, wobble, smear }` mapped coherently from AGE
+- Structural decisions on **4-beat** musical boundaries (PPQ integer index — buffer-independent)
+- Mandatory dwell / lifespan before retarget; INSTABILITY shortens lifespan and widens nudge size
+- Continuous: tiny LFO/walk on filter cutoff and delay time only (depth from INSTABILITY × AGE)
+- **No** time-based AGE ratchet / content memory in Stage 1
+- AGE=0 ⇒ wet path essentially transparent (no drive, no noise, no feedback, no instability depth)
+- INSTABILITY=0 ⇒ frozen structural targets; micro-motion depth 0
+- Transport stopped or host bypass ⇒ pause structural evolution (no catch-up burst)
+
+### RNG streams
+
+`structure`, `profile`, `instability`, `noise` via `DeterministicRNG::derived`
+
+### Stereo policy
+
+True stereo: dual filters, dual delay lines, modest fixed L/R delay offset, light crossfeed. Shared generative targets (no anti-correlated L/R walks). Mono in → mono out supported.
+
+### Safety model
+
+Feedback hard-capped (≤0.72 for Ruin). Terminal DC + SafetyLimiter + clamp always on wet→mix path. Extreme MIX/AGE/INSTABILITY/OUTPUT must remain bounded. `ScopedNoDenormals` in processBlock.
+
+### Public controls
+
+| Control | Semantics |
+|---------|-----------|
+| MIX | dry ↔ ruined (true parallel) |
+| AGE | degradation depth (coherent multi-target curve) |
+| INSTABILITY | evolution rate/depth (not random automation soup) |
+| OUTPUT | post-limiter level |
+| SEED | deterministic universe |
+
+### Rejected complexity (Stage 1)
+
+Performance commands; true content AGE/DECAY; DirtBus wholesale; Drift-as-pitch-shifter; sample-count structural clocks; wear ratchet; custom GUI; mono→stereo bus; Standalone; ML/analysis; hardware mapping.
+
+### Acceptance criteria
+
+MIX=0 dry; AGE progression audible; INSTABILITY adds evolution with stability periods; extreme settings safe; Ableton audio-track insert works; existing DO/BC tests green; pluginval passes.
+
+
+---
+
+## 2026-09-09 — Ruin Engine Stage 1 complete (Ableton acceptance)
+
+### Context
+
+Creative director accepted Ruin Engine Stage 1 in Ableton: real AU/VST3 audio-effect insert, parallel dry path, AGE/INSTABILITY evolution, safety bounds, human musical review PASS.
+
+Listening also established the next musical direction: **explicit generative processing states** (Stage 2), without redesigning the Stage 1 DSP foundation.
+
+### Decisions
+
+1. Tag `ruin-engine-stage1-complete` at the accepted Stage 1 tip.
+2. Mark PR #10 ready for review; merge to `main` by creative director (do not auto-merge).
+3. Do not begin Stage 2 implementation on a stacked PR until PR #10 is merged to `main`.
+

@@ -18,14 +18,23 @@
 | `composer_tests` | Scale; determinism; seed difference; buffer independence; tempo; timbre isolation; density/mutation; long run; seek |
 | `phrase_tests` | Algorithm v3; DNA determinism; mutation lineage; phrase/timbre isolation; buffer independence |
 | `performance_tests` | FREEZE/MUTATE/COLLAPSE/RESEED/SILENCE; scripted determinism; buffer 64–512; mutate-while-frozen; long ~50 min musical script |
-| `broken_conductor_tests` | BC Stage 1: same-seed MIDI; different seed; buffers 64–1024; tempos 40/72/120/180; note pairing; stop/seek panic; restart; long-run ~30 min; param restore |
+| `broken_conductor_tests` | BC Stage 1–6: MIDI determinism; buffers; tempos; projection; harmony; performance; long-run |
+| `ruin_engine_tests` | Ruin Stage 1: AGE/MIX transparency; hostile bounds; silence/impulse/sine; seed/timeline determinism; buffer independence; multi-SR; long-run |
+| `plugin_identity_tests` | Unique PLUGIN_CODE / bundle IDs across suite |
 
 ### Host acceptance (not covered by unit tests)
 
 Ableton Live 11.3.43 Broken Conductor Stage 2 acceptance is **PASS** (instantiation, MIDI From routing, audible target, live DENSITY/MUTATION).  
 Build/scanner ≠ instantiate ≠ routing ≠ control response — all distinguished. See `docs/BROKEN_CONDUCTOR.md`.
 
-Broken Conductor algorithm **v4** tests cover ensemble roles, collision ownership, RNG isolation, sixteenth grid, odd buffers, awkward tempos, density/mutation endpoints, live automation determinism, and long-run soak.
+Broken Conductor algorithm **v6** tests cover ensemble roles, harmonic journey, collision ownership, RNG isolation, odd buffers, awkward tempos, and long-run soak.
+
+Ruin Engine Stage 1 Ableton acceptance: insert on audio track / after instrument — see `docs/RUIN_ENGINE.md`.
+
+```bash
+./build/tests/pfl_ruin_engine_render
+# → renders/ruin-engine/stage1/
+```
 
 ```text
 compile ≠ artifact ≠ scanner ≠ Live instantiates ≠ MIDI routable ≠ target sounds

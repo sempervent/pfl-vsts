@@ -10,7 +10,7 @@ Software here should do what computers do especially well: seeded composition, m
 
 Shared ideas across the suite include deterministic seeds, versioned algorithms, isolated randomness, and performance controls such as FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE.
 
-## Current Plugin
+## Current Plugins
 
 ### PFL Drone Organism
 
@@ -18,17 +18,21 @@ Self-composing AU/VST3 dirty-drone instrument (no MIDI required to play). Host-s
 
 **Status:** Implemented reference plugin — functionally complete software milestone. Creative-director listening validation and physical controller/studio integration remain separate follow-ups (see `PROJECT_STATE.md`).
 
-### PFL Broken Conductor (Stage 2 complete)
+### PFL Broken Conductor (Stage 6 complete)
 
-Deterministic generative MIDI **Instrument** (AU/VST3) for Ableton: stereo in (ignored) + silent stereo out + MIDI out. One Foundation voice with RhythmDNA (algorithm v3). Live DENSITY/MUTATION accepted in Ableton. Load on its own MIDI track; route **MIDI From** to a second track with a stock instrument — **not** after Drone Organism. See `docs/BROKEN_CONDUCTOR.md`.
+Deterministic generative MIDI **Instrument** (AU/VST3) for Ableton: stereo in (ignored) + silent stereo out + MIDI out. Four-role ensemble, harmonic journey (algorithm v6), performance commands. Software paused — Stage 7 is physical-rig integration. See `docs/BROKEN_CONDUCTOR.md`.
+
+### PFL Ruin Engine (Stage 1 complete)
+
+Deterministic generative **audio effect** (AU/VST3): incoming audio through an evolving degradation chain (filter → saturation → delay/smear → mix → safety). Controls: MIX, AGE, INSTABILITY, OUTPUT, SEED. Ableton-accepted Stage 1. See `docs/RUIN_ENGINE.md`.
 
 ## Roadmap
 
 Development order (planned unless the creative director changes priority):
 
 1. **PFL Drone Organism** — Implemented. Composition + synthesis + performance control.
-2. **PFL Broken Conductor** — Stage 2 complete (RhythmDNA + live DENSITY/MUTATION). Stage 3 multi-voice not started.
-3. **PFL Ruin Engine** — Generative transformation of incoming audio; effects as arrangement events.
+2. **PFL Broken Conductor** — Stage 6 complete (software). Stage 7 = physical rig.
+3. **PFL Ruin Engine** — Stage 1 in progress. Generative transformation of incoming audio.
 4. **PFL Memory Eater** — Generative capture / microloop memory (remember, mutate, forget, resurface).
 5. **PFL Pulse Colony** — Evolving rhythmic slicer / gate / panner organisms (not static presets).
 6. **PFL Signal Parasite** — Later: audio-reactive generative collaborator (deterministic analysis, not ML-by-default).

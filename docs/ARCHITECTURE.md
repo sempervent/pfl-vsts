@@ -6,10 +6,11 @@
 src/
   generative/   # Shared musical brain primitives + ConductorEngine (BC)
   performance/  # Drone Organism performance commands (FREEZE…)
-  dsp/          # Drone Organism audio DSP
+  dsp/          # Shared audio DSP (DO + Ruin Engine)
   plugins/
     DroneOrganism/
     BrokenConductor/
+    RuinEngine/
 ```
 
 ## Drone Organism (Phase 4)
@@ -33,25 +34,38 @@ Performance lives in `src/performance/`.
 
 Composer algorithm version: **3**. Performance-engine version: **1**.
 
-## Broken Conductor (Stage 2)
+## Broken Conductor (Stage 6)
 
 ```text
 Host tempo / transport / PPQ
         ↓
-ConductorEngine (algorithm v4 — four-role ensemble + RhythmDNA + live DENSITY/MUTATION)
+ConductorEngine (algorithm v6 — ensemble + RhythmDNA + HarmonicJourney)
+        +
+ConductorPerformanceController (FREEZE…SILENCE)
         ↓
 MidiTraceEvent → MidiNoteTracker → juce::MidiBuffer
         ↓
 Stereo audio in (ignored) + silent stereo out (Ableton MIDI-out VST3 shell)
 ```
 
-RhythmDNA: sixteenth cells (`X`/`_`/`.`), 1–4 bar phrases, bounded mutation.  
-Pitch Phrase DNA remains independent (`phrase` vs `rhythm` RNG).  
-Stage 1C host flags unchanged. See `docs/BROKEN_CONDUCTOR.md`.
+See `docs/BROKEN_CONDUCTOR.md`. Software paused after Stage 6.
 
-Composer algorithm version: **3** (Drone Organism). Conductor algorithm version: **2**.
-Performance-engine version: **1**.
+## Ruin Engine (Stage 1)
 
-## Audio engine (Drone Organism)
+```text
+Host audio in (mono or stereo)
+        +
+Host tempo / transport / PPQ
+        ↓
+RuinEngine (algorithm v1 — AGE/INSTABILITY evolution)
+        ↓
+dry tap ‖ filter → sat → delay → DC → limiter
+        ↓
+MIX → OUTPUT clamp → audio out
+```
 
-Voices, drift, dirt bus, feedback delay, DC blocker, safety limiter — audio-engine v0.1.
+Real AU/VST3 audio effect (`Fx`). See `docs/RUIN_ENGINE.md`.
+
+## Audio engine (shared DSP)
+
+Filter, saturator, dirt bus, feedback delay, DC blocker, safety limiter, RuinEngine core — used by Drone Organism and Ruin Engine.

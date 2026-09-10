@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Ruin Engine — Stage 1 COMPLETE
+
+- Creative-director Ableton acceptance **PASS** (safe generative audio vertical slice)
+- Real AU/VST3 audio effect: MIX / AGE / INSTABILITY / OUTPUT / SEED
+- Signal path: dry ‖ filter → sat → delay → DC → limiter → mix → output
+- Algorithm **v1**; pluginval strictness 5 SUCCESS
+- Tag: `ruin-engine-stage1-complete`
+- PR #10 ready for merge (merge by creative director)
+
 ### Broken Conductor — Stage 6 COMPLETE
 
 - Creative-director Ableton acceptance **PASS** (harmonic journey / long-form structure)
