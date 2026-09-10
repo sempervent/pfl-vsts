@@ -28,7 +28,7 @@ Deterministic generative **audio effect** (AU/VST3): degradation states, accumul
 
 ### PFL Memory Eater (Stage 2 complete; Stage 3 in progress)
 
-Generative **audio-memory** effect: short-term ring + **memory ecology** (recurring motifs that strengthen, tire, and forget). **Send-first**: Ableton Return with MIX=1.0. Controls: MIX, HUNGER, MEMORY, OUTPUT, SEED. Algorithm v2. See `docs/MEMORY_EATER.md`.
+Generative **audio-memory** effect: short-term ring + ecology + **generational descendants** (bounded self-resampling, no feedback loop). **Send-first**: Ableton Return with MIX=1.0. Controls: MIX, HUNGER, MEMORY, OUTPUT, SEED. Algorithm v3. See `docs/MEMORY_EATER.md`.
 
 ## Roadmap
 
