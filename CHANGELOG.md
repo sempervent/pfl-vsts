@@ -2,10 +2,20 @@
 
 ## Unreleased
 
-### Signal Parasite — Stage 2 NEXT
+### Signal Parasite — Stage 2 (awaiting creative-director acceptance)
 
-- Attachment / behavioral relationship + shared editor layout fix
-- Branch planned: `pr/signal-parasite-stage2-relationship`
+- Algorithm **v2**: a source relationship model over Stage 1 listening
+- `RecentStimulusHistory` — 16 stimulus **descriptors**, never audio; fixed cap, no `processBlock` allocation
+- States LURKING / ATTACHED / ANSWERING / WITHDRAWN, evaluated on musical time (every beat; major opportunities every 4-16 beats) with dwell floors and hysteresis
+- Bounded pressures: source, attachment, conversation, withdrawal, response fatigue
+- State biases accept probability, politeness gap, delay/duration slot and answer level **inside the Stage 1 vocabularies**; DNA stays the personality
+- Unchanged: no stimulus → no response (ANSWERING included), HUNGER 0 silent, HUNGER minimum gap a hard floor, SENSITIVITY detection-only, MUTATION DNA-only
+- Seek → history cleared, state LURKING, DNA preserved; stop pauses relationship time; SEED change → LURKING; reload → LURKING (history is not persisted)
+- Fixed: `fill01` no longer publishes before its 2 s peak follower converges, so a freshly inserted source stops reading as a wall of sound
+- Editor sizing/encoding fix shared across all six plugins (`src/plugins/PflGenericEditorSizing.h`); Signal Parasite footer reads Stage 2
+- Saved-state version → 2; no new public parameters
+- Renders: `renders/signal-parasite/stage2/` with state occupancy, pressures and transition traces
+- Branch: `pr/signal-parasite-stage2-relationship`
 
 ### Signal Parasite — Stage 1 COMPLETE
 

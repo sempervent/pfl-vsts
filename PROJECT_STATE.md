@@ -4,7 +4,9 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**PFL Signal Parasite Stage 2 — NEXT** (attachment / behavioral relationship + editor layout fix).
+**PFL Signal Parasite Stage 2 — WAITING FOR CREATIVE-DIRECTOR ACCEPTANCE**
+(source relationship model + shared editor layout fix). Software and tests
+complete on `pr/signal-parasite-stage2-relationship`; the musical call is open.
 Signal Parasite Stage 1 COMPLETE (Ableton PASS). Pulse Colony **PARKED** at Stage 3.
 Memory Eater **PARKED** at Stage 4. Ruin Engine PARKED at Stage 4.
 
@@ -92,12 +94,13 @@ Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 1 COMPLETE** (Ableton PASS) — Stage 2 NEXT |
-| Engine | algorithm **v1** (`src/dsp/SignalParasiteEngine.h`) |
+| Status | **Stage 2 awaiting acceptance**; Stage 1 COMPLETE (Ableton PASS) |
+| Engine | algorithm **v2** (`src/dsp/SignalParasiteEngine.h`), saved state v2 |
 | Formats | AU VST3 (`Fx`) · `Sig1` · `com.pfl.signalparasite` |
 | Params | MIX 0.50, SENSITIVITY 0.50, HUNGER 0.35, MUTATION 0.25, OUTPUT 0.85, SEED 2002 |
-| Job | Listen → ATTACK/SHIFT stimuli → DNA + HUNGER → ONE generated ParasiteVoice |
+| Job | Listen → ATTACK/SHIFT stimuli → relationship state → DNA + HUNGER → ONE generated ParasiteVoice |
+| Relationship | LURKING / ATTACHED / ANSWERING / WITHDRAWN over a 16-slot stimulus-descriptor history (no audio memory) |
 | Wet | Generated audio only (noise → resonant LP chirp); analysis taps original input |
 | Tag | `signal-parasite-stage1-complete` (PR #21) |
-| Deferred UI | Editor height requires scrolling for full parameter set; footer encoding artifact (`—` mojibake). Accepted for Stage 1; fix in Stage 2. |
-| Next | Stage 2: relationship model (LURKING/ATTACHED/ANSWERING/WITHDRAWN) + editor layout fix |
+| Deferred UI | **Fixed in Stage 2** — `src/plugins/PflGenericEditorSizing.h` sizes every PFL generic editor from its automatable parameter count and supplies an ASCII-safe footer label. Signal Parasite is 420x284. |
+| Next | Creative-director Ableton listening on Stage 2. Stage 3 is not scoped. |

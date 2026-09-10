@@ -108,7 +108,7 @@ See `docs/PULSE_COLONY.md`.
 
 COLLAPSE: SWARM → STARVE → FRACTURE → RESIDUE (24 beats). FREEZE ≠ MUTATION=0; SILENCE ≠ MIX=0.
 
-## Signal Parasite (Stage 1 COMPLETE)
+## Signal Parasite (Stage 2 — awaiting acceptance)
 
 ```text
 Host audio in (mono or stereo)          Host tempo / transport / PPQ
@@ -124,8 +124,17 @@ Host audio in (mono or stereo)          Host tempo / transport / PPQ
         |                                ATTACK | SHIFT, queue cap 8
         |                                        |
         |                                        v
+        |                              ParasiteRelationshipModel
+        |                                RecentStimulusHistory (16 descriptors)
+        |                                -> source / attachment / conversation
+        |                                   / withdrawal / fatigue pressures
+        |                                -> LURKING | ATTACHED | ANSWERING
+        |                                   | WITHDRAWN
+        |                                        |
+        |                                        v
         |                              ParasiteBehavior
         |                                DNA (birth/mutate) + HUNGER gate
+        |                                biased by state, same vocabularies
         |                                -> absolute-sample schedule
         |                                        |
         |                                        v
