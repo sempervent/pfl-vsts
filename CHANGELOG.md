@@ -2,13 +2,21 @@
 
 ## Unreleased
 
+### Broken Conductor — Stage 5 COMPLETE
+
+- Creative-director Ableton acceptance **PASS** (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE)
+- `ConductorPerformanceController` performance-engine **v1**; generative algorithm stays **v5**
+- Projection union preserved under performance command timelines
+- Tag: `broken-conductor-stage5-complete`
+- PR #8 ready for review (merge by creative director)
+
 ### Broken Conductor — Stage 4 COMPLETE
 
 - Creative-director Ableton acceptance **PASS** (role projection + hunger timescales)
 - OUTPUT ROLE: ENSEMBLE / FOUNDATION / PULSE / WANDERER / ACCENT
 - Algorithm **v5** role hunger; projection union preserved
 - Tag: `broken-conductor-stage4-complete`
-- PR #7 ready for review (merge by creative director)
+- PR #7 merged to `main`
 
 ### Broken Conductor — Stage 3 COMPLETE
 

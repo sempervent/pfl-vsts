@@ -5,7 +5,7 @@ BrokenConductorEditor::BrokenConductorEditor (BrokenConductorProcessor& p)
       genericEditor_ (p)
 {
     addAndMakeVisible (genericEditor_);
-    setSize (400, 200);
+    setSize (400, 420);
 }
 
 BrokenConductorEditor::~BrokenConductorEditor() = default;
@@ -15,7 +15,7 @@ void BrokenConductorEditor::paint (juce::Graphics& g)
     g.fillAll (juce::Colours::black);
     g.setColour (juce::Colours::grey);
     g.setFont (12.0f);
-    g.drawText ("PFL Broken Conductor — Stage 1", getLocalBounds().removeFromBottom (22).reduced (8, 2),
+    g.drawText ("PFL Broken Conductor — Stage 5", getLocalBounds().removeFromBottom (22).reduced (8, 2),
                 juce::Justification::centredLeft);
 }
 

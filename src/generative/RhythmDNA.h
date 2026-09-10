@@ -240,6 +240,35 @@ public:
         mutateOne (barIndex);
     }
 
+    /**
+     * One bounded RhythmDNA mutation using an external RNG (manual MUTATE).
+     * Does not advance the autonomous rhythm stream.
+     */
+    void manualMutateOne (DeterministicRNG& rng, int barIndex) noexcept
+    {
+        const int n = dna_.lengthCells();
+        if (n <= 0)
+            return;
+        const int idx = static_cast<int> (rng.nextFloat() * static_cast<float> (n)) % n;
+        const RhythmCell old = dna_.cells[static_cast<size_t> (idx)];
+        RhythmCell neu = old;
+        if (old == RhythmCell::Rest)
+            neu = RhythmCell::Onset;
+        else if (old == RhythmCell::Onset)
+            neu = (rng.nextFloat() < 0.5f) ? RhythmCell::Rest : RhythmCell::Hold;
+        else
+            neu = RhythmCell::Rest;
+
+        const float maxOcc = maxOccupancyForDensity();
+        applyCellMutation (idx, neu, maxOcc);
+        dna_.lastMutationIndex = idx;
+        dna_.lastMutationFrom = old;
+        dna_.lastMutationTo = dna_.cells[static_cast<size_t> (idx)];
+        ++dna_.generation;
+        dna_.birthBar = barIndex;
+        record (barIndex, "mutate", "manual " + dna_.describe());
+    }
+
     /** Structural velocity bias for an absolute slot (−12..+12 before jitter). */
     static int accentBiasForSlot (std::int64_t absoluteSlot, bool afterRestEntrance) noexcept
     {

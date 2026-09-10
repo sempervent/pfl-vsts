@@ -1,6 +1,7 @@
 #include "generative/ConductorEngine.h"
 #include "generative/EnsembleTypes.h"
 #include "generative/Scale.h"
+#include "performance/ConductorPerformanceController.h"
 
 #include <algorithm>
 #include <chrono>
@@ -386,9 +387,90 @@ static RunResult runFull (uint64_t seed, float density, float mutation, int bars
 
 int main (int argc, char** argv)
 {
-    const fs::path outDir = (argc > 1) ? fs::path (argv[1])
-                                       : fs::path ("renders/broken-conductor/stage4");
+    const bool stage5 = (argc > 1 && std::string (argv[1]) == "--stage5");
+    const fs::path outDir = stage5
+                                ? ((argc > 2) ? fs::path (argv[2]) : fs::path ("renders/broken-conductor/stage5"))
+                                : ((argc > 1) ? fs::path (argv[1]) : fs::path ("renders/broken-conductor/stage4"));
     fs::create_directories (outDir);
+
+    if (stage5)
+    {
+        using pfl::conductor_perf::Command;
+        using pfl::conductor_perf::ConductorPerformanceController;
+        using pfl::generative::OutputRole;
+
+        std::ofstream metrics (outDir / "stage5-metrics.txt");
+        metrics << "Broken Conductor Stage 5 performance (72 BPM, algo v"
+                << ConductorEngine::kAlgorithmVersion << ", perf v"
+                << pfl::conductor_perf::kPerformanceEngineVersion << ")\n";
+
+        const std::vector<std::pair<double, Command>> cmds = {
+            { 32.0, Command::FreezeOn },
+            { 48.0, Command::Mutate },
+            { 64.0, Command::Mutate },
+            { 80.0, Command::FreezeOff },
+            { 112.0, Command::Collapse },
+            { 136.0, Command::Reseed },
+            { 168.0, Command::SilenceOn },
+            { 172.0, Command::SilenceOff },
+        };
+
+        auto runScript = [&] (OutputRole role) {
+            ConductorEngine eng;
+            ConductorPerformanceController perf;
+            eng.setCapture (true);
+            eng.setParams ({ 0.50f, 0.35f });
+            eng.setOutputRole (role);
+            eng.reseed (2002);
+            perf.reset (2002);
+            size_t ci = 0;
+            double ppq = 0.0;
+            const double endPpq = 192.0;
+            int lastBar = -1;
+            while (ppq < endPpq - 1.0e-12)
+            {
+                while (ci < cmds.size() && cmds[ci].first <= ppq + 1.0e-9)
+                {
+                    perf.trigger (cmds[ci].second, cmds[ci].first, eng);
+                    ++ci;
+                }
+                const int bar = static_cast<int> (std::floor (ppq / 4.0));
+                if (bar != lastBar)
+                    lastBar = bar;
+                perf.tick (ppq, bar, eng);
+                const double next = std::min (endPpq, ppq + 0.25);
+                pfl::generative::ClockSnapshot snap;
+                snap.playing = true;
+                snap.ppq = ppq;
+                snap.tempoBpm = 72.0;
+                snap.timeSigNumerator = 4;
+                snap.timeSigDenominator = 4;
+                eng.clock().advance (snap);
+                eng.processTimeRange (ppq, next, true);
+                eng.drainPending();
+                ppq = next;
+            }
+            return eng.captured();
+        };
+
+        struct Proj { const char* label; OutputRole role; };
+        const Proj projs[] = {
+            { "performance-seed-2002", OutputRole::Ensemble },
+            { "performance-foundation", OutputRole::Foundation },
+            { "performance-pulse", OutputRole::Pulse },
+            { "performance-wanderer", OutputRole::Wanderer },
+            { "performance-accent", OutputRole::Accent },
+        };
+        for (const auto& p : projs)
+        {
+            auto ev = runScript (p.role);
+            writeSmf (outDir / (std::string (p.label) + ".mid"), ev, 72.0);
+            metrics << p.label << " events=" << ev.size() << "\n";
+            std::cout << "Wrote " << p.label << "\n";
+        }
+        std::cout << "Metrics: " << (outDir / "stage5-metrics.txt") << "\n";
+        return 0;
+    }
 
     std::ofstream metrics (outDir / "stage4-metrics.txt");
     metrics << "Broken Conductor Stage 4 role projection (72 BPM, algorithm v"

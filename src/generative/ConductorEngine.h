@@ -15,6 +15,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <vector>
 
 namespace pfl::generative
@@ -81,6 +82,60 @@ public:
     /** Diagnostic: raw Foundation pitch RNG draws since reseed (isolation tests). */
     uint64_t foundationPitchDraws() const noexcept { return voices_[0].pitchDraws; }
 
+    /**
+     * Performance intervention flags (Stage 5). Applied before composition decisions.
+     * collapsePhase: 0=none, 1=Destabilize … 4=Residue.
+     */
+    void setPerformanceFlags (bool evolutionLocked, bool silenceActive, bool hungerPaused,
+                              int collapsePhase) noexcept
+    {
+        evolutionLocked_ = evolutionLocked;
+        silenceActive_ = silenceActive;
+        hungerPaused_ = hungerPaused;
+        collapsePhase_ = std::clamp (collapsePhase, 0, 4);
+    }
+
+    bool evolutionLocked() const noexcept { return evolutionLocked_; }
+    bool silenceActive() const noexcept { return silenceActive_; }
+    int collapsePhase() const noexcept { return collapsePhase_; }
+
+    /**
+     * One bounded manual MUTATE using an external RNG (does not touch autonomous streams).
+     * Returns mutated VoiceRole index; writes short detail for traces.
+     */
+    int applyManualMutation (DeterministicRNG& manualRng, int barIndex, char* detailOut, size_t detailCap) noexcept
+    {
+        // Role weights: Foundation low, Pulse mid, Wanderer high, Accent low/mid
+        const float r = manualRng.nextFloat();
+        VoiceRole role = VoiceRole::Wanderer;
+        if (r < 0.10f)
+            role = VoiceRole::Foundation;
+        else if (r < 0.35f)
+            role = VoiceRole::Pulse;
+        else if (r < 0.80f)
+            role = VoiceRole::Wanderer;
+        else
+            role = VoiceRole::Accent;
+
+        auto& v = voices_[static_cast<size_t> (role)];
+        const bool doPhrase = (manualRng.nextFloat() < 0.55f) || role == VoiceRole::Wanderer;
+        if (doPhrase)
+        {
+            v.phrases.manualMutateOne (manualRng, barIndex);
+            if (detailOut != nullptr && detailCap > 0)
+                std::snprintf (detailOut, detailCap, "%s PhraseDNA gen=%d",
+                               voiceRoleName (role), v.phrases.dna().generation);
+        }
+        else
+        {
+            v.rhythm.manualMutateOne (manualRng, barIndex);
+            if (detailOut != nullptr && detailCap > 0)
+                std::snprintf (detailOut, detailCap, "%s RhythmDNA gen=%d",
+                               voiceRoleName (role), v.rhythm.dna().generation);
+        }
+        return static_cast<int> (role);
+    }
+
     void reseed (uint64_t masterSeed) noexcept
     {
         masterSeed_ = masterSeed;
@@ -91,10 +146,11 @@ public:
         collisionStats_ = {};
         lastProcessedPpq_ = 0.0;
         clock_.reset (0.0);
-        pending_.clear();
+        // Do not clear pending_ here — panic NoteOffs from the same block must reach the host.
         ensembleCaptured_.clear();
         emittedTracker_.clear();
         // outputRole_ preserved across reseed (configuration)
+        // performance flags: preserved — controller calls setPerformanceFlags after
         recentOnsets_.fill (0);
         recentOnsetCursor_ = 0;
         onsetsThisBar_ = 0;
@@ -193,20 +249,38 @@ public:
         const uint64_t seed = masterSeed_;
         const ConductorParams p = params_;
         const bool wasCapture = capture_;
+        const bool evo = evolutionLocked_;
+        const bool sil = silenceActive_;
+        const bool hung = hungerPaused_;
+        const int col = collapsePhase_;
         capture_ = false;
         reseed (seed);
         setParams (p);
+        setPerformanceFlags (evo, sil, hung, col);
         const double end = std::max (0.0, targetPpq);
         double ppq = 0.0;
         while (ppq < end)
         {
             const double next = std::min (end, ppq + 1.0);
-            processTimeRange (ppq, next, true, false);
+            // Catch-up is silent to host; skip commits entirely when silenced
+            if (! sil)
+                processTimeRange (ppq, next, true, false);
+            else
+                lastProcessedPpq_ = next;
             ppq = next;
         }
         capture_ = wasCapture;
         pending_.clear();
         lastProcessedPpq_ = targetPpq;
+        if (sil)
+        {
+            for (auto& v : voices_)
+            {
+                v.sounding = false;
+                v.noteOffPpq = 0.0;
+            }
+            tracker_.clear();
+        }
     }
 
     bool needsHostRetrigger() const noexcept
@@ -575,7 +649,9 @@ private:
     {
         reasonOut = InteractionReason::Normal;
         float g = rolePresence (role, snap.density) * roleExpressionMult (role);
-        g *= roleHungerMult (role, beatsSilent, snap.density);
+        if (! hungerPaused_)
+            g *= roleHungerMult (role, beatsSilent, snap.density);
+        g *= collapseRoleMult (role);
 
         // Congestion: suppress decorative voices (hunger can still push through moderately)
         if (role == VoiceRole::Wanderer || role == VoiceRole::Accent)
@@ -613,10 +689,34 @@ private:
         return std::clamp (g, 0.0f, 1.35f);
     }
 
+    /** Collapse phase multipliers (Accent dies first; Foundation lasts into residue). */
+    float collapseRoleMult (VoiceRole role) const noexcept
+    {
+        if (collapsePhase_ <= 0)
+            return 1.0f;
+        // 1 Destabilize, 2 Thin, 3 Fragment, 4 Residue
+        static constexpr float kTable[4][4] = {
+            // Accent, Wanderer, Pulse, Foundation  (indexed by role enum order F,P,W,A)
+            // Destabilize
+            { 1.00f, 0.95f, 0.85f, 0.35f },
+            // Thin
+            { 0.90f, 0.65f, 0.40f, 0.05f },
+            // Fragment
+            { 0.55f, 0.30f, 0.12f, 0.00f },
+            // Residue
+            { 0.22f, 0.04f, 0.00f, 0.00f },
+        };
+        const int phase = std::clamp (collapsePhase_ - 1, 0, 3);
+        const int ri = static_cast<int> (role);
+        return kTable[phase][ri];
+    }
+
     /** Non-consuming hunger probe when DNA is silent but pressure is high. */
     bool hungerAllowsProbe (VoiceRole role, std::int64_t absoluteSlot, float beatsSilent,
                             float density) const noexcept
     {
+        if (hungerPaused_)
+            return false;
         if (role != VoiceRole::Wanderer && role != VoiceRole::Accent)
             return false;
 
@@ -717,6 +817,10 @@ private:
             dur = std::max (kSlotBeats, dur);
         if (v.role == VoiceRole::Accent)
             dur = std::min (dur, 0.5);
+        if (collapsePhase_ >= 3) // Fragment / Residue — shorter gestures
+            dur = std::min (dur, collapsePhase_ >= 4 ? 0.5 : 1.0);
+        else if (collapsePhase_ == 2)
+            dur = std::min (dur, 2.0);
 
         intent.active = true;
         intent.pitch = v.pitch.midiNote;
@@ -793,6 +897,9 @@ private:
     void commitIntent (VoiceState& v, EventIntent intent, std::int64_t absoluteSlot, double slotPpq,
                        EnsembleSnapshot& snap) noexcept
     {
+        if (silenceActive_)
+            return;
+
         if (! intent.active)
         {
             if (v.role == VoiceRole::Wanderer)
@@ -872,7 +979,8 @@ private:
         // Phase 0: expire notes + accumulate role silence (hunger)
         for (auto& v : voices_)
         {
-            v.beatsSinceContribution += static_cast<float> (kSlotBeats);
+            if (! hungerPaused_)
+                v.beatsSinceContribution += static_cast<float> (kSlotBeats);
             if (v.sounding && slotPpq + 1.0e-9 >= v.noteOffPpq)
             {
                 emitOff (slotPpq, v.soundingNote, v.role, InteractionReason::Normal);
@@ -887,20 +995,23 @@ private:
         {
             if (bar != v.lastRhythmBar)
             {
-                applyLiveParamResponse (v, bar);
-                v.phrases.onBar (bar);
-                v.rhythm.onBar (bar);
+                if (! evolutionLocked_)
+                {
+                    applyLiveParamResponse (v, bar);
+                    v.phrases.onBar (bar);
+                    v.rhythm.onBar (bar);
+                }
                 v.lastRhythmBar = bar;
                 v.pitchChangedThisBar = false;
             }
-            else if (paramsDirty_)
+            else if (paramsDirty_ && ! evolutionLocked_)
             {
                 applyLiveParamResponse (v, bar);
             }
 
             const double barStart = static_cast<double> (bar) * beatsPerBar;
             const bool atBarStart = std::abs (slotPpq - barStart) < 1.0e-9;
-            if (atBarStart && bar >= v.nextPitchEvalBar)
+            if (! evolutionLocked_ && atBarStart && bar >= v.nextPitchEvalBar)
             {
                 maybeChangePitch (v);
                 schedulePitchEval (v, bar);
@@ -1061,6 +1172,10 @@ private:
     double lastProcessedPpq_ = 0.0;
     bool capture_ = false;
     bool emitOutput_ = true;
+    bool evolutionLocked_ = false;
+    bool silenceActive_ = false;
+    bool hungerPaused_ = false;
+    int collapsePhase_ = 0;
     std::vector<MidiTraceEvent> captured_;
     std::vector<MidiTraceEvent> ensembleCaptured_;
     std::vector<MidiTraceEvent> pending_;
