@@ -4,11 +4,11 @@ Deterministic generative audio-transformation effect.
 
 ## Status
 
-**Stage 4 IN PROGRESS** — draft PR (`pr/ruin-engine-stage4-performance`).
-Waiting for creative-director Ableton acceptance.
+**PARKED — Stage 4 COMPLETE** — creative-director Ableton acceptance **PASS**.
+Tag: `ruin-engine-stage4-complete` · PR #13 merged.
+Product decision: v4 sufficiently complete to ship/park. Stage 5 requires new listening evidence.
 
-Stage 3 COMPLETE — tag `ruin-engine-stage3-complete` · PR #12 merged.
-Stage 2: `ruin-engine-stage2-complete`. Stage 1: `ruin-engine-stage1-complete`.
+Stage 3: `ruin-engine-stage3-complete`. Stage 2: `ruin-engine-stage2-complete`. Stage 1: `ruin-engine-stage1-complete`.
 
 Broken Conductor software development remains paused (Stage 7 = physical-rig integration).
 
@@ -97,7 +97,16 @@ Priority: SILENCE > COLLAPSE > FREEZE > MUTATE.
 
 ## Ableton acceptance (Stage 4)
 
-**WAITING FOR CREATIVE-DIRECTOR ACCEPTANCE**
+**PASS** (2026-09-10) — creative director confirmed in Ableton Live:
+
+- FREEZE preserves a useful living condition
+- MUTATE while frozen is bounded and iterative
+- COLLAPSE is a multi-phase destruction arc, not AGE=1
+- RESEED renews personality without healing WearState scars
+- SILENCE mutes dry+wet cleanly with safe recovery
+- no host-level issue observed
+
+Ruin Engine is **PARKED** at v4.
 
 1. Evolve normally (MIX .70 / AGE .55 / INST .50)
 2. FREEZE — condition holds, still alive

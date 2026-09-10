@@ -4,14 +4,14 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**Ruin Engine Stage 4 — IN PROGRESS** (performance intervention).
-Stage 3 complete on `main` (`ruin-engine-stage3-complete`, PR #12 merged).
+**Ruin Engine — PARKED** (Stage 4 COMPLETE, Ableton PASS).  
+Next active product: **PFL Memory Eater Stage 1**.
 
 Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 ## Branch / tags
 
-- Active: `pr/ruin-engine-stage4-performance`
+- Stage 4 complete: `ruin-engine-stage4-complete` (PR #13)
 - Stage 3 complete: `ruin-engine-stage3-complete` (PR #12 merged)
 - Stage 2 complete: `ruin-engine-stage2-complete` (PR #11 merged)
 - Stage 1 complete: `ruin-engine-stage1-complete` (PR #10 merged)
@@ -23,7 +23,6 @@ Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 ./scripts/configure.sh
 ./scripts/build.sh
 ./scripts/test.sh
-./build/tests/pfl_ruin_engine_render --stage4
 ```
 
 ## Drone Organism
@@ -45,14 +44,17 @@ Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 4 IN PROGRESS** (draft PR) |
+| Status | **PARKED** — Stage 4 COMPLETE (Ableton PASS) |
 | Engine | algorithm **v4** + performance-engine **v1** |
 | Formats | AU VST3 (`Fx`) |
 | Params | MIX, AGE, INSTABILITY, OUTPUT, SEED |
 | Performance | FREEZE, MUTATE, COLLAPSE, RESEED, SILENCE |
-| States | INTACT / WEATHERED / FRACTURED / RUINED / RECOVERING |
-| Wear | spectral / nonlinear / temporal (internal, persisted) |
-| Stage 3 | `ruin-engine-stage3-complete` (PR #12 merged) |
-| Stage 2 | `ruin-engine-stage2-complete` (PR #11 merged) |
-| Stage 1 | `ruin-engine-stage1-complete` (PR #10 merged) |
-| Next | Creative-director Ableton acceptance for Stage 4 |
+| Tag | `ruin-engine-stage4-complete` (PR #13) |
+| Product decision | v4 sufficiently complete to ship/park; Stage 5 requires new listening evidence |
+
+## Memory Eater
+
+| Field | Value |
+|-------|--------|
+| Status | **Stage 1 STARTING** |
+| Next | Short-term audio memory / microloop recall |
