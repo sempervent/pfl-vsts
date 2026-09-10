@@ -679,3 +679,81 @@ Listening also established the next musical direction: **explicit generative pro
 2. Mark PR #10 ready for review; merge to `main` by creative director (do not auto-merge).
 3. Do not begin Stage 2 implementation on a stacked PR until PR #10 is merged to `main`.
 
+
+---
+
+## 2026-09-09 — Ruin Engine Stage 2 generative processing states
+
+### Why explicit states
+
+Stage 1 Ableton PASS showed continuous profile drift works but does not yet produce recognizable processing *conditions*. Creative director asked for explicit generative processing states without redesigning Stage 1 DSP.
+
+### State definitions
+
+| State | Meaning |
+|-------|---------|
+| INTACT | Least-damaged wet identity; broad, stable |
+| WEATHERED | Aged but normal; generally useful processed condition |
+| FRACTURED | Continuity breaks; temporal interruptions |
+| RUINED | Severe but bounded transformation |
+| RECOVERING | Reassembly from damage (not lerp preset) |
+
+### Transition graph
+
+```text
+INTACT → WEATHERED
+WEATHERED → INTACT | FRACTURED
+FRACTURED → WEATHERED | RUINED
+RUINED → RECOVERING
+RECOVERING → INTACT | WEATHERED
+```
+
+No INTACT→RUINED; no RUINED↔FRACTURED ping-pong.
+
+### AGE semantics
+
+Eligibility / severity landscape — not `floor(AGE*5)`. Gates Fractured/Ruined at low AGE; favors Intact/Weathered at low AGE; full ecology at AGE 1.
+
+### INSTABILITY semantics
+
+Restlessness / dwell compression / micro-motion / fracture rate — not damage depth. AGE 0.2 + INST 1 = restless light damage; AGE 1 + INST 0.1 = deep stable damage.
+
+### Dwell model
+
+4-beat minor eval; major transition opportunity every 8–16 beats. Hard min dwells (Intact/Weathered ≥16 beats scaled by inst; severe ≥8). Strong STAY inertia.
+
+### State-profile architecture
+
+Each state is a bounded neighborhood on `{tone, grit, wobble, smear}` + fracture amount. Within-state variation via seed; AGE blends into DSP depth without overwriting structural targets every sample.
+
+### Fracture mechanism
+
+Wet-path attenuation windows (post-limiter, pre-MIX), musical-time sparse gestures, isolated `state.fracture` RNG. Dry untouched.
+
+### Recovery mechanism
+
+`previousState` + `severityAtEntry` + recoveryPressure; sequential residue decay; legal exit only via RECOVERING from RUINED.
+
+### Determinism
+
+Absolute PPQ rebuild replays state machine 0…evalIndex; isolated streams: `state.transition`, `state.duration`, `state.profile`, `state.fracture`, `state.recovery`. Algorithm version **2**.
+
+### Rejected
+
+State selector UI; AGE=state index; INST=damage; geological dwells; Memory Eater; performance commands; Stage 1 `nudgeProfile` soup.
+
+
+---
+
+## 2026-09-09 — Ruin Engine Stage 2 complete (Ableton acceptance)
+
+### Context
+
+Creative director accepted Ruin Engine Stage 2 in Ableton: explicit processing states, AGE/INSTABILITY independence, constrained graph, human musical review PASS.
+
+### Decisions
+
+1. Tag `ruin-engine-stage2-complete` at the accepted Stage 2 tip.
+2. Mark PR #11 ready and merge to `main` (explicit creative-director authorization).
+3. Stage 3 is accumulated processing wear (not audio memory / Memory Eater). Do not begin MIDI/controller/studio integration.
+

@@ -4,22 +4,51 @@ Deterministic generative audio-transformation effect.
 
 ## Status
 
-**Stage 1 COMPLETE** — creative-director Ableton acceptance **PASS**.  
-Tag: `ruin-engine-stage1-complete` · PR #10 ready for merge.
+**Stage 2 COMPLETE** — creative-director Ableton acceptance **PASS**.  
+Tag: `ruin-engine-stage2-complete` · PR #11 merged.  
+Stage 1: `ruin-engine-stage1-complete` (PR #10 merged).
 
 Broken Conductor software development remains paused (Stage 7 = physical-rig integration).
-
-Next musical direction (not started until PR #10 merges): **Stage 2 — explicit generative processing states**.
 
 ## Purpose
 
 Treat signal degradation and transformation as compositional events.
 
-Not another distortion pedal, static multi-effect, or random parameter modulator.
+## Stage 2 objective
 
-## Stage 1 objective
+Give Ruin Engine recognizable processing conditions and deterministic structural arcs so it can settle, deteriorate, fracture, become ruined, and recover — rather than merely drifting continuously.
 
-Real AU/VST3 stereo audio effect that safely processes incoming audio through a deterministic evolving transformation chain and works in Ableton Live.
+Stage 1 DSP foundation is preserved.
+
+## Processing states
+
+| State | Meaning |
+|-------|---------|
+| INTACT | Least-damaged wet identity |
+| WEATHERED | Aged but useful processed condition |
+| FRACTURED | Continuity breaks (wet-path attenuation windows) |
+| RUINED | Severe but bounded transformation |
+| RECOVERING | Reassembly from damage |
+
+### Transition graph
+
+```text
+INTACT → WEATHERED
+WEATHERED → INTACT | FRACTURED
+FRACTURED → WEATHERED | RUINED
+RUINED → RECOVERING
+RECOVERING → INTACT | WEATHERED
+```
+
+## Public controls (unchanged)
+
+| Control | Role |
+|---------|------|
+| MIX | dry ↔ ruined (true parallel) |
+| AGE | damage eligibility / severity landscape |
+| INSTABILITY | restlessness / rate / depth |
+| OUTPUT | final level |
+| SEED | deterministic universe |
 
 ## Signal path
 
@@ -27,86 +56,46 @@ Real AU/VST3 stereo audio effect that safely processes incoming audio through a 
 INPUT
   ├──────── DRY ──────────────────┐
   ▼                               │
-FILTER                            │
-  ↓                               │
-SATURATION (+ gated noise at high AGE)
-  ↓                               │
-FEEDBACK DELAY / SMEAR (internal wet = 1)
+FILTER → SAT → DELAY              │
   ↓                               │
 DC → SafetyLimiter                │
   ↓                               │
+× fracture envelope (wet only)    │
+  ↓                               │
 WET ── MIX ◄──────────────────────┘
   ↓
-hard clamp × OUTPUT
-  ↓
-OUTPUT
+OUTPUT clamp
 ```
 
-Dry is taken before any ruin processing. DC/limiter apply to the wet path only; the sum is hard-clamped.
+## Algorithm
 
-## Public controls
+Version **2** (explicit-state ecology). Version 1 was continuous profile nudges only.
 
-| Control | Role |
-|---------|------|
-| MIX | dry ↔ ruined (true parallel) |
-| AGE | depth of degradation (coherent multi-target curve) |
-| INSTABILITY | amount/rate of evolving behavior |
-| OUTPUT | final level |
-| SEED | deterministic universe |
+## Determinism
 
-## Deterministic evolution
+- 4-beat PPQ eval grid; absolute rebuild on seek/insert (state + fracture schedule)
+- Sample-rate noise/micro RNG is **not** reset on seek (delay audio history may differ)
+- Isolated streams: `state.transition`, `state.duration`, `state.profile`, `state.fracture`, `state.recovery`
 
-- Isolated RNG streams: `structure`, `profile`, `instability`, `noise`
-- Structural decisions on a **4-beat** PPQ grid (buffer-independent)
-- Continuous micro-motion (LFO/walk) around filter cutoff and delay time
-- Transport stopped / host bypass → structural evolution pauses (no catch-up burst)
-- AGE=0 → wet path identity; INSTABILITY=0 → frozen structural targets
+## Explicitly out of Stage 2
 
-## Formats / buses
-
-- AU + VST3 audio effect (`Fx` / `kAudioUnitType_Effect`)
-- Mono↔mono and stereo↔stereo
-- PLUGIN_CODE `Rui1`
-
-## Safety
-
-- Feedback capped at 0.72
-- Terminal wet-path DC + SafetyLimiter
-- Extreme MIX/AGE/INSTABILITY/OUTPUT remain bounded in tests
-
-## Explicitly out of Stage 1
-
-- FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE
-- True content AGE / DECAY / memory
-- Audio analysis, ML, custom GUI
-- Hardware mapping
-
-## Provisional later stages
-
-1. Generative processing states / larger structural arcs  
-2. True AGE / DECAY / memory-sensitive degradation  
-3. Performance commands  
-4. Advanced stereo / destructive feedback ecology  
-5. PFL physical rig integration  
+FREEZE/MUTATE/COLLAPSE/RESEED/SILENCE · content memory · custom GUI · hardware mapping · Stage 3
 
 ## Reference renders
 
 ```bash
-./build/tests/pfl_ruin_engine_render
-# → renders/ruin-engine/stage1/
+./build/tests/pfl_ruin_engine_render --stage2
+# → renders/ruin-engine/stage2/
 ```
 
-## Ableton acceptance (Stage 1)
+## Ableton acceptance (Stage 2)
 
-**PASS** (2026-09-09) — creative director confirmed Stage 1 behaves as engineered in Ableton Live.
+**PASS** (2026-09-09) — creative director confirmed in Ableton Live:
 
-Accepted capabilities:
+- explicit states are musically useful
+- INTACT / WEATHERED / FRACTURED / RUINED / RECOVERING behave as intended
+- AGE and INSTABILITY remain perceptually distinct
+- AGE .20 / INSTABILITY .80 differs from AGE .90 / INSTABILITY .15
+- no host-level issue observed
 
-- real AU/VST3 audio-effect insert
-- MIX 0 ≈ dry
-- AGE / INSTABILITY / OUTPUT / SEED
-- deterministic evolving wet path with safety bounds
-
-### Stage 1 listening notes → Stage 2 direction
-
-Explicit generative processing states are desired next. Do not redesign the Stage 1 DSP foundation; organize existing processing into recognizable deterministic musical states and longer structural arcs.
+Next musical direction: **Stage 3 — accumulated processing wear** (not audio-loop memory).

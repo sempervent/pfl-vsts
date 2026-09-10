@@ -119,7 +119,7 @@ bool nearlyEqual (const RenderResult& a, const RenderResult& b, float tol = 1.0e
 
 static void testAlgorithmVersion()
 {
-    EXPECT (pfl::dsp::RuinEngine::kAlgorithmVersion == 1);
+    EXPECT (pfl::dsp::RuinEngine::kAlgorithmVersion == 2);
 }
 
 static void testAgeZeroTransparent()
@@ -218,6 +218,8 @@ static void testTimelineDeterminism()
             fromZero.process (zL.data(), zR.data(), m, true, static_cast<double> (done) * beatsPerSample, bpm);
             done += m;
         }
+        // Align to absolute startPpq eval boundary
+        fromZero.process (zL.data(), zR.data(), 64, true, startPpq, bpm);
     }
 
     pfl::dsp::RuinEngine midInsert;
@@ -237,6 +239,8 @@ static void testTimelineDeterminism()
     EXPECT (std::abs (fromZero.grit() - midInsert.grit()) < 1.0e-3f);
     EXPECT (std::abs (fromZero.wobble() - midInsert.wobble()) < 1.0e-3f);
     EXPECT (std::abs (fromZero.smear() - midInsert.smear()) < 1.0e-3f);
+    EXPECT (fromZero.processingState() == midInsert.processingState());
+    EXPECT (std::abs (fromZero.damagePressure() - midInsert.damagePressure()) < 1.0e-3f);
 }
 
 static void testDifferentSeeds()
@@ -323,6 +327,174 @@ static void testLongRun()
     std::cout << "ruin long-run " << seconds << "s sim in " << ms << " ms, peak=" << a.peak << "\n";
 }
 
+struct StateOcc
+{
+    double beats[5] {};
+    int transitions = 0;
+    int maxRuinedEvals = 0;
+};
+
+static StateOcc collectOccupancy (uint64_t seed, float age, float inst, double endBeats, double bpm = 72.0)
+{
+    const double sr = 48000.0;
+    const double beatsPerSample = (bpm / 60.0) / sr;
+    const int n = static_cast<int> (endBeats / beatsPerSample);
+    pfl::dsp::RuinEngine eng;
+    eng.prepare (sr);
+    eng.setSeed (seed);
+    eng.setMix (0.7f);
+    eng.setAge (age);
+    eng.setInstability (inst);
+    eng.setOutput (0.9f);
+    eng.snapMacros();
+
+    StateOcc occ;
+    auto prev = eng.processingState();
+    int ruinedRun = 0;
+    std::vector<float> zL (256, 0.0f), zR (256, 0.0f);
+    int done = 0;
+    while (done < n)
+    {
+        const int m = std::min (256, n - done);
+        const double ppq = static_cast<double> (done) * beatsPerSample;
+        eng.process (zL.data(), zR.data(), m, true, ppq, bpm);
+        const auto st = eng.processingState();
+        const int si = static_cast<int> (st);
+        if (si >= 0 && si < 5)
+            occ.beats[si] += static_cast<double> (m) * beatsPerSample;
+        if (st != prev)
+        {
+            ++occ.transitions;
+            if (! pfl::dsp::RuinStateMachine::isLegalEdge (prev, st))
+            {
+                std::cerr << "FAIL: illegal edge " << pfl::dsp::ruinStateName (prev)
+                          << " → " << pfl::dsp::ruinStateName (st) << "\n";
+                ++gFails;
+            }
+            prev = st;
+            ruinedRun = 0;
+        }
+        if (st == pfl::dsp::RuinProcessingState::Ruined)
+            ruinedRun += m;
+        else
+            ruinedRun = 0;
+        occ.maxRuinedEvals = std::max (occ.maxRuinedEvals, ruinedRun);
+        done += m;
+    }
+    return occ;
+}
+
+static void testStage2GraphAndCrossMatrix()
+{
+    // A: AGE0 INST0 — clean stable
+    {
+        auto o = collectOccupancy (2002, 0.0f, 0.0f, 512.0);
+        const double mild = o.beats[0] + o.beats[1];
+        EXPECT (mild / 512.0 >= 0.90);
+        EXPECT (o.beats[3] <= 1.0); // ruined ~0
+        EXPECT (o.transitions <= 12);
+    }
+    // B: AGE0.2 INST1 — restless light
+    {
+        auto o = collectOccupancy (2002, 0.20f, 1.0f, 512.0);
+        EXPECT ((o.beats[0] + o.beats[1]) / 512.0 >= 0.70);
+        EXPECT (o.beats[3] / 512.0 <= 0.08);
+    }
+    // C: AGE1 INST0.1 — deep stable
+    {
+        auto o = collectOccupancy (2002, 1.0f, 0.10f, 512.0);
+        EXPECT ((o.beats[2] + o.beats[3]) / 512.0 >= 0.25);
+        EXPECT (o.transitions < 40);
+    }
+    // D: AGE1 INST1 — deep unstable, still bounded
+    {
+        auto o = collectOccupancy (2002, 1.0f, 1.0f, 512.0);
+        EXPECT ((o.beats[2] + o.beats[3]) / 512.0 >= 0.30);
+        EXPECT (o.transitions > 5);
+    }
+}
+
+static void testStage2StateBufferIndependence()
+{
+    const double sr = 48000.0;
+    const double bpm = 72.0;
+    const double beatsPerSample = (bpm / 60.0) / sr;
+    const int n = static_cast<int> (256.0 / beatsPerSample);
+    auto in = makeSine (n, sr, 220.0, 0.3f);
+
+    auto runStates = [&] (int bs)
+    {
+        pfl::dsp::RuinEngine eng;
+        eng.prepare (sr);
+        eng.setSeed (2002);
+        eng.setMix (0.7f);
+        eng.setAge (0.55f);
+        eng.setInstability (0.5f);
+        eng.setOutput (0.9f);
+        eng.snapMacros();
+        std::vector<pfl::dsp::RuinProcessingState> seq;
+        auto L = in, R = in;
+        int done = 0;
+        auto last = eng.processingState();
+        seq.push_back (last);
+        while (done < n)
+        {
+            const int m = std::min (bs, n - done);
+            eng.process (L.data() + done, R.data() + done, m, true,
+                         static_cast<double> (done) * beatsPerSample, bpm);
+            if (eng.processingState() != last)
+            {
+                last = eng.processingState();
+                seq.push_back (last);
+            }
+            done += m;
+        }
+        return seq;
+    };
+
+    auto ref = runStates (256);
+    for (int bs : { 64, 127, 128, 255, 511, 512, 1024 })
+    {
+        auto s = runStates (bs);
+        EXPECT (s.size() == ref.size());
+        if (s.size() == ref.size())
+            for (size_t i = 0; i < s.size(); ++i)
+                EXPECT (s[i] == ref[i]);
+    }
+}
+
+static void testStage2ForcedStatesFinite()
+{
+    const double sr = 48000.0;
+    const int n = static_cast<int> (sr * 2);
+    auto in = makeSine (n, sr, 196.0, 0.45f);
+    for (int si = 0; si < 5; ++si)
+    {
+        pfl::dsp::RuinEngine eng;
+        eng.prepare (sr);
+        eng.setSeed (2002);
+        eng.setMix (0.8f);
+        eng.setAge (0.7f);
+        eng.setInstability (0.5f);
+        eng.setOutput (0.9f);
+        eng.snapMacros();
+        eng.forceProcessingState (true, static_cast<pfl::dsp::RuinProcessingState> (si));
+        auto L = in, R = in;
+        eng.process (L.data(), R.data(), n, true, 0.0, 72.0);
+        float peak = 0.0f;
+        bool finite = true;
+        for (int i = 0; i < n; ++i)
+        {
+            peak = std::max (peak, std::max (std::abs (L[static_cast<size_t> (i)]),
+                                             std::abs (R[static_cast<size_t> (i)])));
+            if (! std::isfinite (L[static_cast<size_t> (i)]))
+                finite = false;
+        }
+        EXPECT (finite);
+        EXPECT (peak <= 0.995f);
+    }
+}
+
 int main()
 {
     testAlgorithmVersion();
@@ -339,6 +511,9 @@ int main()
     testSampleRates();
     testNaNInput();
     testLongRun();
+    testStage2GraphAndCrossMatrix();
+    testStage2StateBufferIndependence();
+    testStage2ForcedStatesFinite();
 
     if (gFails == 0)
     {

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Ruin Engine — Stage 2 COMPLETE
+
+- Creative-director Ableton acceptance **PASS** (explicit processing states)
+- INTACT / WEATHERED / FRACTURED / RUINED / RECOVERING; AGE vs INSTABILITY remain distinct
+- Algorithm **v2**; wet-path fracture windows; constrained transition graph
+- Tag: `ruin-engine-stage2-complete`
+- PR #11 merged to `main`
+
 ### Ruin Engine — Stage 1 COMPLETE
 
 - Creative-director Ableton acceptance **PASS** (safe generative audio vertical slice)
