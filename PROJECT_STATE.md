@@ -4,13 +4,14 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**PFL Pulse Colony Stage 2 — COMPLETE** (Ableton PASS). Next: Stage 3 performance intervention.
-Stage 1 COMPLETE. Memory Eater **PARKED** at Stage 4. Ruin Engine PARKED at Stage 4.
+**PFL Signal Parasite Stage 1 — NEXT** (audio-reactive generative collaborator).
+Pulse Colony **PARKED** at Stage 3. Memory Eater **PARKED** at Stage 4. Ruin Engine PARKED at Stage 4.
 
 Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 ## Branch / tags
 
+- Stage 3 complete: `pulse-colony-stage3-complete` (PR #20)
 - Stage 2 complete: `pulse-colony-stage2-complete` (PR #19)
 - Stage 1 complete: `pulse-colony-stage1-complete` (PR #18)
 - Stage 4 complete: `memory-eater-stage4-complete` (PR #17)
@@ -76,11 +77,20 @@ Broken Conductor software paused after Stage 6 (Stage 7 = physical rig).
 
 | Field | Value |
 |-------|--------|
-| Status | **Stage 2 COMPLETE** (Ableton PASS) — 3-cell colony + arbiter |
-| Engine | algorithm **v2** (Stage 1: v1, tag `pulse-colony-stage1-complete`) |
+| Status | **PARKED** — Stage 3 COMPLETE (Ableton PASS) |
+| Engine | algorithm **v3** + performance-engine **v1** |
 | Formats | AU VST3 (`Fx`) · `Pls1` · `com.pfl.pulsecolony` |
-| Params | MIX, DENSITY, MUTATION, MOTION, OUTPUT, SEED |
+| Params | MIX, DENSITY, MUTATION, MOTION, OUTPUT, SEED + FREEZE/SILENCE/MUTATE/COLLAPSE/RESEED |
 | Roles | ANCHOR · SKITTER · GHOST → ColonyArbiter → one gate/motion |
-| Tag | `pulse-colony-stage2-complete` (PR #19) |
-| Acceptance | Multi-cell colony accepted; interaction adds value beyond Stage 1; occasional high-dens slicer character is a known minor limitation; Stage 2 tuning must not be silently retuned in Stage 3 |
-| Next | Stage 3 — performance intervention (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE), then park |
+| Tags | `pulse-colony-stage1-complete` … `pulse-colony-stage3-complete` |
+| Acceptance | Stages 1–3 Ableton PASS; Stage 2 idle autonomy preserved when performance idle |
+| Product decision | **PULSE COLONY v3 IS SUFFICIENTLY COMPLETE TO SHIP AND PARK.** No Stage 4 without new listening evidence or explicit creative-director direction. |
+
+## Signal Parasite
+
+| Field | Value |
+|-------|--------|
+| Status | **Stage 1 NEXT** — single reactive parasite |
+| Planned | MIX, SENSITIVITY, HUNGER, MUTATION, OUTPUT, SEED |
+| Job | Listen → StimulusEvents → one generated ParasiteVoice |
+| Tag | (none yet) |

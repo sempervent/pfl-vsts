@@ -103,13 +103,13 @@ struct PulseOpenEvent
 };
 
 /**
- * Pulse Colony Stage 2 — three PulseCells propose; ColonyArbiter accepts
- * into ONE gate/motion wet path. Algorithm v2.
+ * Pulse Colony Stage 3 — Stage 2 colony + performance intervention hooks.
+ * Algorithm v3. Idle (no performance overrides) preserves Stage 2 autonomy.
  */
 class PulseColonyEngine
 {
 public:
-    static constexpr int kAlgorithmVersion = 2;
+    static constexpr int kAlgorithmVersion = 3;
     static constexpr double kSlotBeats = 0.25; // sixteenth
     static constexpr int kNumRoles = static_cast<int> (PulseRole::Count);
     static constexpr int kMaxProposals = 8;
@@ -212,6 +212,73 @@ public:
     }
     int soloRole() const noexcept { return soloRole_; }
 
+    /** FREEZE / SILENCE / COLLAPSE: skip evolveAtBar DNA mutation and hunger advance. */
+    void setEvolutionPaused (bool paused) noexcept { evolutionPaused_ = paused; }
+    bool evolutionPaused() const noexcept { return evolutionPaused_; }
+
+    /**
+     * COLLAPSE participation multipliers (1 = Stage 2 default).
+     * 0 suppresses proposals for that role. Values >1 soft-boost presence (SWARM).
+     */
+    void setCollapseParticipation (float ghostMul, float skitterMul, float anchorMul) noexcept
+    {
+        partMul_[2] = std::clamp (ghostMul, 0.0f, 4.0f);
+        partMul_[1] = std::clamp (skitterMul, 0.0f, 4.0f);
+        partMul_[0] = std::clamp (anchorMul, 0.0f, 4.0f);
+    }
+
+    void clearCollapseParticipation() noexcept
+    {
+        partMul_.fill (1.0f);
+        swarmPressure_ = false;
+    }
+
+    /** SWARM: light congestion / interaction pressure (≠ DENSITY). */
+    void setSwarmPressure (bool on) noexcept { swarmPressure_ = on; }
+    bool swarmPressure() const noexcept { return swarmPressure_; }
+
+    float beatsSinceRole (int role) const noexcept
+    {
+        if (role < 0 || role >= kNumRoles) return 0.0f;
+        return beatsSinceRole_[static_cast<size_t> (role)];
+    }
+
+    int roleGeneration (int role) const noexcept
+    {
+        if (role < 0 || role >= kNumRoles) return 0;
+        return cells_[static_cast<size_t> (role)].dna.generation;
+    }
+
+    int lastManualMutateRole() const noexcept { return lastManualMutateRole_; }
+    int lastManualMutateOp() const noexcept { return lastManualMutateOp_; }
+    const char* lastManualMutateOpName() const noexcept;
+
+    /**
+     * One cell, one bounded MutOp via dedicated performance RNG (not mutateRng_).
+     * forcedRoleOrNeg < 0 → select by rotate + sensitivity weights.
+     * Returns selected role (-1 if none). Op applied immediately (caller may queue).
+     */
+    int manualMutate (int forcedRoleOrNeg = -1) noexcept;
+
+    /** Strip all windows from a role (FRACTURE / RESIDUE prep). */
+    void stripRoleWindows (int role) noexcept;
+
+    /** Compact DNA export/import for persistence after manual edits. */
+    struct CompactCellDna
+    {
+        int lengthBars = 2;
+        int phaseShiftSlots = 0;
+        int generation = 0;
+        int birthBar = 0;
+        int lifespanBars = 6;
+        uint32_t lastOp = 0;
+        int windowCount = 0;
+        std::array<PulseGateWindow, PulseDNA::kMaxWindows> windows {};
+    };
+
+    void exportCompactDna (std::array<CompactCellDna, kNumRoles>& out) const noexcept;
+    void importCompactDna (const std::array<CompactCellDna, kNumRoles>& in, int bar = 0) noexcept;
+
     int roleAcceptCount (int role) const noexcept
     {
         if (role < 0 || role >= kNumRoles) return 0;
@@ -245,6 +312,19 @@ public:
         }
         resetColonyRuntime();
         snapScheduler (static_cast<double> (bar) * 4.0);
+        seedDirty_ = false;
+    }
+
+    /** After FREEZE exit: adopt current macros as baselines (no dens-adapt burst). */
+    void snapEvolutionBaselines() noexcept
+    {
+        const float dens = densSm_.current();
+        const float mut = mutSm_.current();
+        for (int r = 0; r < kNumRoles; ++r)
+        {
+            cells_[static_cast<size_t> (r)].prevDensity = dens;
+            cells_[static_cast<size_t> (r)].prevMutation = mut;
+        }
     }
 
     void process (float* left, float* right, int numSamples,
@@ -484,6 +564,8 @@ private:
             c.spatialRng = pfl::generative::DeterministicRNG::derived (masterSeed_, hashTag (tag));
         }
         arbiterRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, hashTag ("colony/arbitrate"));
+        perfMutSelRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, hashTag ("colony/perfMutateSel"));
+        perfMutOpRng_ = pfl::generative::DeterministicRNG::derived (masterSeed_, hashTag ("colony/perfMutateOp"));
     }
 
     void resetColonyRuntime() noexcept
@@ -720,6 +802,16 @@ private:
     {
         densSm_.setCurrentAndTarget (dens);
         mutSm_.setCurrentAndTarget (mut);
+
+        // FREEZE / performance pause: keep DNA snapshot; only resync arbiter timeline.
+        if (evolutionPaused_)
+        {
+            resetColonyRuntime();
+            snapScheduler (ppq);
+            seedDirty_ = false;
+            return;
+        }
+
         rebuildRng();
         const int endSlot = std::max (0, static_cast<int> (std::floor (ppq / kSlotBeats)));
         for (int r = 0; r < kNumRoles; ++r)
@@ -760,6 +852,108 @@ private:
     {
         Stay = 0, NudgeStart, Stretch, Split, Merge, SwapVoid, PhaseJog, BirthCull
     };
+
+    static const char* mutOpName (MutOp op) noexcept
+    {
+        switch (op)
+        {
+            case MutOp::Stay: return "STAY";
+            case MutOp::NudgeStart: return "NUDGE_START";
+            case MutOp::Stretch: return "STRETCH";
+            case MutOp::Split: return "SPLIT";
+            case MutOp::Merge: return "MERGE";
+            case MutOp::SwapVoid: return "SWAP_VOID";
+            case MutOp::PhaseJog: return "PHASE_JOG";
+            case MutOp::BirthCull: return "BIRTH_CULL";
+        }
+        return "?";
+    }
+
+    /** Draw MutOp using a dedicated RNG (performance path; ignores Stay-bias from mut knob). */
+    MutOp drawPerfMutOp (int role, pfl::generative::DeterministicRNG& rng) noexcept
+    {
+        const float u = rng.nextFloat();
+        if (role == 0)
+        {
+            if (u < 0.35f) return MutOp::NudgeStart;
+            if (u < 0.65f) return MutOp::Stretch;
+            if (u < 0.80f) return MutOp::SwapVoid;
+            if (u < 0.90f) return MutOp::PhaseJog;
+            return MutOp::BirthCull;
+        }
+        if (role == 1)
+        {
+            if (u < 0.28f) return MutOp::NudgeStart;
+            if (u < 0.48f) return MutOp::Split;
+            if (u < 0.68f) return MutOp::SwapVoid;
+            if (u < 0.82f) return MutOp::Stretch;
+            if (u < 0.92f) return MutOp::Merge;
+            return MutOp::BirthCull;
+        }
+        if (u < 0.30f) return MutOp::NudgeStart;
+        if (u < 0.50f) return MutOp::PhaseJog;
+        if (u < 0.70f) return MutOp::SwapVoid;
+        if (u < 0.85f) return MutOp::BirthCull;
+        return MutOp::Stretch;
+    }
+
+    bool applyMutOpWithRng (int role, MutOp op, pfl::generative::DeterministicRNG& rng) noexcept
+    {
+        auto& cell = cells_[static_cast<size_t> (role)];
+        auto saved = cell.mutateRng;
+        cell.mutateRng = rng;
+        const bool ok = applyMutOp (role, op);
+        rng = cell.mutateRng;
+        cell.mutateRng = saved;
+        return ok;
+    }
+
+    int selectManualMutateRole (int forcedRoleOrNeg) noexcept
+    {
+        if (forcedRoleOrNeg >= 0 && forcedRoleOrNeg < kNumRoles)
+        {
+            if (cells_[static_cast<size_t> (forcedRoleOrNeg)].dna.windowCount > 0)
+                return forcedRoleOrNeg;
+            return -1;
+        }
+
+        float w[kNumRoles] = { 0.30f, 0.90f, 1.25f };
+        int eligible = 0;
+        for (int r = 0; r < kNumRoles; ++r)
+        {
+            if (soloRole_ >= 0 && r != soloRole_)
+            {
+                w[r] = 0.0f;
+                continue;
+            }
+            if (cells_[static_cast<size_t> (r)].dna.windowCount <= 0)
+            {
+                w[r] = 0.0f;
+                continue;
+            }
+            if (r == lastManualMutateRole_)
+                w[r] *= 0.15f;
+            ++eligible;
+        }
+        if (eligible <= 0)
+            return -1;
+
+        float sum = w[0] + w[1] + w[2];
+        if (sum <= 1.0e-6f)
+            return -1;
+        const float u = perfMutSelRng_.nextFloat() * sum;
+        float acc = 0.0f;
+        for (int r = 0; r < kNumRoles; ++r)
+        {
+            acc += w[r];
+            if (u <= acc)
+                return r;
+        }
+        for (int r = kNumRoles - 1; r >= 0; --r)
+            if (w[r] > 0.0f)
+                return r;
+        return -1;
+    }
 
     MutOp drawMutOp (int role, float mut) noexcept
     {
@@ -985,7 +1179,7 @@ private:
         const int bar = static_cast<int> (std::floor (ppq / 4.0));
         if (bar != lastBar_)
         {
-            if (lastBar_ >= 0)
+            if (lastBar_ >= 0 && ! evolutionPaused_)
             {
                 const int from = lastBar_ + 1;
                 for (int b = from; b <= bar; ++b)
@@ -1055,6 +1249,9 @@ private:
     {
         if (snap.solo >= 0 && snap.solo != role)
             return;
+        const float pMul = partMul_[static_cast<size_t> (std::clamp (role, 0, kNumRoles - 1))];
+        if (pMul <= 1.0e-6f)
+            return;
         const auto& dna = cells_[static_cast<size_t> (role)].dna;
         const int n = dna.lengthCells();
         if (n <= 0) return;
@@ -1064,17 +1261,28 @@ private:
             return;
 
         // Soft dens presence after onset: Skitter/Ghost are not full Stage-1 streams at low dens.
+        // SWARM / participation mul may temporarily boost presence (≠ writing DENSITY).
         if (role == 1)
         {
-            const float p = std::clamp ((snap.dens - 0.10f) / 0.55f, 0.08f, 1.0f);
+            float p = std::clamp ((snap.dens - 0.10f) / 0.55f, 0.08f, 1.0f);
+            if (swarmPressure_)
+                p = std::min (1.0f, p * 1.35f);
+            p = std::clamp (p * pMul, 0.0f, 1.0f);
             if (arbiterRng_.nextFloat() > p)
                 return;
         }
         else if (role == 2)
         {
-            const float p = std::clamp ((snap.dens - 0.25f) / 0.60f, 0.05f, 0.85f);
+            float p = std::clamp ((snap.dens - 0.25f) / 0.60f, 0.05f, 0.85f);
+            if (swarmPressure_)
+                p = std::min (1.0f, p * 1.45f);
+            p = std::clamp (p * pMul, 0.0f, 1.0f);
             if (arbiterRng_.nextFloat() > p)
                 return;
+        }
+        else if (pMul < 0.999f && arbiterRng_.nextFloat() > pMul)
+        {
+            return;
         }
 
         int len = 1;
@@ -1209,6 +1417,9 @@ private:
 
     void applySlot (int absSlot, float dens, float mut, double bpm) noexcept
     {
+        if (swarmPressure_)
+            congestionEma_ = std::min (1.0f, congestionEma_ * 0.90f + 0.18f);
+
         const ColonySnapshot snap = makeSnapshot (absSlot, dens, mut);
 
         std::array<PulseIntent, kMaxProposals> props {};
@@ -1303,9 +1514,12 @@ private:
 
         (void) slotOpen;
 
-        // Advance hunger (musical beats only)
-        for (int r = 0; r < kNumRoles; ++r)
-            beatsSinceRole_[static_cast<size_t> (r)] += static_cast<float> (kSlotBeats);
+        // Advance hunger (musical beats only) — paused under FREEZE/SILENCE/COLLAPSE
+        if (! evolutionPaused_)
+        {
+            for (int r = 0; r < kNumRoles; ++r)
+                beatsSinceRole_[static_cast<size_t> (r)] += static_cast<float> (kSlotBeats);
+        }
 
         if (callLive_ && absSlot > callExpireSlot_)
             callLive_ = false;
@@ -1514,9 +1728,16 @@ private:
 
     std::array<PulseCell, kNumRoles> cells_ {};
     pfl::generative::DeterministicRNG arbiterRng_ {};
+    pfl::generative::DeterministicRNG perfMutSelRng_ {};
+    pfl::generative::DeterministicRNG perfMutOpRng_ {};
 
     bool interactionEnabled_ = true;
     int soloRole_ = -1;
+    bool evolutionPaused_ = false;
+    bool swarmPressure_ = false;
+    std::array<float, kNumRoles> partMul_ { 1.0f, 1.0f, 1.0f };
+    int lastManualMutateRole_ = -1;
+    int lastManualMutateOp_ = -1;
 
     float congestionEma_ = 0.0f;
     int gapLengthSlots_ = 0;
@@ -1563,5 +1784,88 @@ private:
     std::vector<PulseTraceEvent> events_;
     std::vector<PulseOpenEvent> opens_;
 };
+
+inline const char* PulseColonyEngine::lastManualMutateOpName() const noexcept
+{
+    if (lastManualMutateOp_ < 0)
+        return "NONE";
+    return mutOpName (static_cast<MutOp> (lastManualMutateOp_));
+}
+
+inline int PulseColonyEngine::manualMutate (int forcedRoleOrNeg) noexcept
+{
+    const int role = selectManualMutateRole (forcedRoleOrNeg);
+    lastManualMutateRole_ = role;
+    lastManualMutateOp_ = -1;
+    if (role < 0)
+        return -1;
+
+    MutOp op = drawPerfMutOp (role, perfMutOpRng_);
+    bool ok = applyMutOpWithRng (role, op, perfMutOpRng_);
+    if (! ok)
+    {
+        op = drawPerfMutOp (role, perfMutOpRng_);
+        ok = applyMutOpWithRng (role, op, perfMutOpRng_);
+    }
+    if (! ok)
+    {
+        lastManualMutateOp_ = static_cast<int> (MutOp::Stay);
+        return role;
+    }
+    ++cells_[static_cast<size_t> (role)].dna.generation;
+    cells_[static_cast<size_t> (role)].dna.birthBar = lastBar_ >= 0 ? lastBar_ : 0;
+    lastManualMutateOp_ = static_cast<int> (op);
+    pushTrace (static_cast<double> (std::max (0, lastBar_)) * 4.0, role,
+               PulseSuppressReason::None, "PERF_MUTATE");
+    return role;
+}
+
+inline void PulseColonyEngine::stripRoleWindows (int role) noexcept
+{
+    if (role < 0 || role >= kNumRoles)
+        return;
+    auto& dna = cells_[static_cast<size_t> (role)].dna;
+    dna.windowCount = 0;
+    rebuildMask (role);
+}
+
+inline void PulseColonyEngine::exportCompactDna (std::array<CompactCellDna, kNumRoles>& out) const noexcept
+{
+    for (int r = 0; r < kNumRoles; ++r)
+    {
+        const auto& dna = cells_[static_cast<size_t> (r)].dna;
+        auto& c = out[static_cast<size_t> (r)];
+        c.lengthBars = dna.lengthBars;
+        c.phaseShiftSlots = dna.phaseShiftSlots;
+        c.generation = dna.generation;
+        c.birthBar = dna.birthBar;
+        c.lifespanBars = dna.lifespanBars;
+        c.lastOp = dna.lastOp;
+        c.windowCount = dna.windowCount;
+        c.windows = dna.windows;
+    }
+}
+
+inline void PulseColonyEngine::importCompactDna (const std::array<CompactCellDna, kNumRoles>& in, int bar) noexcept
+{
+    for (int r = 0; r < kNumRoles; ++r)
+    {
+        const auto& c = in[static_cast<size_t> (r)];
+        auto& cell = cells_[static_cast<size_t> (r)];
+        auto& dna = cell.dna;
+        dna.lengthBars = std::clamp (c.lengthBars, 1, PulseDNA::kMaxBars);
+        dna.phaseShiftSlots = ((c.phaseShiftSlots % 16) + 16) % 16;
+        dna.generation = std::max (0, c.generation);
+        dna.birthBar = c.birthBar;
+        dna.lifespanBars = std::max (1, c.lifespanBars);
+        dna.lastOp = c.lastOp;
+        dna.windowCount = std::clamp (c.windowCount, 0, PulseDNA::kMaxWindows);
+        dna.windows = c.windows;
+        cell.prevDensity = -1.0f;
+        cell.prevMutation = -1.0f;
+        rebuildMask (r);
+        (void) bar;
+    }
+}
 
 } // namespace pfl::dsp

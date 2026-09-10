@@ -11,7 +11,7 @@ juce_add_plugin(PulseColony
     PLUGIN_CODE Pls1
     FORMATS AU VST3
     PRODUCT_NAME "PFL Pulse Colony"
-    DESCRIPTION "Deterministic generative single-cell rhythmic gate"
+    DESCRIPTION "Deterministic three-cell colony gate with performance intervention"
     VST3_CATEGORIES Fx
     AU_MAIN_TYPE kAudioUnitType_Effect
     AU_SANDBOX_SAFE TRUE

@@ -1339,3 +1339,99 @@ value beyond Stage 1.
 
 Stage 3: performance intervention (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE),
 then park. Branch from updated `main` after merge.
+
+---
+
+## 2026-09-10 — Pulse Colony Stage 3 performance intervention
+
+### Why Stage 3
+
+Stage 2 Ableton PASS proved a multi-cell colony. Stage 3 makes that colony
+**conductible** via the suite performance vocabulary without exposing cell
+internals or retuning accepted Stage 2 autonomous behavior when commands are idle.
+
+### Shared suite contract
+
+APVTS: FREEZE/SILENCE toggles; MUTATE/COLLAPSE/RESEED 0→1 edge one-shots.
+Controller between host and engine. Priority: **SILENCE > COLLAPSE > FREEZE > MUTATE**.
+Performance-engine version **v1** (Pulse Colony algorithm **v3**).
+
+### FREEZE
+
+Hold this colony groove. Pause autonomous DNA evolution and long-term hunger /
+contribution-pressure accumulation. Local arbitration, gate, and phrase playback
+continue. DENSITY/MOTION/MIX/OUTPUT remain live; DENSITY must not mutate DNA.
+Continuous MUTATION value may change for post-unfreeze pressure only.
+Manual MUTATE allowed while frozen; does not unfreeze.
+Quantize entry to next bar boundary when practical; exit with no catch-up burst.
+FREEZE ≠ MUTATION=0 (adaptive state also held).
+
+### MUTATE (command)
+
+Exactly **one** cell, **one** bounded Stage 2 MutOp (not full DNA regen).
+Dedicated performance RNG streams. Works frozen; ignored while SILENCE or mid-COLLAPSE.
+In RESIDUE: one bounded edit to survivor DNA (no regrowth). Does not unfreeze.
+
+### COLLAPSE
+
+24-beat musical-time arc (4×6): **SWARM → STARVE → FRACTURE → RESIDUE**.
+Not a DENSITY ramp. Structural role suppression + DNA fracture → sparse survivor.
+Residue continues; no auto-regrow. Exit primarily via RESEED.
+Overrides FREEZE. Retrigger while collapsing ignored. MUTATE ignored mid-collapse.
+User DENSITY/MUTATION params unchanged; controller overrides effective participation.
+
+### RESEED
+
+New deterministic three-cell universe; user continuous controls unchanged; SEED
+updates visibly. Clears stale arbiter/hunger/collapse. Preferred: preserve FREEZE latch
+(new colony born frozen if latched). Allowed under SILENCE (prepare under mute).
+
+### SILENCE
+
+Total plugin output mute (≠ MIX=0) with short click-safe ramp.
+Pause evolution, hunger, and collapse progression; no backlog on unsilence.
+FREEZE latch survives. Ignore new MUTATE/COLLAPSE while silent.
+RESEED allowed under silence.
+
+### Persistence
+
+Persist FREEZE/SILENCE + compact cell DNA / residue / mode via private state when
+manual edits exist. Mid-collapse restore → stable snapshot, collapse inactive.
+Stage 1/2 legacy loads reconstruct from SEED+controls.
+
+### Rejected
+
+Silent Stage 2 retunes; knob-automation verbs; parallel wet paths; multiband;
+MIDI/studio; pattern editor; public role selector.
+
+---
+
+## 2026-09-10 — Pulse Colony Stage 3 Ableton PASS + PARK
+
+### Acceptance
+
+CREATIVE-DIRECTOR ABLETON ACCEPTANCE: **PASS**.
+Tag: `pulse-colony-stage3-complete`. PR #20 merged.
+
+Performance intervention accepted: FREEZE holds a playable colony groove;
+MUTATE while frozen is deliberate single-cell edit; COLLAPSE is an audible
+population arc ending in useful residue (≠ DENSITY fade); RESEED grows a new
+three-cell universe; SILENCE is total mute (≠ MIX=0). Stage 2 autonomous colony
+behavior remains when performance commands are idle.
+
+### Product decision
+
+**PULSE COLONY v3 IS SUFFICIENTLY COMPLETE TO SHIP AND PARK.**
+
+No Stage 4 without new listening evidence or explicit creative-director direction.
+Preserve ANCHOR / SKITTER / GHOST, ColonyArbiter, one gate/motion path, DENSITY /
+MUTATION / MOTION semantics, and the five performance verbs. Do not silently
+retune accepted Stage 2/3 behavior.
+
+Known MEDIUM/LOW limitations (seek hunger wipe while paused; Stay MutOp
+dnaEdited mark) remain documented and non-blocking.
+
+### Next product
+
+**PFL Signal Parasite Stage 1** — audio-reactive generative collaborator.
+Do not begin Pulse Colony Stage 4.

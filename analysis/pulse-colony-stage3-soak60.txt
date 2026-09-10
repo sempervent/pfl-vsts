@@ -1,0 +1,1 @@
+pc3soak60 bad=0 peak=0.394386 gen=7 mode=0

@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Signal Parasite — Stage 1 NEXT
+
+- Audio-reactive generative collaborator (listen → StimulusEvents → one ParasiteVoice)
+- Branch planned: `pr/signal-parasite-stage1-reactive`
+
+### Pulse Colony — Stage 3 COMPLETE (PARKED)
+
+- Creative-director Ableton acceptance **PASS** (performance intervention)
+- FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE; algorithm **v3** + performance-engine **v1**
+- Stage 2 autonomous colony preserved when performance idle (no silent retune)
+- **Product decision:** PULSE COLONY v3 IS SUFFICIENTLY COMPLETE TO SHIP AND PARK
+- Tag: `pulse-colony-stage3-complete`
+- PR #20 merged to `main`
+
 ### Pulse Colony — Stage 2 COMPLETE
 
 - Creative-director Ableton acceptance **PASS** (multi-cell rhythmic colony)
