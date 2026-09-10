@@ -111,17 +111,42 @@ COLLAPSE: SWARM → STARVE → FRACTURE → RESIDUE (24 beats). FREEZE ≠ MUTAT
 ## Signal Parasite (Stage 3 — awaiting acceptance)
 
 ```text
-Host / APVTS
-    ↓
-PerformanceCommand (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE)
-    ↓
-SignalParasitePerformanceController
-    ↓
-FeatureExtractor → StimulusDetector → RecentStimulusHistory
-    → RelationshipModel (LURKING|ATTACHED|ANSWERING|WITHDRAWN)
-    → ParasiteDNA + HUNGER → ONE ParasiteVoice
-    ↓
-MIX / OUTPUT / silenceGain (~4 ms)
+Host / APVTS  (MIX SENSITIVITY HUNGER MUTATION OUTPUT SEED
+              + FREEZE SILENCE MUTATE COLLAPSE RESEED)
+        |
+        v
+SignalParasitePerformanceController   (perf-engine v1)
+        |  manner overlays / DNA lock / response gate / silenceGain
+        v
+Host audio in ---- ORIGINAL tap --------------------+
+   dry                                              v
+    |                                     ParasiteFeatureExtractor
+    |                                       energy · attack · brightness
+    |                                       change · balance · fill01
+    |                                               |
+    |                                               v
+    |                                     ParasiteStimulusDetector
+    |                                       ATTACK | SHIFT (cap 8)
+    |                                               |
+    |                                               v
+    |                                     RecentStimulusHistory (16 descriptors)
+    |                                     RelationshipModel
+    |                                       LURKING | ATTACHED | ANSWERING | WITHDRAWN
+    |                                               |
+    |                                               v
+    |                                     ParasiteDNA + HUNGER gate
+    |                                       (+ collapse manner overlay)
+    |                                       -> absolute-sample schedule
+    |                                               |
+    |                                               v
+    |                                     ONE ParasiteVoice (generated)
+    |                                       noise -> resonant LP chirp -> AR
+    |                                       -> saturator -> pan -> DC -> limiter
+    |                                               |
+    +----------------> MIX -------------------------+
+                            |
+                            v
+                     OUTPUT -> silenceGain (~4 ms) -> audio out
 ```
 
 Ableton PASS Stages 1–2. Tags `signal-parasite-stage1-complete`,
