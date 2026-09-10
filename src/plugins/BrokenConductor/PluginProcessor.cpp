@@ -79,11 +79,12 @@ void BrokenConductorProcessor::prepareToPlay (double sampleRate, int /*samplesPe
     wasPlaying_ = false;
     lastHostPpq_ = 0.0;
     lastPerfBar_ = -1;
-    lastFreezeParam_ = false;
-    lastSilenceParam_ = false;
-    lastMutateParam_ = 0.0f;
-    lastCollapseParam_ = 0.0f;
-    lastReseedParam_ = 0.0f;
+    // Seed edge latches from current APVTS so held one-shots do not false-fire
+    lastFreezeParam_ = apvts_.getRawParameterValue ("freeze")->load() > 0.5f;
+    lastSilenceParam_ = apvts_.getRawParameterValue ("silence")->load() > 0.5f;
+    lastMutateParam_ = apvts_.getRawParameterValue ("mutate")->load();
+    lastCollapseParam_ = apvts_.getRawParameterValue ("collapse")->load();
+    lastReseedParam_ = apvts_.getRawParameterValue ("reseed")->load();
     syncEngineFromParams();
 }
 
@@ -192,7 +193,14 @@ void BrokenConductorProcessor::syncPerformanceCommands (double ppq) noexcept
 
     uint64_t newSeed = 0;
     if (performance_.takeSeedDirty (newSeed))
+    {
         writeSeedToHost (newSeed);
+        // Re-apply latched toggles (RESEED does not clear host freeze/silence params)
+        if (silence && performance_.mode() != pfl::conductor_perf::Mode::Silenced)
+            performance_.trigger (Cmd::SilenceOn, ppq, engine_);
+        else if (freeze && performance_.mode() == pfl::conductor_perf::Mode::Normal)
+            performance_.trigger (Cmd::FreezeOn, ppq, engine_);
+    }
 }
 
 bool BrokenConductorProcessor::readHostClock (pfl::generative::ClockSnapshot& snap, int numSamples) noexcept
@@ -342,7 +350,7 @@ void BrokenConductorProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             flushHostNotes (midi, 0);
             engine_.handleSeek (ppqStart);
             performance_.syncEngine (engine_);
-            if (engine_.needsHostRetrigger())
+            if (engine_.needsHostRetrigger() && ! engine_.silenceActive())
             {
                 pfl::generative::ConductorEngine::HostSoundingNote notes[pfl::generative::ConductorEngine::kNumVoices];
                 const int n = engine_.copySoundingNotes (notes, pfl::generative::ConductorEngine::kNumVoices);

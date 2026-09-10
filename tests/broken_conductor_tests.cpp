@@ -1382,6 +1382,58 @@ static void testStage5ReseedDeterministic()
     EXPECT (engA.masterSeed() == pA.currentSeed());
 }
 
+static void testStage5ReseedPreservesPanicOffs()
+{
+    ConductorEngine eng;
+    ConductorPerformanceController perf;
+    eng.setCapture (true);
+    eng.setParams ({ 0.70f, 0.35f });
+    eng.reseed (2002);
+    perf.reset (2002);
+
+    double ppq = 0.0;
+    while (ppq < 16.0)
+    {
+        const double end = ppq + 0.25;
+        perf.tick (ppq, static_cast<int> (ppq / 4.0), eng);
+        pfl::generative::ClockSnapshot snap;
+        snap.playing = true;
+        snap.ppq = ppq;
+        snap.tempoBpm = 72.0;
+        snap.timeSigNumerator = 4;
+        snap.timeSigDenominator = 4;
+        eng.clock().advance (snap);
+        eng.processTimeRange (ppq, end, true);
+        eng.drainPending();
+        ppq = end;
+    }
+
+    const int activeBefore = eng.tracker().activeCount();
+    perf.trigger (Command::Reseed, 16.0, eng);
+    auto pending = eng.drainPending();
+    int offs = 0;
+    for (const auto& e : pending)
+        if (e.kind == MidiMsgKind::NoteOff)
+            ++offs;
+    if (activeBefore > 0)
+        EXPECT (offs >= 1);
+    EXPECT (! eng.sounding());
+    EXPECT (eng.tracker().activeCount() == 0);
+}
+
+static void testStage5ReseedKeepsSilence()
+{
+    ConductorEngine eng;
+    ConductorPerformanceController perf;
+    eng.reseed (2002);
+    perf.reset (2002);
+    perf.trigger (Command::SilenceOn, 0.0, eng);
+    EXPECT (perf.mode() == Mode::Silenced);
+    perf.trigger (Command::Reseed, 1.0, eng);
+    EXPECT (perf.mode() == Mode::Silenced);
+    EXPECT (eng.silenceActive());
+}
+
 static void testStage5NoteSafetyUnderCommands()
 {
     const auto cmds = stage5Script();
@@ -1447,6 +1499,8 @@ int main()
     testStage5CollapseOverridesFreeze();
     testStage5SilencePriorityAndRecovery();
     testStage5ReseedDeterministic();
+    testStage5ReseedPreservesPanicOffs();
+    testStage5ReseedKeepsSilence();
     testStage5NoteSafetyUnderCommands();
     testStage5HungerRegressionNormal();
 

@@ -146,15 +146,11 @@ public:
         collisionStats_ = {};
         lastProcessedPpq_ = 0.0;
         clock_.reset (0.0);
-        pending_.clear();
+        // Do not clear pending_ here — panic NoteOffs from the same block must reach the host.
         ensembleCaptured_.clear();
         emittedTracker_.clear();
         // outputRole_ preserved across reseed (configuration)
-        // performance flags cleared by controller on reseed
-        evolutionLocked_ = false;
-        silenceActive_ = false;
-        hungerPaused_ = false;
-        collapsePhase_ = 0;
+        // performance flags: preserved — controller calls setPerformanceFlags after
         recentOnsets_.fill (0);
         recentOnsetCursor_ = 0;
         onsetsThisBar_ = 0;
@@ -253,20 +249,38 @@ public:
         const uint64_t seed = masterSeed_;
         const ConductorParams p = params_;
         const bool wasCapture = capture_;
+        const bool evo = evolutionLocked_;
+        const bool sil = silenceActive_;
+        const bool hung = hungerPaused_;
+        const int col = collapsePhase_;
         capture_ = false;
         reseed (seed);
         setParams (p);
+        setPerformanceFlags (evo, sil, hung, col);
         const double end = std::max (0.0, targetPpq);
         double ppq = 0.0;
         while (ppq < end)
         {
             const double next = std::min (end, ppq + 1.0);
-            processTimeRange (ppq, next, true, false);
+            // Catch-up is silent to host; skip commits entirely when silenced
+            if (! sil)
+                processTimeRange (ppq, next, true, false);
+            else
+                lastProcessedPpq_ = next;
             ppq = next;
         }
         capture_ = wasCapture;
         pending_.clear();
         lastProcessedPpq_ = targetPpq;
+        if (sil)
+        {
+            for (auto& v : voices_)
+            {
+                v.sounding = false;
+                v.noteOffPpq = 0.0;
+            }
+            tracker_.clear();
+        }
     }
 
     bool needsHostRetrigger() const noexcept

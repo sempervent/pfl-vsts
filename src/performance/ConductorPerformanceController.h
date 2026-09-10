@@ -261,6 +261,10 @@ private:
 
     void beginReseed (double ppq, pfl::generative::ConductorEngine& engine) noexcept
     {
+        const bool staySilent = (state_.mode == Mode::Silenced);
+        const bool stayFrozen = (state_.mode == Mode::Frozen)
+                                || (staySilent && state_.frozenBeforeSilence);
+
         ++state_.reseedCount;
         // Deterministic next seed in UI range [0, 999999]
         const uint64_t mix = state_.currentSeed
@@ -275,15 +279,29 @@ private:
         engine.reseed (next);
         manualRng_ = pfl::generative::DeterministicRNG::derived (next, hashTag ("manualMutation"));
 
-        state_.mode = Mode::Normal;
         state_.collapsePhase = CollapsePhase::None;
         state_.collapseStartPpq = -1.0;
         state_.collapseEndPpq = -1.0;
         pendingMutate_ = false;
         collapseWasActive_ = false;
-        state_.frozenBeforeSilence = false;
         state_.mutateCount = 0;
         state_.lastMutateRole = -1;
+
+        if (staySilent)
+        {
+            state_.mode = Mode::Silenced;
+            state_.frozenBeforeSilence = stayFrozen;
+        }
+        else if (stayFrozen)
+        {
+            state_.mode = Mode::Frozen;
+            state_.frozenBeforeSilence = false;
+        }
+        else
+        {
+            state_.mode = Mode::Normal;
+            state_.frozenBeforeSilence = false;
+        }
 
         char detail[64];
         std::snprintf (detail, sizeof detail, "reseed→%llu", static_cast<unsigned long long> (next));
