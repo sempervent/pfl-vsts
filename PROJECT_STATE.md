@@ -4,9 +4,10 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 
 ## Current milestone
 
-**PFL SUITE UI / RELEASE POLISH** — Signal Parasite **PARKED** at Stage 3
-(Ableton PASS). Next: unified custom interfaces; no new plugin / Stage 4 /
-tonal / MIDI work.
+**PFL SUITE UI / RELEASE POLISH — COMPLETE** (creative-director Ableton
+visual **PASS**). Shared `src/ui/` custom editors on all six plugins; Stage
+numbers removed from musician-facing UI. Tag `pfl-suite-ui-release-polish-complete`
+(PR #24). No new plugin / Stage 4 / tonal / MIDI work until directed.
 
 Pulse Colony **PARKED** at Stage 3. Memory Eater **PARKED** at Stage 4.
 Ruin Engine PARKED at Stage 4. Broken Conductor software paused after Stage 6
@@ -14,6 +15,7 @@ Ruin Engine PARKED at Stage 4. Broken Conductor software paused after Stage 6
 
 ## Branch / tags
 
+- Suite UI / release polish complete: `pfl-suite-ui-release-polish-complete` (PR #24)
 - Stage 3 complete: `signal-parasite-stage3-complete` (PR #23)
 - Stage 2 complete: `signal-parasite-stage2-complete` (PR #22)
 - Stage 1 complete: `signal-parasite-stage1-complete` (PR #21)

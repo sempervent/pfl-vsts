@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### PFL Suite UI / Release Polish — COMPLETE
+
+- Creative-director Ableton visual acceptance **PASS**
+- Shared custom editor foundation (`src/ui/`): knobs, SEED control, performance strip, themes
+- Musician-facing Stage numbers removed from all six plugin editors
+- Product titles + subtitles; quiet `PFL` footer; fixed ~580px width; no normal scrolling
+- Parameter IDs / ranges / plugin IDs / DSP unchanged
+- **Product decision:** PFL SUITE CUSTOM UI IS ACCEPTED FOR RELEASE PRESENTATION
+- Tag: `pfl-suite-ui-release-polish-complete`
+- PR #24
+
 ### Signal Parasite — Stage 3 COMPLETE (PARKED)
 
 - Creative-director Ableton acceptance **PASS** (performance intervention)
