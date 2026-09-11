@@ -1945,3 +1945,31 @@ multiple open editors.
 
 Giant UI framework; skeuomorphic knobs; raster backgrounds; spectrum/oscilloscope
 chrome; stage badges; parameter ID renames; DSP retunes; MIDI mappings; Plugin #7.
+
+---
+
+## 2026-09-10 — PFL Suite UI / Release Polish Ableton PASS
+
+### Decision
+
+CREATIVE-DIRECTOR ABLETON VISUAL ACCEPTANCE: **PASS**
+
+**Product decision:** PFL SUITE CUSTOM UI IS ACCEPTED FOR RELEASE PRESENTATION.
+
+### Accepted
+
+- Shared `PflSuiteEditor` shell across all six plugins
+- Rotary macro knobs; distinct SEED; FREEZE|SILENCE then MUTATE|COLLAPSE|RESEED
+- Per-plugin accent/motif identity with shared PFL grammar
+- No Stage numbers in musician-facing UI; quiet `PFL` footer
+- Fixed ~580px editors; no normal scrolling
+- Parameter IDs, ranges, plugin IDs, and DSP unchanged
+
+### Tag
+
+`pfl-suite-ui-release-polish-complete` (PR #24)
+
+### Next
+
+Do not begin Plugin #7, Stage 4 algorithm work, tonal listening, or
+MIDI/controller/studio integration unless newly directed.
