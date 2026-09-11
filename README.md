@@ -12,42 +12,39 @@ Shared ideas across the suite include deterministic seeds, versioned algorithms,
 
 ## Current Plugins
 
+Six finished instruments (musical algorithms parked; suite UI polish in progress):
+
 ### PFL Drone Organism
 
-Self-composing AU/VST3 dirty-drone instrument (no MIDI required to play). Host-synced generative composition with Phrase DNA / musical memory, continuous macros (SEED, DENSITY, MUTATION, DRIFT, DIRT, SPACE, OUTPUT), and live performance commands (FREEZE, MUTATE, COLLAPSE, RESEED, SILENCE).
+A deterministic generative drone composer (AU/VST3). Host-synced Phrase DNA, macros (SEED, DENSITY, MUTATION, DRIFT, DIRT, SPACE, OUTPUT), and performance commands (FREEZE, MUTATE, COLLAPSE, RESEED, SILENCE).
 
-**Status:** Implemented reference plugin — functionally complete software milestone. Creative-director listening validation and physical controller/studio integration remain separate follow-ups (see `PROJECT_STATE.md`).
+### PFL Broken Conductor
 
-### PFL Broken Conductor (Stage 6 complete)
+A deterministic generative MIDI composer (AU/VST3): stereo in (ignored) + silent stereo out + MIDI out. Four-role ensemble, harmonic journey, performance commands. Software complete; physical-rig integration is separate. See `docs/BROKEN_CONDUCTOR.md`.
 
-Deterministic generative MIDI **Instrument** (AU/VST3) for Ableton: stereo in (ignored) + silent stereo out + MIDI out. Four-role ensemble, harmonic journey (algorithm v6), performance commands. Software paused — Stage 7 is physical-rig integration. See `docs/BROKEN_CONDUCTOR.md`.
+### PFL Ruin Engine
 
-### PFL Ruin Engine (PARKED — Stage 4 complete)
+A deterministic generative audio-degradation environment (AU/VST3). Controls: MIX, AGE, INSTABILITY, OUTPUT, SEED + FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE. See `docs/RUIN_ENGINE.md`.
 
-Deterministic generative **audio effect** (AU/VST3): degradation states, accumulated WearState, and performance verbs (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE). Controls: MIX, AGE, INSTABILITY, OUTPUT, SEED. Algorithm v4. Ableton-accepted through Stage 4; parked as shippable. See `docs/RUIN_ENGINE.md`.
+### PFL Memory Eater
 
-### PFL Memory Eater (PARKED — Stage 4 COMPLETE)
+A generative audio-memory organism (AU/VST3). Send-first Ableton Return with MIX=1.0. Controls: MIX, HUNGER, MEMORY, OUTPUT, SEED + performance verbs. See `docs/MEMORY_EATER.md`.
 
-Generative **audio-memory** effect: short-term ring + six-slot ecology + generational descendants + performance verbs (FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE). **Send-first**: Ableton Return with MIX=1.0. Controls: MIX, HUNGER, MEMORY, OUTPUT, SEED. Algorithm v4. Ableton-accepted through Stage 4; parked as shippable. See `docs/MEMORY_EATER.md`.
+### PFL Pulse Colony
 
-### PFL Pulse Colony (PARKED — Stage 3 COMPLETE)
+A generative rhythmic audio colony (AU/VST3): ANCHOR / SKITTER / GHOST → one gate/motion stream. Controls: MIX, DENSITY, MUTATION, MOTION, OUTPUT, SEED + performance verbs. See `docs/PULSE_COLONY.md`.
 
-Deterministic generative **rhythmic gate** (AU/VST3): three PulseCells (ANCHOR / SKITTER / GHOST) propose into one ColonyArbiter → one gate/motion stream. Controls: MIX, DENSITY, MUTATION, MOTION, OUTPUT, SEED + performance FREEZE / SILENCE / MUTATE / COLLAPSE / RESEED. Algorithm v3 + performance-engine v1. Ableton-accepted through Stage 3; parked as shippable. See `docs/PULSE_COLONY.md`.
+### PFL Signal Parasite
 
-### PFL Signal Parasite (PARKED — Stage 3 COMPLETE)
-
-An audio-reactive generative **collaborator** (AU/VST3): listens to incoming audio, decides what is worth answering, and answers with its own generated voice (noise → resonant LP chirp). Relationship states LURKING / ATTACHED / ANSWERING / WITHDRAWN plus performance verbs FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE. Controls: MIX, SENSITIVITY, HUNGER, MUTATION, OUTPUT, SEED. Algorithm v3 + performance-engine v1. Ableton-accepted through Stage 3; parked as shippable. See `docs/SIGNAL_PARASITE.md`.
+An audio-reactive generative collaborator (AU/VST3): LURKING / ATTACHED / ANSWERING / WITHDRAWN plus FREEZE / MUTATE / COLLAPSE / RESEED / SILENCE. Controls: MIX, SENSITIVITY, HUNGER, MUTATION, OUTPUT, SEED. See `docs/SIGNAL_PARASITE.md`.
 
 ## Roadmap
 
-Development order (planned unless the creative director changes priority):
+Musical algorithms for the six-plugin suite are parked and Ableton-accepted. Current product effort:
 
-1. **PFL Drone Organism** — Implemented. Composition + synthesis + performance control.
-2. **PFL Broken Conductor** — Stage 6 complete (software). Stage 7 = physical rig.
-3. **PFL Ruin Engine** — PARKED at Stage 4 (shippable). Generative transformation of incoming audio.
-4. **PFL Memory Eater** — **PARKED** at v4 (Ableton PASS). Send-first Return + performance verbs.
-5. **PFL Pulse Colony** — **PARKED** at v3 (Ableton PASS). Colony + performance verbs.
-6. **PFL Signal Parasite** — **PARKED** at v3 (Ableton PASS). Next: suite UI / release polish.
+1. **PFL Suite UI / Release Polish** — unified custom interfaces (this phase).
+2. Physical controller / studio integration — deferred until the creative director returns to the studio.
+3. No seventh plugin unless listening evidence demands it.
 
 ## Shared Architecture
 

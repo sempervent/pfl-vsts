@@ -5,7 +5,9 @@ Authoritative session memory for PFL Generative Instruments (`sempervent/pfl-vst
 ## Current milestone
 
 **PFL SUITE UI / RELEASE POLISH** — Signal Parasite **PARKED** at Stage 3
-(Ableton PASS). Next: unified custom interfaces; no new plugin / Stage 4 /
+(Ableton PASS). Branch `pr/pfl-suite-ui-release-polish`: shared `src/ui/`
+custom editors, Stage numbers removed from musician-facing UI. Awaiting
+creative-director visual / Ableton acceptance. No new plugin / Stage 4 /
 tonal / MIDI work.
 
 Pulse Colony **PARKED** at Stage 3. Memory Eater **PARKED** at Stage 4.

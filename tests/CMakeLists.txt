@@ -119,6 +119,38 @@ target_compile_definitions(pfl_plugin_identity_tests PRIVATE
 )
 add_test(NAME plugin_identity_tests COMMAND pfl_plugin_identity_tests)
 
+add_executable(pfl_ui_editor_tests
+    ui_editor_tests.cpp
+)
+target_include_directories(pfl_ui_editor_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_features(pfl_ui_editor_tests PRIVATE cxx_std_20)
+target_compile_definitions(pfl_ui_editor_tests PRIVATE
+    PFL_SOURCE_ROOT="${CMAKE_SOURCE_DIR}"
+)
+add_test(NAME ui_editor_tests COMMAND pfl_ui_editor_tests)
+
+# Links the Drone Organism shared-code library so the test can build a real
+# processor and ask it for a real editor. Only one plugin is linked: each plugin
+# archive carries its own createPluginFilter(), so linking several at once would
+# collide.
+add_executable(pfl_ui_editor_runtime_tests
+    ui_editor_runtime_tests.cpp
+)
+target_include_directories(pfl_ui_editor_runtime_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_features(pfl_ui_editor_runtime_tests PRIVATE cxx_std_20)
+target_compile_definitions(pfl_ui_editor_runtime_tests PRIVATE
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+    PFL_SOURCE_ROOT="${CMAKE_SOURCE_DIR}"
+)
+target_link_libraries(pfl_ui_editor_runtime_tests
+    PRIVATE
+        DroneOrganism
+        juce::juce_audio_utils
+        juce::juce_dsp
+)
+add_test(NAME ui_editor_runtime_tests COMMAND pfl_ui_editor_runtime_tests)
+
 add_executable(pfl_offline_render
     offline_render.cpp
 )
