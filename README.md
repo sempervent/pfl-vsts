@@ -12,7 +12,7 @@ Shared ideas across the suite include deterministic seeds, versioned algorithms,
 
 ## Current Plugins
 
-Six finished instruments (musical algorithms parked; suite UI polish in progress):
+Six finished instruments with a unified custom PFL interface (Ableton visual PASS):
 
 ### PFL Drone Organism
 
@@ -40,11 +40,12 @@ An audio-reactive generative collaborator (AU/VST3): LURKING / ATTACHED / ANSWER
 
 ## Roadmap
 
-Musical algorithms for the six-plugin suite are parked and Ableton-accepted. Current product effort:
+Musical algorithms for the six-plugin suite are parked and Ableton-accepted. Suite UI / release polish is complete (`pfl-suite-ui-release-polish-complete`).
 
-1. **PFL Suite UI / Release Polish** — unified custom interfaces (this phase).
-2. Physical controller / studio integration — deferred until the creative director returns to the studio.
-3. No seventh plugin unless listening evidence demands it.
+Next only when newly directed:
+
+1. Physical controller / studio integration — deferred until the creative director returns to the studio.
+2. No seventh plugin unless listening evidence demands it.
 
 ## Shared Architecture
 
